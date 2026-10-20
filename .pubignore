@@ -1,4 +1,6 @@
 # Miscellaneous
+# Internal working documents are not part of the published package.
+/docs/
 .cicd/
 *.class
 *.log
@@ -48,4 +50,4 @@ app.*.map.json
 .widget_preview/
 
 # Demo videos are hosted from the GitHub repository and are not runtime assets.
-doc/videos/
+materials/videos/

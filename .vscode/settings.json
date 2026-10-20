@@ -1,5 +1,11 @@
 {
   "dart.flutterSdkPath": ".fvm/flutter_sdk",
+  "dart.enableSdkFormatter": false,
+  "[dart]": {
+    "editor.formatOnSave": false,
+    "editor.formatOnType": false,
+    "editor.formatOnPaste": false
+  },
   "dart.env": {
     "NO_PROXY": "localhost,127.0.0.1,::1",
     "no_proxy": "localhost,127.0.0.1,::1"

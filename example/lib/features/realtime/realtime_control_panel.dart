@@ -16,7 +16,7 @@ enum XLabRealtimePanelMode {
   clothing('clothx', '视频中人物衣服替换成参考图中衣服'),
   style('vibex', '视频风格变为参考图指定的风格'),
   summon('dimx', '指定角色在场景中互动'),
-  touch('mox', '让画面自然动起来'),
+  touch('mox', '角色沿着拖拽轨迹运动，位置贴合轨迹，运动过渡自然'),
   free('free', '');
 
   const XLabRealtimePanelMode(this.id, this.prompt);

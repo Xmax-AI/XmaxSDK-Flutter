@@ -1,119 +1,130 @@
 import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:volc_engine_rtc/volc_engine_rtc.dart';
-import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
 
 void main() {
+  test('concurrent cold acquisitions create only one native engine', () async {
+    final gate = Completer<RtcPlatform>();
+    var count = 0;
+    final first = _Platform(), second = _Platform();
+    final pool = RtcEngineManager.internal(
+      createEngine: () {
+        count++;
+        return count == 1 ? gate.future : Future.value(second);
+      },
+    );
+    final a = pool.acquire(), b = pool.acquire();
+    expect(count, 1);
+    gate.complete(first);
+    final lease = await a;
+    expect(count, 1);
+    await pool.release(lease);
+    final next = await b;
+    expect(count, 2);
+    expect(next.engine, same(second));
+    await pool.release(next);
+  });
+  test('failed engine destruction unblocks queued owners', () async {
+    final first = _Platform()..failDestroy = true, second = _Platform();
+    var count = 0;
+    final pool = RtcEngineManager.internal(
+      createEngine: () async => count++ == 0 ? first : second,
+    );
+    final lease = await pool.acquire();
+    final pending = pool.acquire();
+    await expectLater(pool.release(lease), throwsStateError);
+    final next = await pending;
+    expect(next.engine, same(second));
+    await pool.release(next);
+  });
   test(
-    'room leave and destroy failures cannot retain the engine lease',
+    'handler removal failure still leaves and releases the engine',
     () async {
-      final room = _Room();
-      final engine = _Engine(room);
-      final pool = RtcEngineManager.internal(createEngine: () async => engine);
+      final platform = _Platform();
+      final pool = RtcEngineManager.internal(
+        createEngine: () async => platform,
+      );
       final manager = RtcManager(engineManager: pool);
       await manager.initialize();
-      room.registrationGate = Completer<int>();
-      final joining = manager.joinRoom(
-        configuration: const RoomJoinConfiguration(
-          roomID: 'room',
-          userID: 'user',
-          token: 'token',
+      final failure = expectLater(
+        manager.joinRoom(
+          configuration: const RoomJoinConfiguration(
+            roomID: 'room',
+            userID: 'user',
+            token: 'token',
+          ),
         ),
+        throwsA(anything),
       );
-      final cancelled = expectLater(joining, throwsA(isA<XmaxError>()));
-      await room.registered.future;
-      room.failCleanup = true;
-      final nextLease = pool.acquire();
+      await platform.engine.joinStarted.future;
+      platform.engine.failUnregister = true;
       await manager.destroy();
-      expect(room.leaveCount, 1);
-      expect(room.destroyCount, 1);
-      expect(engine.destroyCount, 1);
-      room.registrationGate!.completeError(StateError('join cancelled'));
-      await cancelled;
-      await pool.release(await nextLease);
-      await manager.destroy();
-      expect(engine.destroyCount, 2);
+      await failure;
+      expect(platform.engine.leaveCount, 1);
+      expect(platform.destroyCount, 1);
     },
   );
-
-  test(
-    'synchronous engine destruction failure still unblocks queued owners',
-    () async {
-      final first = _Engine(_Room())..failDestroy = true;
-      final second = _Engine(_Room());
-      var creations = 0;
-      final pool = RtcEngineManager.internal(
-        createEngine: () async => creations++ == 0 ? first : second,
-      );
-      final firstLease = await pool.acquire();
-      final pending = pool.acquire();
-      await expectLater(pool.release(firstLease), throwsStateError);
-      final next = await pending;
-      expect(next.engine, same(second));
-      await pool.release(next);
-      expect(second.destroyCount, 1);
-    },
-  );
+  test('leave failure still releases engine and ends a pending join', () async {
+    final platform = _Platform();
+    final pool = RtcEngineManager.internal(createEngine: () async => platform);
+    final manager = RtcManager(engineManager: pool);
+    await manager.initialize();
+    final joining = manager.joinRoom(
+      configuration: const RoomJoinConfiguration(
+        roomID: 'room',
+        userID: 'user',
+        token: 'token',
+      ),
+    );
+    final failure = expectLater(joining, throwsA(anything));
+    await platform.engine.joinStarted.future;
+    platform.engine.failLeave = true;
+    await manager.destroy();
+    await failure;
+    expect(platform.destroyCount, 1);
+    final lease = await pool.acquire();
+    await pool.release(lease);
+  });
 }
 
-class _Engine implements RTCEngine {
-  _Engine(this.room);
-  final _Room room;
+class _Platform implements RtcPlatform {
+  @override
+  final _Engine engine = _Engine();
   int destroyCount = 0;
   bool failDestroy = false;
-
   @override
-  dynamic noSuchMethod(Invocation invocation) {
-    switch (invocation.memberName) {
-      case #setRTCEngineEventHandler:
-        return Future<int>.value(0);
-      case #createRTCRoom:
-        return Future<RTCRoom?>.value(room);
-      case #destroy:
-        destroyCount++;
-        if (failDestroy) throw StateError('destroy failed');
-        return null;
-      default:
-        return super.noSuchMethod(invocation);
-    }
+  Future<void> destroy() async {
+    destroyCount++;
+    if (failDestroy) throw StateError('destroy failed');
   }
 }
 
-class _Room implements RTCRoom {
-  Completer<int>? registrationGate;
-  final registered = Completer<void>();
-  IRTCRoomEventHandler? listener;
-  bool failCleanup = false;
+class _Engine implements RtcEngine {
+  final joinStarted = Completer<void>();
+  bool failLeave = false;
+  bool failUnregister = false;
   int leaveCount = 0;
-  int destroyCount = 0;
-
   @override
-  dynamic noSuchMethod(Invocation invocation) {
-    switch (invocation.memberName) {
-      case #setRTCRoomEventHandler:
-        listener =
-            invocation.positionalArguments.single as IRTCRoomEventHandler;
-        registered.complete();
-        return registrationGate?.future ?? Future<int>.value(0);
-      case #joinRoom:
-        listener!.onRoomStateChanged?.call('room', 'user', 0, '');
-        return Future<int?>.value(0);
-      case #leaveRoom:
-        leaveCount++;
-        return failCleanup
-            ? Future<int?>.error(StateError('leave failed'))
-            : Future<int?>.value(0);
-      case #destroy:
-        destroyCount++;
-        return failCleanup
-            ? Future<void>.error(StateError('room destroy failed'))
-            : Future<void>.value();
-      default:
-        return super.noSuchMethod(invocation);
+  dynamic noSuchMethod(Invocation call) {
+    if (call.memberName == #unregisterEventHandler && failUnregister) {
+      throw StateError('handler removal failed');
     }
+    if (call.memberName == #registerEventHandler ||
+        call.memberName == #unregisterEventHandler) {
+      return null;
+    }
+    if (call.memberName == #joinChannelWithUserAccount) {
+      if (!joinStarted.isCompleted) joinStarted.complete();
+      return Future<void>.value();
+    }
+    if (call.memberName == #leaveChannel) {
+      leaveCount++;
+      if (failLeave) return Future<void>.error(StateError('leave failed'));
+    }
+    return Future<void>.value();
   }
 }

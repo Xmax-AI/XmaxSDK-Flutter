@@ -11,7 +11,6 @@ pluginManagement {
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
     repositories {
-        maven(url = "https://artifact.bytedance.com/repository/Volcengine/")
         google()
         mavenCentral()
         gradlePluginPortal()

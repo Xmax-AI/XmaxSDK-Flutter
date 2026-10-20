@@ -30,7 +30,7 @@ class _HomePageState extends State<HomePage> {
   final _preferences = SharedPreferencesAsync();
   bool _obscureApiKey = true;
   bool _isPickingImage = false;
-  RealtimeModel _selectedModel = RealtimeModel.x2_0;
+  RealtimeModel _selectedModel = RealtimeModel.x2_1_1_preview_cn;
   int _modelSelectionVersion = 0;
 
   String get _minimumOS => switch (defaultTargetPlatform) {
@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
 
     final selected = RealtimeModel.values.firstWhere(
       (model) => model.value == saved,
-      orElse: () => RealtimeModel.x2_0,
+      orElse: () => RealtimeModel.x2_1_1_preview_cn,
     );
     setState(() => _selectedModel = selected);
   }
@@ -225,7 +225,7 @@ class _HomePageState extends State<HomePage> {
                   Expanded(
                     child: _Metric(
                       label: t('feed.latestModel'),
-                      value: RealtimeModel.values.last.value.toUpperCase(),
+                      value: 'X2.1.1',
                     ),
                   ),
                 ],
@@ -558,7 +558,7 @@ final class _ModelOptionRow extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Text(
-                    model.value.toUpperCase(),
+                    model.displayName,
                     style: const TextStyle(
                       color: Color(0xFFF0F2F5),
                       fontSize: 14,

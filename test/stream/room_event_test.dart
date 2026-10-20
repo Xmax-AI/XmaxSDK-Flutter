@@ -31,9 +31,14 @@ void main() {
         'size': <int>[1024, 576],
         'prompt': 'turn it into ink',
         'ref_image_path': 'cos/ref.png',
+        'face_replace': false,
+        'mirror': false,
+        'min_bitrate': 100,
+        'max_bitrate': 1263,
       },
       'user_id': 'user-1',
       'uid': 'task-1',
+      'session_uid': 'task-1',
       'runtime': RuntimeInfo.current.toJson(),
     });
   });
@@ -75,9 +80,12 @@ void main() {
         'event': 'change_target_size',
         'params': <String, Object?>{
           'target_size': <int>[1280, 720],
+          'min_bitrate': 100,
+          'max_bitrate': 1774,
         },
         'user_id': 'user-1',
         'uid': 'task-1',
+        'session_uid': 'task-1',
         'runtime': RuntimeInfo.current.toJson(),
       },
     );
@@ -121,6 +129,7 @@ void main() {
         ],
         'user_id': 'user-1',
         'uid': 'task-1',
+        'session_uid': 'task-1',
         'runtime': RuntimeInfo.current.toJson(),
       },
     );
@@ -130,6 +139,7 @@ void main() {
         'event': 'stop',
         'user_id': 'user-1',
         'uid': 'task-1',
+        'session_uid': 'task-1',
         'runtime': RuntimeInfo.current.toJson(),
       },
     );

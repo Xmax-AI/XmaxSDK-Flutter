@@ -1,653 +1,439 @@
+//
+//  RtcManager.dart
+//  XmaxSDK
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-Flutter
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import 'dart:async';
-import 'dart:io';
-import 'dart:typed_data';
-
-import 'package:volc_engine_rtc/volc_engine_rtc.dart';
-
-import '../../service/realtime/RealtimeNetworkQuality.dart';
-import '../../service/realtime/RealtimePerformanceAlarm.dart';
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../errors/XmaxError.dart';
 import '../logging/XmaxLogger.dart';
 import '../media/camera/CameraPosition.dart';
+import 'AgoraRtcRoom.dart';
 import 'RtcEngineManager.dart';
 import 'RtcEventListener.dart';
 import 'RtcManaging.dart';
 import 'RtcModels.dart';
-import 'RtcStatsLogger.dart';
 
+/// 协调共享引擎租约、摄像头预览与单次房间生命周期。
 final class RtcManager implements RtcManaging {
-  RtcManager({RtcEngineManager? engineManager})
-    : _engineManager = engineManager ?? RtcEngineManager.shared;
 
+  /// 创建 RTC 采集与房间管理器。
+  ///
+  /// - [engineManager]：引擎租约分配器；默认使用进程共享的独占分配器。
+  RtcManager({
+    RtcEngineManager? engineManager,
+  }) : _engineManager = engineManager ?? RtcEngineManager.shared;
+
+  /// 等待 RTC 加入房间和发送队列就绪的最长时限。
   static const joinTimeout = Duration(seconds: 15);
+
+  /// 等待原生房间释放的最长时限。
   static const cleanupTimeout = Duration(seconds: 2);
 
+  /// 分配独占 RTC 引擎租约的组件。
   final RtcEngineManager _engineManager;
-  RtcEngineLease? _lease;
-  Future<void>? _destroyFuture;
-  RTCRoom? _room;
-  String _roomID = '';
-  RtcEventListener? _eventListener;
-  void Function()? _cameraPreviewReadyListener;
-  final Map<String, String> _remoteStreamIDs = <String, String>{};
 
-  RTCEngine get _engine {
-    final engine = _lease?.engine;
-    if (engine == null) {
+  /// 需要释放的独占 RTC 引擎租约。
+  RtcEngineLease? _lease;
+
+  /// 正在进行的 RTC 引擎初始化任务。
+  Future<void>? _initializing;
+
+  /// 正在进行的 RTC 原生资源释放任务。
+  Future<void>? _destroyFuture;
+
+  /// 当前 RTC 房间实例。
+  AgoraRtcRoom? _room;
+
+  /// 当前 RTC 房间和媒体事件监听器。
+  RtcEventListener? _eventListener;
+
+  /// 本地采集的原生 RTC 事件处理器。
+  RtcEngineEventHandler? _handler;
+
+  /// 当前本地视频首帧就绪通知。
+  void Function()? _cameraPreviewReadyListener;
+
+  /// 摄像头位置；创建流时默认使用前置摄像头。
+  CameraPosition _position = CameraPosition.front;
+
+  /// 最近一次成功应用的 RTC 编码配置。
+  VideoEncodingConfiguration? _encoding;
+
+  /// 用于原生视频渲染的当前 RTC 引擎。
+  RtcEngine get renderEngine => _lease!.engine.engine;
+
+  /// 当前使用的原生 RTC 引擎。
+  RtcEngine get _engine {
+    if (_lease == null) {
       throw const XmaxError(
         code: XmaxErrorCode.rtcError,
         message: 'RTC Engine is not initialized',
       );
     }
-    return engine;
+
+    return renderEngine;
   }
 
+  /// 获取并初始化当前生命周期使用的 RTC 引擎。
   @override
   Future<void> initialize() async {
     await _destroyFuture;
-    if (_lease != null) {
-      return;
-    }
+    if (_lease != null) return;
 
+    if (_initializing case final pending?) return pending;
+
+    final future = _initialize();
+
+    _initializing = future;
+
+    try {
+      await future;
+    } finally {
+      if (identical(_initializing, future)) _initializing = null;
+    }
+  }
+
+  /// 获取独占引擎租约并注册本地媒体事件。
+  Future<void> _initialize() async {
     final lease = await _engineManager.acquire();
+
     _lease = lease;
 
-    await _check(
-      lease.engine.setRTCEngineEventHandler(_makeEngineEventHandler()),
-      'setRTCEngineEventHandler',
-    );
+    try {
+      final handler = RtcEngineEventHandler(
+        onError: (code, message) => _eventListener?.onError?.call(
+          XmaxError(
+            code: XmaxErrorCode.rtcError,
+            message: 'RTC ${code.name}: $message',
+          ),
+        ),
+        onFirstLocalVideoFrame: (_, width, height, _) {
+          if (width > 0 && height > 0) _cameraPreviewReadyListener?.call();
+        },
+      );
+
+      _handler = handler;
+      _engine.registerEventHandler(handler);
+    } catch (_) {
+      _lease = null;
+      await _engineManager.release(lease);
+      rethrow;
+    }
   }
 
+  /// 关闭当前 RTC 资源，并使后续原生回调失效。
   @override
   Future<void> destroy() {
-    final active = _destroyFuture;
-    if (active != null) return active;
-    final future = _performDestroy();
+    if (_destroyFuture case final active?) return active;
+
+    final future = _destroy();
+
     _destroyFuture = future;
-    return future.whenComplete(() => _destroyFuture = null);
+
+    return future.whenComplete(() {
+      if (identical(_destroyFuture, future)) _destroyFuture = null;
+    });
   }
 
-  Future<void> _performDestroy() async {
+  /// 等待初始化结束后释放房间、事件处理器和引擎租约。
+  Future<void> _destroy() async {
+    try {
+      await _initializing;
+    } catch (_) {}
+
     final lease = _lease;
-    _lease = null;
+
     _cameraPreviewReadyListener = null;
-    _remoteStreamIDs.clear();
 
     try {
       await leaveRoom();
     } catch (error) {
-      _logDestroyFailure(error);
+      _logCleanup(error);
     } finally {
       if (lease != null) {
         try {
+          if (_handler case final handler?) {
+            lease.engine.engine.unregisterEventHandler(handler);
+          }
+        } catch (error) {
+          _logCleanup(error);
+        }
+
+        try {
           await _engineManager.release(lease);
         } catch (error) {
-          _logDestroyFailure(error);
+          _logCleanup(error);
         }
       }
+
+      _lease = null;
+      _handler = null;
+      _encoding = null;
+      _position = CameraPosition.front;
     }
   }
 
-  void _logDestroyFailure(Object error) {
-    try {
-      XmaxLogger.error(
-        category: XmaxLoggerCategory.rtc,
-        message:
-            '释放 RTC 资源失败 (Failed to Release RTC Resources)\n'
-            '└─ ${XmaxLogger.localized('原因：', 'Reason: ')}$error',
-      );
-    } catch (_) {
-      // Continue releasing native resources even when a diagnostic sink fails.
-    }
-  }
-
+  /// 将视频分辨率、帧率、码率及编码偏好应用到 RTC。
+  ///
+  /// - [configuration]：视频分辨率、帧率、最低与目标码率及编码偏好。
   @override
   Future<void> configureVideoEncoding(
     VideoEncodingConfiguration configuration,
   ) async {
-    _validateVideoDimensions(
-      configuration.width,
-      configuration.height,
-      configuration.frameRate,
-    );
-    await _check(
-      _engine.setVideoEncoderConfig(
-        VideoEncoderConfig(
-          width: configuration.width,
-          height: configuration.height,
+    await _checked(
+      () => _engine.setVideoEncoderConfiguration(
+        VideoEncoderConfiguration(
+          dimensions: VideoDimensions(
+            width: configuration.width,
+            height: configuration.height,
+          ),
           frameRate: configuration.frameRate,
-          maxBitrate: configuration.maximumBitrate,
           minBitrate: configuration.minimumBitrate,
-          encoderPreference: switch (configuration.encoderPreference) {
-            RealtimeVideoEncoderPreference.auto => VideoEncoderPreference.auto,
+          bitrate: configuration.maximumBitrate,
+          orientationMode: OrientationMode.orientationModeAdaptive,
+          mirrorMode: _position == CameraPosition.front
+              ? VideoMirrorModeType.videoMirrorModeEnabled
+              : VideoMirrorModeType.videoMirrorModeDisabled,
+          degradationPreference: switch (configuration.encoderPreference) {
             RealtimeVideoEncoderPreference.maintainFramerate =>
-              VideoEncoderPreference.maintain_framerate,
+              DegradationPreference.maintainFramerate,
             RealtimeVideoEncoderPreference.maintainQuality =>
-              VideoEncoderPreference.maintain_quality,
+              DegradationPreference.maintainQuality,
+            _ => DegradationPreference.maintainAuto,
           },
         ),
       ),
-      'setVideoEncoderConfig',
     );
+    _encoding = configuration;
   }
 
+  /// 按给定规格启动摄像头采集和本地预览，不开启麦克风。
+  ///
+  /// 详细说明见 [RtcManaging.startVideoCapture]。
   @override
   Future<void> startVideoCapture({
     required int width,
     required int height,
     required int frameRate,
   }) async {
-    _validateVideoDimensions(width, height, frameRate);
-
-    await _check(
-      _engine.setVideoCaptureConfig(
-        VideoCaptureConfig(
-          frameRate: frameRate,
-          preference: CapturePreference.manual,
-          width: width,
-          height: height,
+    await _checked(
+      () => _engine.setCameraCapturerConfiguration(
+        CameraCapturerConfiguration(
+          cameraDirection: _position == CameraPosition.front
+              ? CameraDirection.cameraFront
+              : CameraDirection.cameraRear,
+          followEncodeDimensionRatio: false,
+          format: VideoFormat(width: width, height: height, fps: frameRate),
         ),
       ),
-      'setVideoCaptureConfig',
     );
-
-    await _check(_engine.startVideoCapture(), 'startVideoCapture');
+    await _checked(() => _engine.enableLocalVideo(true));
+    await _checked(() => _engine.startPreview());
   }
 
+  /// 停止本地预览和摄像头采集。
   @override
   Future<void> stopVideoCapture() async {
-    final lease = _lease;
-    if (lease == null) {
-      return;
-    }
-    await _check(lease.engine.stopVideoCapture(), 'stopVideoCapture');
+    if (_lease == null) return;
+
+    await _checked(() => _engine.stopPreview());
+    await _checked(() => _engine.enableLocalVideo(false));
   }
 
+  /// 将原生采集切换到指定摄像头，并重新应用当前编码镜像设置。
+  ///
+  /// - [position]：需要切换到的摄像头位置。
+  ///
+  /// 摄像头切换和编码镜像配置均完成后结束。
   @override
-  Future<void> switchCamera({required CameraPosition position}) async {
-    await _check(
-      _engine.switchCamera(
-        position == CameraPosition.front ? CameraId.front : CameraId.back,
-      ),
-      'switchCamera',
-    );
-    if (Platform.isIOS) {
-      await _check(
-        _engine.setVideoCaptureRotation(
-          _requiresBackCameraRotation(position)
-              ? VideoRotation.rotation180
-              : VideoRotation.rotation0,
-        ),
-        'setVideoCaptureRotation',
-      );
+  Future<void> switchCamera({
+    required CameraPosition position,
+  }) async {
+    if (_position != position) {
+      await _checked(() => _engine.switchCamera());
+      _position = position;
     }
-    await _check(
-      _engine.setLocalVideoMirrorType(
-        position == CameraPosition.front
-            ? MirrorType.renderAndEncoder
-            : MirrorType.none,
-      ),
-      'setLocalVideoMirrorType',
-    );
+
+    if (_encoding case final encoding?) await configureVideoEncoding(encoding);
   }
 
-  bool _requiresBackCameraRotation(CameraPosition position) {
-    if (position != CameraPosition.back) return false;
-
-    final version = RegExp(
-      r'Version\s+(\d+)',
-    ).firstMatch(Platform.operatingSystemVersion);
-    final majorVersion = int.tryParse(version?.group(1) ?? '');
-    return majorVersion != null && majorVersion >= 27;
-  }
-
+  /// 加入指定 RTC 房间，并在失败时清理本次房间资源。
+  ///
+  /// - [configuration]：本次入房使用的房间标识、用户账号和访问令牌。
   @override
-  Future<void> joinRoom({required RoomJoinConfiguration configuration}) async {
-    _validateJoinConfiguration(configuration);
+  Future<void> joinRoom({
+    required RoomJoinConfiguration configuration,
+  }) async {
     await leaveRoom();
 
-    // Keep a single room instance so stale SDK callbacks can be ignored.
-    final room = await _engine.createRTCRoom(configuration.roomID);
-    if (room == null) {
-      throw const XmaxError(
-        code: XmaxErrorCode.rtcError,
-        message: 'Failed to create RTC room',
-      );
-    }
+    final room = AgoraRtcRoom(
+      engine: _engine,
+      roomID: configuration.roomID,
+      listener: () => _eventListener,
+    );
 
     _room = room;
-    _roomID = configuration.roomID;
 
-    final completer = Completer<void>();
     try {
-      // Bound the complete native operation, not only the event callback. A
-      // stalled platform-channel call must not leave the public Future pending.
-      await (() async {
-        await _check(
-          room.setRTCRoomEventHandler(
-            _makeRoomEventHandler(room: room, joinCompleter: completer),
-          ),
-          'setRTCRoomEventHandler',
-        );
-
-        await _check(
-          room.joinRoom(
-            token: configuration.token,
-            userInfo: UserInfo(extraInfo: '', userId: configuration.userID),
-            userVisibility: true,
-            roomConfig: RoomConfig(
-              profile: RoomProfile.communication,
-              streamId: configuration.userID,
-              isPublishAudio: false,
-              isPublishVideo: false,
-              isAutoSubscribeAudio: false,
-              isAutoSubscribeVideo: true,
-            ),
-          ),
-          'joinRoom',
-        );
-
-        // VolcEngine reports join completion through the room event handler.
-        await completer.future;
-      })().timeout(
-        joinTimeout,
-        onTimeout: () => throw const XmaxError(
-          code: XmaxErrorCode.timeout,
-          message: 'RTC join room timed out',
-        ),
-      );
-    } catch (_) {
+      await _checked(() => room.join(configuration).timeout(joinTimeout));
+    } catch (error) {
       try {
         await leaveRoom();
-      } catch (_) {}
-      rethrow;
+      } catch (cleanup) {
+        _logCleanup(cleanup);
+      }
+
+      throw XmaxError.from(error);
     }
   }
 
+  /// 退出当前 RTC 房间，取消待发信令并移除房间事件。
   @override
   Future<void> leaveRoom() async {
     final room = _room;
 
-    // Clear state before awaiting the SDK to make leave idempotent/reentrant.
     _room = null;
-    _roomID = '';
-    _remoteStreamIDs.clear();
-
-    if (room == null) {
-      return;
-    }
-
-    Object? cleanupError;
-    try {
-      await room.leaveRoom().timeout(cleanupTimeout);
-    } catch (error) {
-      cleanupError = error;
-    }
-
-    try {
-      await room.destroy().timeout(cleanupTimeout);
-    } catch (error) {
-      cleanupError ??= error;
-    }
-
-    if (cleanupError != null) {
-      throw XmaxError.from(cleanupError);
-    }
+    if (room != null) await room.destroy().timeout(cleanupTimeout);
   }
 
-  @override
-  Future<void> publishLocalVideo({required bool publish}) async {
-    await _check(
-      _requiredRoom.publishStreamVideo(publish),
-      'publishStreamVideo',
-    );
-  }
-
-  @override
-  Future<void> subscribeRemoteVideo({
-    required String streamID,
-    required bool subscribe,
-  }) async {
-    await _check(
-      _requiredRoom.subscribeStreamVideo(
-        streamId: streamID,
-        subscribe: subscribe,
-      ),
-      'subscribeStreamVideo',
-    );
-  }
-
-  @override
-  Future<void> subscribeRemoteAudio({
-    required String streamID,
-    required bool subscribe,
-  }) async {
-    await _check(
-      _requiredRoom.subscribeStreamAudio(
-        streamId: streamID,
-        subscribe: subscribe,
-      ),
-      'subscribeStreamAudio',
-    );
-  }
-
-  @override
-  Future<void> setRemoteAudioVolume({
-    required int volume,
-    required String streamID,
-  }) async {
-    if (volume < 0 || volume > 100) {
-      throw const XmaxError(
-        code: XmaxErrorCode.invalidConfiguration,
-        message: 'RTC audio volume must be between 0 and 100',
-      );
-    }
-    await _check(
-      _engine.setRemoteAudioPlaybackVolume(streamId: streamID, volume: volume),
-      'setRemoteAudioPlaybackVolume',
-    );
-  }
-
-  @override
-  Future<void> sendRoomMessage(String message) async {
-    final room = _requiredRoom;
-
-    if (Platform.isAndroid) {
-      // volc_engine_rtc 3.60.6 declares this result as int, while its Android
-      // bridge serializes the native long message ID as a String. Calling the
-      // generated wrapper therefore sends the message and then throws a cast
-      // error. Invoke the same native method directly until the plugin fixes
-      // its generated return type.
-      final dynamic platformRoom = room.$instance;
-      final Object? result = await platformRoom.nativeCall<Object?>(
-        'sendRoomMessage',
-        <Object?>[message],
-      );
-      final status = int.tryParse(result?.toString() ?? '');
-
-      if (status != null && status < 0) {
-        throw XmaxError(
-          code: XmaxErrorCode.rtcError,
-          message: 'RTC sendRoomMessage failed: $status',
-        );
-      }
-      return;
-    }
-
-    await _check(room.sendRoomMessage(message), 'sendRoomMessage');
-  }
-
-  @override
-  void setEventListener(RtcEventListener? listener) {
-    _eventListener = listener;
-  }
-
-  @override
-  void setCameraPreviewReadyListener(void Function()? listener) {
-    _cameraPreviewReadyListener = listener;
-  }
-
-  RTCRoom get _requiredRoom {
+  /// 尚未关闭的当前 RTC 房间；不可用时抛出 RTC 错误。
+  AgoraRtcRoom get _requiredRoom {
     final room = _room;
-    if (room == null) {
+
+    if (room == null || room.isClosed) {
       throw const XmaxError(
         code: XmaxErrorCode.rtcError,
         message: 'RTC room is not joined',
       );
     }
+
     return room;
   }
 
-  IRTCEngineEventHandler _makeEngineEventHandler() => IRTCEngineEventHandler(
-    onError: (code) {
-      _eventListener?.onError?.call(
-        XmaxError(
-          code: XmaxErrorCode.rtcError,
-          message: 'RTC Engine error: ${code.name}',
+  /// 设置当前房间是否发布摄像头视频；不发布麦克风音频。
+  ///
+  /// - [publish]：是否发布本地摄像头视频。
+  @override
+  Future<void> publishLocalVideo({
+    required bool publish,
+  }) async {
+    _requiredRoom;
+    await _checked(
+      () => _engine.updateChannelMediaOptions(
+        ChannelMediaOptions(
+          publishCameraTrack: publish,
+          publishMicrophoneTrack: false,
         ),
-      );
-    },
-    onFirstLocalVideoFrameCaptured: (_, frameInfo) {
-      if (frameInfo.width <= 0 || frameInfo.height <= 0) return;
-      XmaxLogger.debug(
-        category: XmaxLoggerCategory.rtc,
-        message:
-            '本地首帧已采集 (First Local Video Frame Captured)\n'
-            '└─ ${frameInfo.width} × ${frameInfo.height}',
-      );
-      _cameraPreviewReadyListener?.call();
-    },
-    onFirstRemoteVideoFrameDecoded: (streamID, info, frameInfo) {
-      if (info.roomId != _roomID || _room == null) return;
-      if (frameInfo.width <= 0 || frameInfo.height <= 0) return;
-      _eventListener?.onFirstRemoteVideoFrameDecoded?.call(
-        _remoteStream(streamID, info),
-      );
-      XmaxLogger.debug(
-        category: XmaxLoggerCategory.rtc,
-        message:
-            '远端首帧已解码 (First Remote Video Frame Decoded)\n'
-            '├─ ${XmaxLogger.localized('streamID：', 'streamID: ')}$streamID\n'
-            '└─ ${frameInfo.width} × ${frameInfo.height}',
-      );
-    },
-    onFirstRemoteVideoFrameRendered: (streamID, info, _) {
-      if (info.roomId != _roomID || _room == null) return;
-      XmaxLogger.debug(
-        category: XmaxLoggerCategory.rtc,
-        message:
-            '远端首帧已渲染 (First Remote Video Frame Rendered)\n'
-            '└─ ${XmaxLogger.localized('streamID：', 'streamID: ')}$streamID',
-      );
-      _eventListener?.onFirstRemoteVideoFrameRendered?.call(
-        _remoteStream(streamID, info),
-      );
-    },
-    onSEIMessageReceived: (streamID, info, Uint8List message) {
-      _eventListener?.onSEIMessageReceived?.call(
-        _remoteStream(streamID, info),
-        message,
-      );
-    },
-    onSysStats: RtcStatsLogger.logSystemStats,
-    onPerformanceAlarms: (_, _, _, reason, data) {
-      RtcStatsLogger.logPerformanceAlarm(reason, data);
-      final reasonName = reason.name.toLowerCase();
-
-      // Only fallback/resume alarms represent a quality state transition.
-      final bool? limited = reasonName.contains('resumed')
-          ? false
-          : reasonName.contains('fallback')
-          ? true
-          : null;
-      if (limited == null) {
-        return;
-      }
-
-      final validSuggestion =
-          data.width > 0 && data.height > 0 && data.frameRate > 0;
-      _eventListener?.onPerformanceAlarm?.call(
-        RealtimePerformanceAlarm(
-          status: limited
-              ? RealtimePerformanceStatus.limited
-              : RealtimePerformanceStatus.recovered,
-          suggestedVideoFormat: validSuggestion
-              ? RealtimeVideoFormat(
-                  width: data.width,
-                  height: data.height,
-                  fps: data.frameRate,
-                )
-              : null,
-        ),
-      );
-    },
-  );
-
-  IRTCRoomEventHandler _makeRoomEventHandler({
-    required RTCRoom room,
-    required Completer<void> joinCompleter,
-  }) => IRTCRoomEventHandler(
-    // VolcEngine 3.60 uses this callback on current Android releases. Keep the
-    // deprecated callback below as a fallback for iOS and older native SDKs.
-    onRoomStateChangedWithReason: (roomID, _, state, reason) {
-      _completeRoomJoin(
-        room: room,
-        joinCompleter: joinCompleter,
-        roomID: roomID,
-        // The plugin exposes this callback but does not re-export RoomState.
-        joined: state.name == 'success',
-        failureReason: reason.name,
-      );
-    },
-    onRoomStateChanged: (roomID, _, state, extraInfo) {
-      _completeRoomJoin(
-        room: room,
-        joinCompleter: joinCompleter,
-        roomID: roomID,
-        joined: state == 0,
-        failureReason: extraInfo.trim().isEmpty ? '$state' : extraInfo,
-      );
-    },
-    onUserPublishStreamVideo: (streamID, info, published) {
-      _remoteStreamIDs[info.userId] = streamID;
-      _eventListener?.onRemoteVideoPublished?.call(
-        _remoteStream(streamID, info),
-        published,
-      );
-    },
-    onUserPublishStreamAudio: (streamID, info, published) {
-      _eventListener?.onRemoteAudioPublished?.call(
-        _remoteStream(streamID, info),
-        published,
-      );
-    },
-    onLocalStreamStats: (_, _, stats) {
-      RtcStatsLogger.logLocalStreamStats(stats);
-    },
-    onRemoteStreamStats: (_, _, stats) {
-      RtcStatsLogger.logRemoteStreamStats(stats);
-    },
-    onNetworkQuality: (local, remote) {
-      RtcStatsLogger.logNetworkQuality(local, remote);
-      // Report the worst remote downlink when the SDK supplies multiple users.
-      var downlink = RealtimeNetworkQualityLevel.unknown;
-      for (final item in remote) {
-        final level = _qualityLevel(item.rxQuality);
-        if (level.index > downlink.index) {
-          downlink = level;
-        }
-      }
-
-      _eventListener?.onNetworkQuality?.call(
-        RealtimeNetworkQuality(
-          uplink: _qualityLevel(local.txQuality),
-          downlink: downlink,
-        ),
-      );
-    },
-  );
-
-  void _completeRoomJoin({
-    required RTCRoom room,
-    required Completer<void> joinCompleter,
-    required String roomID,
-    required bool joined,
-    required String failureReason,
-  }) {
-    if (!identical(_room, room) ||
-        roomID != _roomID ||
-        joinCompleter.isCompleted) {
-      return;
-    }
-
-    if (joined) {
-      joinCompleter.complete();
-      return;
-    }
-
-    joinCompleter.completeError(
-      XmaxError(
-        code: XmaxErrorCode.rtcError,
-        message: 'RTC join room failed: $failureReason',
       ),
     );
+    if (publish && _encoding != null) await configureVideoEncoding(_encoding!);
   }
 
-  RemoteStream _remoteStream(String streamID, StreamInfo info) => RemoteStream(
-    roomID: info.roomId,
-    userID: info.userId,
-    streamID: streamID,
+  /// 设置是否接收指定远端用户的视频。
+  ///
+  /// 详细说明见 [RtcManaging.subscribeRemoteVideo]。
+  @override
+  Future<void> subscribeRemoteVideo({
+    required String streamID,
+    required bool subscribe,
+  }) => _checked(
+    () async => _engine.muteRemoteVideoStream(
+      uid: await _requiredRoom.resolveUID(streamID),
+      mute: !subscribe,
+    ),
   );
 
-  static RealtimeNetworkQualityLevel _qualityLevel(NetworkQuality quality) {
-    final name = quality.name.toLowerCase();
+  /// 设置是否接收指定远端用户的音频。
+  ///
+  /// 详细说明见 [RtcManaging.subscribeRemoteAudio]。
+  @override
+  Future<void> subscribeRemoteAudio({
+    required String streamID,
+    required bool subscribe,
+  }) => _checked(
+    () async => _engine.muteRemoteAudioStream(
+      uid: await _requiredRoom.resolveUID(streamID),
+      mute: !subscribe,
+    ),
+  );
 
-    if (name.contains('very_bad') || name.contains('verybad')) {
-      return RealtimeNetworkQualityLevel.veryBad;
-    }
+  /// 将指定远端用户的播放音量百分比提交给 RTC。
+  ///
+  /// 详细说明见 [RtcManaging.setRemoteAudioVolume]。
+  @override
+  Future<void> setRemoteAudioVolume({
+    required int volume,
+    required String streamID,
+  }) => _checked(
+    () async => _engine.adjustUserPlaybackSignalVolume(
+      uid: await _requiredRoom.resolveUID(streamID),
+      volume: volume,
+    ),
+  );
 
-    if (name.contains('excellent')) {
-      return RealtimeNetworkQualityLevel.excellent;
-    }
+  /// 按队列顺序发送完整房间 JSON 信令，必要时进行分片和限速。
+  ///
+  /// - [message]：完整消息文本。
+  @override
+  Future<void> sendRoomMessage(
+    String message,
+  ) => _requiredRoom.sendMessage(message);
 
-    if (name.contains('good')) {
-      return RealtimeNetworkQualityLevel.good;
-    }
+  /// 替换 RTC 内部事件监听器。
+  ///
+  /// - [listener]：事件回调；传入 null 可取消监听。
+  @override
+  void setEventListener(
+    RtcEventListener? listener,
+  ) => _eventListener = listener;
 
-    if (name.contains('poor')) {
-      return RealtimeNetworkQualityLevel.poor;
-    }
+  /// 设置本地摄像头首帧就绪的内部通知。
+  ///
+  /// - [listener]：事件回调；传入 null 可取消监听。
+  @override
+  void setCameraPreviewReadyListener(
+    void Function()? listener,
+  ) => _cameraPreviewReadyListener = listener;
 
-    if (name.contains('bad')) {
-      return RealtimeNetworkQualityLevel.bad;
-    }
-
-    if (name.contains('down')) {
-      return RealtimeNetworkQualityLevel.down;
-    }
-    return RealtimeNetworkQualityLevel.unknown;
-  }
-
-  static Future<void> _check(Future<int?> result, String operation) async {
+  /// 执行 RTC 调用，并将原生异常和超时转换为 SDK 错误。
+  ///
+  /// - [operation]：要执行的异步操作。
+  static Future<void> _checked(
+    Future<void> Function() operation,
+  ) async {
     try {
-      final status = await result;
-
-      if (status != null && status < 0) {
-        throw XmaxError(
-          code: XmaxErrorCode.rtcError,
-          message: 'RTC $operation failed: $status',
-        );
-      }
-    } on XmaxError {
-      rethrow;
-    } catch (error) {
+      await operation();
+    } on AgoraRtcException catch (error) {
       throw XmaxError(
         code: XmaxErrorCode.rtcError,
-        message: 'RTC $operation failed: $error',
+        message: 'RTC operation failed: $error',
+      );
+    } on TimeoutException {
+      throw const XmaxError(
+        code: XmaxErrorCode.timeout,
+        message: 'RTC operation timed out',
       );
     }
   }
 
-  static void _validateVideoDimensions(int width, int height, int fps) {
-    if (width <= 0 || height <= 0 || fps <= 0 || width.isOdd || height.isOdd) {
-      throw const XmaxError(
-        code: XmaxErrorCode.invalidConfiguration,
-        message:
-            'RTC video width and height must be positive even numbers, '
-            'and frame rate must be greater than zero',
+  /// 记录原生资源释放期间的错误。
+  ///
+  /// - [error]：本次操作的错误。
+  static void _logCleanup(
+    Object error,
+  ) {
+    try {
+      XmaxLogger.error(
+        category: XmaxLoggerCategory.rtc,
+        message: '释放 RTC 资源失败 (Failed to Release RTC Resources)\n└─ $error',
       );
-    }
-  }
-
-  static void _validateJoinConfiguration(RoomJoinConfiguration configuration) {
-    if (configuration.roomID.trim().isEmpty ||
-        configuration.userID.trim().isEmpty ||
-        configuration.token.trim().isEmpty) {
-      throw const XmaxError(
-        code: XmaxErrorCode.invalidConfiguration,
-        message: 'RTC room ID, user ID, and token cannot be empty',
-      );
-    }
+    } catch (_) {}
   }
 }

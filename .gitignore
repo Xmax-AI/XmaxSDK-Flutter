@@ -1,4 +1,6 @@
 # Miscellaneous
+# Internal working documents stay local.
+/docs/
 .cicd/
 *.class
 *.log

@@ -1,7 +1,15 @@
-import 'package:flutter/foundation.dart';
+//
+//  XmaxVideoView.dart
+//  XmaxSDK
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-Flutter
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:volc_engine_rtc/volc_engine_rtc.dart';
 
 import '../../foundation/media/video/VideoContentMode.dart';
 import '../../media/interaction/InteractionFrame.dart';
@@ -11,9 +19,12 @@ import '../trajectory/TrajectoryEffectRendering.dart';
 import '../trajectory/TrajectoryRegistry.dart';
 import 'VideoRenderBinding.dart';
 import 'VideoRenderRegistry.dart';
+import 'VideoRenderSurface.dart';
 
 /// 显示 Xmax 本地或远端实时视频轨道的 Flutter 视图。
 final class XmaxVideoView extends StatefulWidget {
+
+  /// 创建单轨道视频视图。
   const XmaxVideoView({
     super.key,
     this.track,
@@ -22,30 +33,62 @@ final class XmaxVideoView extends StatefulWidget {
     this.trajectoryRenderer,
   });
 
+  /// 要显示的视频轨道；未指定时显示黑色背景，不创建视频纹理。
   final RealtimeVideoTrack? track;
+
+  /// 视频缩放方式，默认等比填满并裁剪超出部分。
   final VideoContentMode videoContentMode;
+
+  /// 是否启用触点采样和轨迹渲染，默认启用。
   final bool isInteractionEnabled;
+
+  /// 自定义轨迹渲染器；为空时使用 SDK 默认效果。
+  ///
+  /// 由接入方提供时，接入方负责渲染器生命周期；默认渲染器由视图释放。
   final TrajectoryEffectRendering? trajectoryRenderer;
 
+  /// 创建管理单轨道视频与交互资源的组件状态。
   @override
   State<XmaxVideoView> createState() => _XmaxVideoViewState();
 }
 
+/// 维护视频渲染、触点采样和轨迹效果资源。
 final class _XmaxVideoViewState extends State<XmaxVideoView>
     with SingleTickerProviderStateMixin {
+
+  /// 触点采样间隔，对应每秒最多 30 次周期采样。
   static const _samplingInterval = Duration(
     microseconds: Duration.microsecondsPerSecond ~/ 30,
   );
 
+  /// 提供当前轨迹状态和重绘通知的渲染器。
   late TrajectoryEffectRendering _renderer;
-  late bool _ownsRenderer;
-  late final Ticker _samplingTicker;
-  final Map<int, _ActivePointer> _activePointers = <int, _ActivePointer>{};
-  Duration _currentSamplingTime = Duration.zero;
-  Duration? _lastSampleTime;
-  Size? _samplingViewportSize;
-  void Function(InteractionFrame frame)? _samplingListener;
 
+  /// 当前视图是否负责释放轨迹渲染器。
+  late bool _ownsRenderer;
+
+  /// 按显示时钟驱动触点采样的计时器。
+  late final Ticker _samplingTicker;
+
+  /// 按指针标识保存的所有活动触点。
+  final Map<int, _ActivePointer> _activePointers = <int, _ActivePointer>{};
+
+  /// 当前触点采样周期经过的时间。
+  Duration _currentSamplingTime = Duration.zero;
+
+  /// 当前周期最近一次提交触点采样的时间。
+  Duration? _lastSampleTime;
+
+  /// 最近一次触点采样的视图尺寸，单位为逻辑像素。
+  Size? _samplingViewportSize;
+
+  /// 当前视图触点采样的提交入口。
+  void Function(
+    InteractionFrame frame,
+  )?
+  _samplingListener;
+
+  /// 初始化视图监听、触点采样和本地绘制资源。
   @override
   void initState() {
     super.initState();
@@ -54,11 +97,18 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _samplingTicker = createTicker(_sampleActivePointers);
   }
 
+  /// 根据新的组件配置更新轨道绑定、交互和渲染器所有权。
+  ///
+  /// - [oldWidget]：更新前的组件配置。
   @override
-  void didUpdateWidget(covariant XmaxVideoView oldWidget) {
+  void didUpdateWidget(
+    covariant XmaxVideoView oldWidget,
+  ) {
     super.didUpdateWidget(oldWidget);
+
     final rendererChanged =
         oldWidget.trajectoryRenderer != widget.trajectoryRenderer;
+
     if (rendererChanged ||
         oldWidget.track != widget.track ||
         oldWidget.isInteractionEnabled != widget.isInteractionEnabled) {
@@ -73,6 +123,7 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
   }
 
+  /// 释放组件拥有的监听、动画和绘制资源。
   @override
   void dispose() {
     _resetPointers();
@@ -81,9 +132,17 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     super.dispose();
   }
 
+  /// 根据当前绑定和显示配置构建视频或轨迹视图。
+  ///
+  /// - [context]：组件构建上下文。
+  ///
+  /// 返回当前视频或轨迹效果的组件树。
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     final track = widget.track;
+
     if (track == null) {
       return const ColoredBox(color: Colors.black);
     }
@@ -128,66 +187,35 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     );
   }
 
-  Widget _buildVideo(VideoRenderBinding? binding) {
-    if (binding == null) {
-      return const ColoredBox(color: Colors.black);
-    }
+  /// 根据当前轨道绑定构建原生视频纹理。
+  ///
+  /// - [binding]：当前轨道的渲染或交互配置。
+  ///
+  /// 返回当前视频或轨迹效果的组件树。
+  Widget _buildVideo(
+    VideoRenderBinding? binding,
+  ) {
+    if (binding == null) return const ColoredBox(color: Colors.black);
 
-    final RTCViewContext viewContext;
-
-    if (binding is LocalVideoRenderBinding) {
-      viewContext = RTCViewContext.localContext(userId: 'local');
-    } else if (binding is RemoteVideoRenderBinding) {
-      viewContext = RTCViewContext.remoteContext(
-        roomId: binding.stream.roomID,
-        userId: binding.stream.userID,
-        streamId: binding.stream.streamID,
-      );
-    } else {
-      return const ColoredBox(color: Colors.black);
-    }
-
-    // The VolcEngine plugin defaults to SurfaceView even though its Flutter
-    // documentation recommends TextureView on Android. A SurfaceView nested in
-    // Flutter's virtual display can exhaust the ImageReader buffer queue while
-    // the remote decoder starts, which blocks the Android main thread.
-    if (defaultTargetPlatform == TargetPlatform.android) {
-      viewContext.viewType = 'texture';
-    }
-
-    if (binding is LocalVideoRenderBinding) {
-      final track = widget.track;
-      // This VolcEngine plugin version declares onPlatformViewCreated but does
-      // not forward it from its platform view. The first completed Flutter
-      // frame is the earliest reliable signal that the preview is mounted.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && identical(widget.track, track)) {
-          binding.onPreviewAttached?.call();
-        }
-      });
-    }
-
-    return RTCSurfaceView(
-      key: ValueKey<String>(
-        '${viewContext.canvasType}:${viewContext.roomId}:'
-        '${viewContext.userId}:${viewContext.streamId}:'
-        '${identityHashCode(widget.track)}',
-      ),
-      context: viewContext,
-      renderMode: widget.videoContentMode == VideoContentMode.fit
-          ? VideoRenderMode.fit
-          : VideoRenderMode.hidden,
-      // VolcEngine's Android bridge reflects this value into a signed Java
-      // int. An ARGB value such as 0xFF000000 is serialized as 4278190080 and
-      // fails that conversion; RGB black matches the plugin default.
-      backgroundColor: 0x000000,
+    return VideoRenderSurface(
+      binding: binding,
+      track: widget.track,
+      contentMode: widget.videoContentMode,
     );
   }
 
+  /// 开始触点轨迹并立即提交首个交互采样。
+  ///
+  /// - [event]：本次按下、移动或释放的指针事件。
+  /// - [size]：当前视频视图的逻辑像素尺寸。
+  /// - [listener]：接收本次通知的回调。
   void _pointerDown(
     PointerDownEvent event,
     Size size,
-    void Function(InteractionFrame frame) listener,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
   ) {
     final pointer = _ActivePointer(
       id: createTrajectoryID(event.pointer),
@@ -198,8 +226,7 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _updateSamplingContext(size, listener);
     _renderer.renderBegan(<TrajectoryPoint>[_point(pointer, size)]);
 
-    // Match iOS: submit the first touch immediately, then let the display
-    // ticker continuously sample every active pointer at 30 Hz.
+    // 首个触点立即提交，随后由屏幕刷新计时器以 30 Hz 采样所有活动触点。
     _submit(size, listener);
     if (!_samplingTicker.isActive) {
       _currentSamplingTime = Duration.zero;
@@ -210,12 +237,21 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
   }
 
+  /// 更新按下触点的位置并同步轨迹显示。
+  ///
+  /// - [event]：本次按下、移动或释放的指针事件。
+  /// - [size]：当前视频视图的逻辑像素尺寸。
+  /// - [listener]：接收本次通知的回调。
   void _pointerMove(
     PointerMoveEvent event,
     Size size,
-    void Function(InteractionFrame frame) listener,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
   ) {
     final pointer = _activePointers[event.pointer];
+
     if (pointer == null) {
       return;
     }
@@ -225,8 +261,14 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _renderer.renderMoved(<TrajectoryPoint>[_point(pointer, size)]);
   }
 
-  void _pointerUp(PointerEvent event) {
+  /// 结束触点轨迹；没有活动触点时停止采样。
+  ///
+  /// - [event]：本次按下、移动或释放的指针事件。
+  void _pointerUp(
+    PointerEvent event,
+  ) {
     final pointer = _activePointers.remove(event.pointer);
+
     if (pointer != null) {
       _renderer.renderEnded(<TrajectoryID>[pointer.id]);
     }
@@ -236,15 +278,22 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
   }
 
-  void _sampleActivePointers(Duration elapsed) {
+  /// 按固定采样间隔提交所有活动触点。
+  ///
+  /// - [elapsed]：当前动画或采样周期内已过去的时间。
+  void _sampleActivePointers(
+    Duration elapsed,
+  ) {
     _currentSamplingTime = elapsed;
 
     if (_activePointers.isEmpty) {
       _stopSampling();
+
       return;
     }
 
     final lastSampleTime = _lastSampleTime;
+
     if (lastSampleTime != null &&
         elapsed - lastSampleTime < _samplingInterval) {
       return;
@@ -252,6 +301,7 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
 
     final size = _samplingViewportSize;
     final listener = _samplingListener;
+
     if (size == null || listener == null) {
       return;
     }
@@ -260,25 +310,43 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _lastSampleTime = elapsed;
   }
 
+  /// 保存本次触点采样所需的视图尺寸和提交函数。
+  ///
+  /// - [size]：当前视频视图的逻辑像素尺寸。
+  /// - [listener]：接收本次通知的回调。
   void _updateSamplingContext(
     Size size,
-    void Function(InteractionFrame frame) listener,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
   ) {
     _samplingViewportSize = size;
     _samplingListener = listener;
   }
 
+  /// 停止采样时钟并清除采样上下文。
   void _stopSampling() {
     if (_samplingTicker.isActive) {
       _samplingTicker.stop();
     }
+
     _currentSamplingTime = Duration.zero;
     _lastSampleTime = null;
     _samplingViewportSize = null;
     _samplingListener = null;
   }
 
-  TrajectoryPoint _point(_ActivePointer pointer, Size size) => TrajectoryPoint(
+  /// 将当前触点转换为包含位置和时间的轨迹渲染输入。
+  ///
+  /// - [pointer]：当前按下的触点状态。
+  /// - [size]：当前视频视图的逻辑像素尺寸。
+  ///
+  /// 返回用于本地轨迹渲染的位置和时间样本。
+  TrajectoryPoint _point(
+    _ActivePointer pointer,
+    Size size,
+  ) => TrajectoryPoint(
     id: pointer.id,
     location: pointer.location,
     normalizedLocation: Offset(
@@ -288,7 +356,17 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     timestamp: Duration(microseconds: DateTime.now().microsecondsSinceEpoch),
   );
 
-  void _submit(Size size, void Function(InteractionFrame frame) listener) {
+  /// 将所有活动触点按当前视图配置提交给交互处理组件。
+  ///
+  /// - [size]：当前视频视图的逻辑像素尺寸。
+  /// - [listener]：接收本次通知的回调。
+  void _submit(
+    Size size,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
+  ) {
     listener(
       InteractionFrame(
         points: _activePointers.values
@@ -300,12 +378,14 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     );
   }
 
+  /// 清除活动触点、采样时钟和轨迹显示。
   void _resetPointers() {
     _activePointers.clear();
     _stopSampling();
     _renderer.reset();
   }
 
+  /// 仅释放由当前视图创建的默认轨迹渲染器。
   void _disposeOwnedRenderer() {
     if (_ownsRenderer && _renderer is DefaultTrajectoryEffectRenderer) {
       (_renderer as DefaultTrajectoryEffectRenderer).dispose();
@@ -313,9 +393,18 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
   }
 }
 
+/// 当前按下触点的轨迹标识和最新视图位置。
 final class _ActivePointer {
-  _ActivePointer({required this.id, required this.location});
 
+  /// 记录活动触点的轨迹标识与当前位置。
+  _ActivePointer({
+    required this.id,
+    required this.location,
+  });
+
+  /// 当前按下触点对应的轨迹标识。
   final TrajectoryID id;
+
+  /// 触点在视图内的逻辑像素坐标。
   Offset location;
 }

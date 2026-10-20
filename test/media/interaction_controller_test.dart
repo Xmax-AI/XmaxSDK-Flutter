@@ -42,7 +42,7 @@ void main() {
           final newID = sameID ? 'old' : 'new';
           controller.startInteraction(taskID: newID, videoFormat: format);
           controller.submitInteraction(frame(30));
-          expect(sends, <(String, double)>[('old', 10), (newID, 30)]);
+          expect(sends, <(String, double)>[('old', 0.1), (newID, 0.3)]);
 
           if (oldFails) {
             gates[0].completeError(StateError('stale failure'));
@@ -61,7 +61,7 @@ void main() {
           await Future<void>.delayed(Duration.zero);
           expect(sends.last, (
             newID,
-            50,
+            0.5,
           ), reason: 'Only the latest pending sample is sent');
           expect(sends, hasLength(3));
           expect(
@@ -91,13 +91,13 @@ void main() {
     controller.submitInteraction(frame(20));
     controller.stopInteraction();
     controller.submitInteraction(frame(30));
-    expect(sends, <double>[10]);
+    expect(sends, <double>[0.1]);
     controller.startInteraction(taskID: 'task', videoFormat: format);
     controller.submitInteraction(frame(40));
-    expect(sends, <double>[10, 40]);
+    expect(sends, <double>[0.1, 0.4]);
     old.complete();
     await Future<void>.delayed(Duration.zero);
-    expect(sends, <double>[10, 40]);
+    expect(sends, <double>[0.1, 0.4]);
     controller.stopInteraction();
   });
 }

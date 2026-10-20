@@ -1,8 +1,20 @@
-/// Xmax SDK for Flutter.
+//
+//  XmaxSDK.dart
+//  XmaxSDK
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-Flutter
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
+/// Xmax SDK 的 Flutter 接口。
 library;
 
 export 'src/core/realtime/RealtimeConfiguration.dart';
 export 'src/core/realtime/RealtimeModel.dart';
+export 'src/core/realtime/RealtimeMediaSource.dart';
+export 'src/foundation/rtc/VideoStatistics.dart';
 export 'src/core/realtime/XmaxRealtimeManaging.dart';
 export 'src/core/storage/XmaxDownloadedFile.dart' show XmaxDownloadedFile;
 export 'src/core/storage/XmaxStorageManaging.dart';

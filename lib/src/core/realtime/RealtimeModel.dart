@@ -1,57 +1,61 @@
+//
+//  RealtimeModel.dart
+//  XmaxSDK
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-Flutter
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import 'package:flutter/widgets.dart';
 
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
 /// SDK 当前支持的实时生成模型。
 enum RealtimeModel {
-  /// Xmax X2.0 实时生成模型。
-  x2_0('x2.0'),
 
-  /// Xmax X2.0 Pro 实时生成模型。
-  // Keep the public case name aligned with the iOS SDK.
+  /// 国内实时生成模型。
   // ignore: constant_identifier_names
-  x2_0_pro('x2.0-pro');
+  x2_1_1_preview_cn('x2.1.1-preview-cn'),
 
-  const RealtimeModel(this.value);
+  /// 海外实时生成模型。
+  // ignore: constant_identifier_names
+  x2_1_1_preview_us('x2.1.1-preview-us');
 
+  /// 定义模型的序列化标识。
+  const RealtimeModel(
+    this.value,
+  );
+
+  /// 序列化时使用的值。
   final String value;
 
-  /// 模型支持的输入分辨率桶；非空时宽高必须精确匹配，不进行自动缩放。
-  /// 空列表表示不限制固定尺寸，按像素面积上下限和对齐规则计算输入尺寸。
-  List<Size> get resolutionBuckets => switch (this) {
-    RealtimeModel.x2_0 => const <Size>[],
-    RealtimeModel.x2_0_pro => const <Size>[Size(1024, 1920), Size(1920, 1024)],
+  /// 模型展示名称。
+  String get displayName => switch (this) {
+    RealtimeModel.x2_1_1_preview_cn => 'X2.1.1-preview-cn',
+    RealtimeModel.x2_1_1_preview_us => 'X2.1.1-preview-us',
   };
 
-  /// 输入分辨率的最小总像素面积；仅在分辨率桶为空时参与尺寸计算。
+  /// 模型支持的摄像头采集分辨率和生成画布分辨率。
+  List<Size> get resolutionBuckets => const [
+    Size(1024, 1920),
+    Size(1920, 1024),
+  ];
+
+  /// 最小输入像素数；仅在模型没有预设分辨率时用于计算尺寸。
   int get minimumInputPixels => 600000;
 
-  /// 输入分辨率的最大总像素面积；仅在分辨率桶为空时参与尺寸计算。
-  int get maximumInputPixels => switch (this) {
-    RealtimeModel.x2_0 => 1280000,
-    RealtimeModel.x2_0_pro => 2100000,
-  };
+  /// 本地媒体允许的最大像素数；模型没有预设分辨率时，也作为生成画布的上限。
+  int get maximumInputPixels => 2100000;
 
-  /// 输入宽度和高度分别需要对齐的像素倍数；仅在分辨率桶为空时参与尺寸计算。
+  /// 生成画布宽高必须为该像素数的整数倍；仅在没有预设分辨率时使用。
   int get inputSizeAlignment => 32;
 
-  /// 未指定视频规格时，各媒体来源使用的默认帧率。
-  int get defaultFrameRate => switch (this) {
-    RealtimeModel.x2_0 => 30,
-    RealtimeModel.x2_0_pro => 30,
-  };
+  /// 未指定视频规格时使用的默认帧率。
+  int get defaultFrameRate => 30;
 
   /// 摄像头采集使用的默认视频规格。
-  RealtimeVideoFormat get defaultCameraVideoFormat => switch (this) {
-    RealtimeModel.x2_0 => const RealtimeVideoFormat(
-      width: 832,
-      height: 1472,
-      fps: 30,
-    ),
-    RealtimeModel.x2_0_pro => const RealtimeVideoFormat(
-      width: 1024,
-      height: 1920,
-      fps: 30,
-    ),
-  };
+  RealtimeVideoFormat get defaultCameraVideoFormat =>
+      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30);
 }

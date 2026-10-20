@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:volc_engine_rtc/volc_engine_rtc.dart';
+import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
 import 'package:xmax_sdk/src/media/interaction/InteractionFrame.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryBinding.dart';
@@ -200,8 +200,12 @@ void main() {
           home: XmaxRealtimeVideoView(localTrack: local, remoteTrack: remote),
         ),
       );
-      final localSurface = tester.element(find.byType(RTCSurfaceView).first);
-      final remoteSurface = tester.element(find.byType(RTCSurfaceView).last);
+      final localSurface = tester.element(
+        find.byType(VideoRenderSurface).first,
+      );
+      final remoteSurface = tester.element(
+        find.byType(VideoRenderSurface).last,
+      );
       expect(_remoteOpacity(tester), 1);
 
       var concealed = false;
@@ -214,18 +218,21 @@ void main() {
       await hide;
       expect(_remoteOpacity(tester), 0);
       expect(
-        tester.element(find.byType(RTCSurfaceView).last),
+        tester.element(find.byType(VideoRenderSurface).last),
         same(remoteSurface),
       );
       expect(
-        tester.element(find.byType(RTCSurfaceView).first),
+        tester.element(find.byType(VideoRenderSurface).first),
         same(localSurface),
       );
 
       VideoRenderRegistry.register(remote, null);
       await tester.pump();
       expect(_remoteOpacity(tester), 0);
-      expect(tester.element(find.byType(RTCSurfaceView)), same(localSurface));
+      expect(
+        tester.element(find.byType(VideoRenderSurface)),
+        same(localSurface),
+      );
 
       VideoRenderRegistry.register(
         remote,
@@ -265,7 +272,7 @@ void main() {
     expect(_remoteOpacity(tester), 0);
   });
 
-  testWidgets('mounted local preview reports its attachment once', (
+  testWidgets('local preview waits for a native surface attachment', (
     tester,
   ) async {
     final localTrack = createRealtimeVideoTrack(id: 'local');
@@ -279,10 +286,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(home: XmaxVideoView(track: localTrack)),
     );
-    expect(attachments, 1);
+    expect(attachments, 0);
 
     await tester.pump();
-    expect(attachments, 1);
+    expect(attachments, 0);
   });
 
   testWidgets('remote fades in only after its first rendered frame', (

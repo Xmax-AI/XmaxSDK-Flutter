@@ -12,13 +12,15 @@ void main() {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.withData(<String, Object>{
           'xlab.language': 'en',
-          'xlab.realtime.model': 'x2.0-pro',
+          'xlab.realtime.model': 'x2.1.1-preview-us',
         });
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
     await tester.pumpWidget(const XLabApp());
     await tester.pumpAndSettle();
-    final proRow = find.byKey(const ValueKey<String>('model-x2.0-pro'));
+    final proRow = find.byKey(
+      const ValueKey<String>('model-x2.1.1-preview-us'),
+    );
     expect(
       tester
           .widget<Semantics>(
@@ -30,50 +32,53 @@ void main() {
     );
   });
 
-  testWidgets('XLab persists x2.0-pro and passes it to the realtime page', (
-    tester,
-  ) async {
-    SharedPreferencesAsyncPlatform.instance =
-        InMemorySharedPreferencesAsync.withData(<String, Object>{
-          'xlab.language': 'en',
-          'xlab.realtime.apiKey': 'test-key',
-        });
-    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+  testWidgets(
+    'XLab persists x2.1.1-preview-us and passes it to the realtime page',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData(<String, Object>{
+            'xlab.language': 'en',
+            'xlab.realtime.apiKey': 'test-key',
+          });
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
-    await tester.pumpWidget(const XLabApp());
-    await tester.pumpAndSettle();
-    expect(find.text('MODELS: 2'), findsOneWidget);
-    expect(find.text('X2.0 PRO'), findsNothing);
-    expect(find.text('X2.0-PRO'), findsNWidgets(2));
+      await tester.pumpWidget(const XLabApp());
+      await tester.pumpAndSettle();
+      expect(find.text('MODELS: 2'), findsOneWidget);
+      expect(find.text('X2.0 PRO'), findsNothing);
+      expect(find.text('X2.1.1-preview-us'), findsOneWidget);
 
-    final proRow = find.byKey(const ValueKey<String>('model-x2.0-pro'));
-    await tester.tap(proRow);
-    await tester.pump();
-    expect(
-      await SharedPreferencesAsync().getString('xlab.realtime.model'),
-      'x2.0-pro',
-    );
-    expect(
-      tester
-          .widget<Semantics>(
-            find.ancestor(of: proRow, matching: find.byType(Semantics)).first,
-          )
-          .properties
-          .selected,
-      isTrue,
-    );
+      final proRow = find.byKey(
+        const ValueKey<String>('model-x2.1.1-preview-us'),
+      );
+      await tester.tap(proRow);
+      await tester.pump();
+      expect(
+        await SharedPreferencesAsync().getString('xlab.realtime.model'),
+        'x2.1.1-preview-us',
+      );
+      expect(
+        tester
+            .widget<Semantics>(
+              find.ancestor(of: proRow, matching: find.byType(Semantics)).first,
+            )
+            .properties
+            .selected,
+        isTrue,
+      );
 
-    await tester.scrollUntilVisible(
-      find.text('Live Camera'),
-      300,
-      scrollable: find.byType(Scrollable).first,
-    );
-    await tester.tap(find.text('Live Camera'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    expect(
-      tester.widget<RealtimePage>(find.byType(RealtimePage)).model,
-      RealtimeModel.x2_0_pro,
-    );
-  });
+      await tester.scrollUntilVisible(
+        find.text('Live Camera'),
+        300,
+        scrollable: find.byType(Scrollable).first,
+      );
+      await tester.tap(find.text('Live Camera'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        tester.widget<RealtimePage>(find.byType(RealtimePage)).model,
+        RealtimeModel.x2_1_1_preview_us,
+      );
+    },
+  );
 }

@@ -4,8 +4,8 @@ import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
   test('public enum values match iOS raw values', () {
-    expect(RealtimeModel.x2_0.value, 'x2.0');
-    expect(RealtimeModel.x2_0_pro.value, 'x2.0-pro');
+    expect(RealtimeModel.x2_1_1_preview_cn.value, 'x2.1.1-preview-cn');
+    expect(RealtimeModel.x2_1_1_preview_us.value, 'x2.1.1-preview-us');
     expect(CameraPosition.front.value, 'front');
     expect(VideoContentMode.fill.value, 'fill');
     expect(RealtimeConnectionState.generating.value, 'Generating');
@@ -47,26 +47,29 @@ void main() {
 
   test('RealtimeModel follows iOS input and camera defaults', () {
     expect(RealtimeModel.values, <RealtimeModel>[
-      RealtimeModel.x2_0,
-      RealtimeModel.x2_0_pro,
+      RealtimeModel.x2_1_1_preview_cn,
+      RealtimeModel.x2_1_1_preview_us,
     ]);
-    expect(RealtimeModel.x2_0.resolutionBuckets, isEmpty);
-    expect(RealtimeModel.x2_0_pro.resolutionBuckets, const <Size>[
+    expect(RealtimeModel.x2_1_1_preview_cn.resolutionBuckets, const [
       Size(1024, 1920),
       Size(1920, 1024),
     ]);
-    expect(RealtimeModel.x2_0.minimumInputPixels, 600000);
-    expect(RealtimeModel.x2_0.maximumInputPixels, 1280000);
-    expect(RealtimeModel.x2_0_pro.maximumInputPixels, 2100000);
-    expect(RealtimeModel.x2_0.inputSizeAlignment, 32);
-    expect(RealtimeModel.x2_0.defaultFrameRate, 30);
-    expect(RealtimeModel.x2_0_pro.defaultFrameRate, 30);
+    expect(RealtimeModel.x2_1_1_preview_us.resolutionBuckets, const <Size>[
+      Size(1024, 1920),
+      Size(1920, 1024),
+    ]);
+    expect(RealtimeModel.x2_1_1_preview_cn.minimumInputPixels, 600000);
+    expect(RealtimeModel.x2_1_1_preview_cn.maximumInputPixels, 2100000);
+    expect(RealtimeModel.x2_1_1_preview_us.maximumInputPixels, 2100000);
+    expect(RealtimeModel.x2_1_1_preview_cn.inputSizeAlignment, 32);
+    expect(RealtimeModel.x2_1_1_preview_cn.defaultFrameRate, 30);
+    expect(RealtimeModel.x2_1_1_preview_us.defaultFrameRate, 30);
     expect(
-      RealtimeModel.x2_0.defaultCameraVideoFormat,
-      const RealtimeVideoFormat(width: 832, height: 1472, fps: 30),
+      RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
     );
     expect(
-      RealtimeModel.x2_0_pro.defaultCameraVideoFormat,
+      RealtimeModel.x2_1_1_preview_us.defaultCameraVideoFormat,
       const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
     );
   });

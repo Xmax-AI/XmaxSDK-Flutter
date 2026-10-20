@@ -23,8 +23,8 @@ void main() {
       videoSize: video,
       contentMode: VideoContentMode.fit,
     );
-    expect(center?.x, 150);
-    expect(center?.y, 75);
+    expect(center?.x, 0.5);
+    expect(center?.y, 0.5);
   });
 
   test('fill clamps cropped coordinates to the model frame', () {
@@ -34,7 +34,7 @@ void main() {
       videoSize: const Size(300, 150),
       contentMode: VideoContentMode.fill,
     );
-    expect(point?.x, 75);
-    expect(point?.y, 75);
+    expect(point?.x, 0.25);
+    expect(point?.y, 0.5);
   });
 }

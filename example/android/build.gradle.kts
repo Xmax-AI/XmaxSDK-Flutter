@@ -2,7 +2,6 @@ import com.android.build.api.variant.LibraryAndroidComponentsExtension
 
 allprojects {
     repositories {
-        maven(url = "https://artifact.bytedance.com/repository/Volcengine/")
         google()
         mavenCentral()
     }
@@ -18,7 +17,7 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 
-    // COS 1.2.9 and Volc RTC 3.60.6 hardcode old compileSdk values.
+    // Keep legacy third-party libraries on the host compileSdk baseline.
     // Their AndroidX dependency graph requires API 34+, so keep every
     // third-party Android library on the Example host's API 36 baseline.
     plugins.withId("com.android.library") {

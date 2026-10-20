@@ -13,6 +13,7 @@ import 'package:xmax_sdk/src/core/XmaxConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/media/camera/CameraPosition.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/VideoStatistics.dart';
 import 'package:xmax_sdk/src/media/interaction/InteractionFrame.dart';
 import 'package:xmax_sdk/src/media/MediaControlling.dart';
 import 'package:xmax_sdk/src/render/RenderControlling.dart';
@@ -696,7 +697,9 @@ void main() {
           XmaxClient(
             configuration: XmaxConfiguration(apiKey: 'test-key'),
           ).createRealtimeManager(
-            options: const RealtimeConfiguration(model: RealtimeModel.x2_0),
+            options: const RealtimeConfiguration(
+              model: RealtimeModel.x2_1_1_preview_cn,
+            ),
           );
 
       expect(await manager.localAudioVolume, 0.45);
@@ -735,12 +738,14 @@ void main() {
     await manager.startGeneration(
       localStream: localStream,
       context: RealtimeContext(prompt: 'cached condition'),
+      faceRestoration: true,
     );
 
     final switchedStream = await manager.switchCamera();
 
     expect(switchedStream, same(localStream));
     expect(dependencies.media.switchCount, 1);
+    expect(dependencies.stream.faceRestorations, [true, true]);
     expect(dependencies.stream.startedPrompts, <String>[
       'cached condition',
       'cached condition',
@@ -956,7 +961,9 @@ final class _Dependencies {
       taskIDGenerator: () => 'task-test',
     );
     manager = XmaxRealtimeManager.internal(
-      options: const RealtimeConfiguration(model: RealtimeModel.x2_0),
+      options: const RealtimeConfiguration(
+        model: RealtimeModel.x2_1_1_preview_cn,
+      ),
       mediaController: media,
       streamController: stream,
       connectionManager: connection,
@@ -1056,6 +1063,22 @@ final class _FakeMedia implements MediaControlling {
 }
 
 final class _FakeStream implements StreamControlling {
+  final faceRestorations = <bool>[];
+  @override
+  Size? get targetSize => null;
+  @override
+  Future<void> prepareQuality({
+    required RealtimeVideoFormat baseline,
+    required String model,
+  }) async => setVideoEncoderConfig(baseline);
+  @override
+  void setUplinkVideoStatisticsListener(
+    UplinkVideoStatisticsListener? listener,
+  ) {}
+  @override
+  void setDownlinkVideoStatisticsListener(
+    DownlinkVideoStatisticsListener? listener,
+  ) {}
   int stopCount = 0;
   int audioActivations = 0;
   @override
@@ -1089,12 +1112,14 @@ final class _FakeStream implements StreamControlling {
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
+    bool faceRestoration = false,
   }) async {
     final startError = generationStartError;
     if (startError != null) throw startError;
 
     generation = true;
     startedPrompts.add(context.prompt);
+    faceRestorations.add(faceRestoration);
 
     if (startedPrompts.length == 1) {
       firstGenerationStarted?.complete();
@@ -1184,6 +1209,7 @@ final class _FakeStream implements StreamControlling {
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
+    bool faceRestoration = false,
   }) async {
     updatedPrompts.add(context.prompt);
     if (updateError case final error?) throw error;

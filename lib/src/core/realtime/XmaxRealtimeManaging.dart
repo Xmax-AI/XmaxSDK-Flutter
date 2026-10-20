@@ -1,3 +1,13 @@
+//
+//  XmaxRealtimeManaging.dart
+//  XmaxSDK
+//
+//  Author: 翁跃庭 (Yueting Weng)
+//  GitHub: https://github.com/Xmax-AI/XmaxSDK-Flutter
+//
+//  Copyright (c) 2026 XMAX.AI PTE. LTD.
+//
+
 import '../../foundation/media/camera/CameraPosition.dart';
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimeMediaStream.dart';
@@ -6,113 +16,141 @@ import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeState.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'RealtimeConfiguration.dart';
+import '../../foundation/rtc/VideoStatistics.dart';
 
-/// 定义 SDK 对接入方提供的实时媒体与生成控制能力。
+/// 实时媒体采集、连接和生成接口。
 abstract interface class XmaxRealtimeManaging {
-  /// 创建当前 Manager 时使用的实时能力配置。
+
+  /// 创建当前管理器时使用的实时模型配置。
   RealtimeConfiguration get options;
 
   /// 当前实时连接与生成状态。
   Future<RealtimeState> get currentState;
 
-  /// 当前本地媒体预览音量，范围为 `0...1`。
-  /// 摄像头没有本地音频播放器，返回与 iOS 一致的默认值 `0.45`。
+  /// 当前本地媒体预览音量，范围为 0～1。
+  /// 摄像头没有本地音频播放器，返回默认值 `0.45`。
   Future<double> get localAudioVolume;
 
-  /// 当前远端音频播放音量，范围为 `0...1`，按百分之一量化。
-  /// 新建 Manager 时为 `1.0`；每次成功创建摄像头流后重置为 `0`。
+  /// 当前远端音频播放音量，范围为 0～1，精度为 0.01。
+  /// 新建管理器时为 `1.0`；每次成功创建摄像头流后重置为 `0`。
   Future<double> get remoteAudioVolume;
 
-  /// 设置实时状态监听器。
+  /// 设置状态回调，并立即通知当前状态。
   ///
-  /// 设置后会立即回调当前状态；传入 `null` 时清除监听器。
-  /// 预览就绪通过 `ready` 通知；运行失败通过 `state.reason?.error` 通知。
-  /// 主动调用方法产生的错误仍由对应 Future 抛出。
-  Future<void> setStateListener(RealtimeStateListener? listener);
+  /// - [listener]：状态回调；传入 null 可取消监听。
+  ///
+  /// 运行失败时，通过状态中的 reason 字段报告原因。
+  Future<void> setStateListener(
+    RealtimeStateListener? listener,
+  );
 
-  /// 设置网络质量监听器。
+  /// 设置上行视频统计回调。
   ///
-  /// 监听器接收当前上行和下行网络质量；传入 `null` 时清除监听器。
+  /// - [listener]：统计回调；传入 null 可取消监听。
+  ///
+  /// 停止发布视频或断开连接时，回调参数为 null，表示清除统计数据。
+  Future<void> setUplinkVideoStatisticsListener(
+    UplinkVideoStatisticsListener? listener,
+  );
+
+  /// 设置当前生成结果流的下行视频统计回调。
+  ///
+  /// - [listener]：统计回调；传入 null 可取消监听。
+  ///
+  /// 结果流清理后，回调参数为 null，表示清除统计数据。
+  Future<void> setDownlinkVideoStatisticsListener(
+    DownlinkVideoStatisticsListener? listener,
+  );
+
+  /// 设置上下行网络质量回调，不影响 SDK 内部的自适应调节。
+  ///
+  /// - [listener]：网络质量回调；传入 null 可取消监听。
   Future<void> setNetworkQualityListener(
     RealtimeNetworkQualityListener? listener,
   );
 
-  /// 设置设备性能告警监听器。
+  /// 设置性能受限或恢复时的回调。
   ///
-  /// 监听器接收性能受限、恢复及建议视频规格；传入 `null` 时清除监听器。
+  /// - [listener]：性能状态回调；传入 null 可取消监听。
   Future<void> setPerformanceAlarmListener(
     RealtimePerformanceAlarmListener? listener,
   );
 
-  /// 设置本地媒体预览音量。
+  /// 设置本地预览音量。
   ///
-  /// [volume] 必须是 `0...1` 内的有限数值，否则抛出 `invalidConfiguration`。
-  /// 摄像头没有本地音频播放器，合法调用不产生效果，也不改变读取值；
-  /// 与 iOS 一致。这不是麦克风采集音量控制。
-  Future<void> setLocalAudioVolume(double volume);
+  /// 摄像头没有本地音频播放器，因此仅校验参数，不调整音量；读取值仍为 0.45。
+  ///
+  /// - [volume]：音量，范围为 0～1；超出范围、NaN 或无穷大时抛出 invalidConfiguration 错误。
+  Future<void> setLocalAudioVolume(
+    double volume,
+  );
 
-  /// 设置远端生成音频的播放音量。
+  /// 设置远端音频播放音量，精度为 0.01。
   ///
-  /// [volume] 的取值范围为 `0...1`。尚未连接或订阅远端流时，
-  /// SDK 会保存配置，并在生成流确认后订阅远端音频前应用。
-  /// 每次创建摄像头流后默认静音；需要覆盖默认值时，请在创建流后设置。
-  /// 停止生成或断开连接保留音量；RTC 设置失败时保留上次成功的值。
-  Future<void> setRemoteAudioVolume(double volume);
+  /// 尚未订阅音频时先保存设置，订阅前再应用；RTC 设置失败时保留上次成功值。
+  /// 每次成功创建摄像头流后，远端音量重置为 0。需要播放声音时，请在创建摄像头流后设置。
+  ///
+  /// - [volume]：音量，范围为 0～1；超出范围、NaN 或无穷大时抛出 invalidConfiguration 错误。
+  Future<void> setRemoteAudioVolume(
+    double volume,
+  );
 
   /// 创建本地摄像头流并开始预览。
   ///
-  /// [videoFormat] 指定摄像头采集规格，[position] 指定初始摄像头，
-  /// 默认使用前置摄像头。连接实时会话前必须先创建本地流。
+  /// - [videoFormat]：采集尺寸、帧率和编码配置。
+  /// - [position]：摄像头位置，默认使用前置摄像头。
+  ///
+  /// 返回本地媒体流。收到首帧且预览视图挂载后，状态更新为 ready；
+  /// 需要等待预览就绪时，请监听状态变化。参数无效或未获授权时抛出相应错误。
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     CameraPosition position = CameraPosition.front,
   });
 
-  /// 停止本地摄像头流并释放本地预览与 RTC 资源。
-  ///
-  /// 实时连接期间不可调用，应先调用 [disconnect]。
+  /// 停止摄像头并释放采集资源。调用前须先断开实时连接。
   Future<void> stopLocalCameraStream();
 
   /// 切换前后置摄像头。
   ///
-  /// 生成过程中调用时，SDK 会停止当前生成、切换摄像头，并使用
-  /// 已缓存的生成条件恢复生成；RTC 连接保持不变。返回更新后的本地流。
+  /// 生成期间会先停止任务，再用缓存的生成条件和人脸回贴设置恢复生成，不断开 RTC 连接。
+  ///
+  /// 返回切换后的本地摄像头流。
   Future<RealtimeMediaStream> switchCamera();
 
-  /// 使用当前 Manager 创建的 [localStream] 建立实时连接。
+  /// 创建云端会话，连接 RTC 房间并发布本地视频。
+  ///
+  /// - [localStream]：本地媒体流，必须由当前管理器创建且尚未停止。
   ///
   /// 返回用于显示生成结果的远端媒体流。
   Future<RealtimeMediaStream> connect({
     required RealtimeMediaStream localStream,
   });
 
-  /// 断开实时连接并保留当前本地摄像头预览。
+  /// 停止生成并断开远端连接，保留本地摄像头预览。
   ///
-  /// [reason] 会记录在最终的 [RealtimeState] 中，默认是主动断开。
-  Future<void> disconnect({RealtimeReason reason = RealtimeReason.normal});
+  /// - [reason]：断开原因；默认 normal，表示主动结束。
+  Future<void> disconnect({
+    RealtimeReason reason = RealtimeReason.normal,
+  });
 
-  /// 关闭当前实时生命周期并释放连接、本地媒体和 RTC 资源。
+  /// 停止生成、断开连接并释放本地采集资源。
   ///
-  /// 关闭期间重复调用会等待同一个释放任务；关闭完成后仍可重新创建本地流。
+  /// 重复调用会等待同一次清理完成。清理后仍可用当前管理器重新创建本地媒体流。
   Future<void> close();
 
-  /// 开始生成，生成中再次调用时更新当前生成条件。
+  /// 开始生成；已在生成时，改为更新生成条件，不重新等待首帧。
   ///
-  /// 传入 [localStream] 时，SDK 会按需建立连接，并返回当前远端流。
-  /// 已连接时可省略 [localStream]，此时返回 `null`。
-  /// [context] 是本次生成条件；首次生成时必须提供，后续传入 `null`
-  /// 时复用已缓存的生成条件。
+  /// 首次生成必须提供条件。启动过程中也可以更新条件或断开连接。
   ///
-  /// 启动时等待结果流确认及首帧解码就绪，再进入 `generating` 并完成 Future。
-  /// 无需提前挂载远端视图；等待期间仍可更新条件或停止生成。
-  /// 生成中的条件更新不重新等待首帧。
+  /// - [localStream]：本地媒体流；需要自动连接时提供，已连接时可省略。
+  /// - [context]：生成条件；首次必填，之后传入 null 会沿用最近成功提交的条件。
+  /// - [faceRestoration]：是否回贴原始人脸，默认关闭；每次调用均使用本次传入的值。
+  ///
+  /// 提供 [localStream] 时返回当前远端媒体流，否则返回 null。
+  /// 首次启动会等待结果流确认、首帧解码和音频激活；更新条件只等待信令发送完成。
   Future<RealtimeMediaStream?> startGeneration({
     RealtimeMediaStream? localStream,
     RealtimeContext? context,
+    bool faceRestoration = false,
   });
-
-  /// 停止当前生成任务并保留实时连接。
-  ///
-  /// 当前未连接或未生成时调用不会产生副作用。
-  Future<void> stopGeneration();
 }

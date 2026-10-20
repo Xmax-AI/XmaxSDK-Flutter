@@ -30,7 +30,7 @@ void main() {
     timing.finishConnection();
     timing.beginSignal();
     now = 8000;
-    timing.matchSEI();
+    timing.confirmRemoteStream();
     now = 12000;
     timing.finish();
     timing.finish();
@@ -50,7 +50,7 @@ void main() {
       var now = 0;
       final timing = RealtimeTiming(now: () => now)..beginSignal();
       now = 1000;
-      timing.matchSEI();
+      timing.confirmRemoteStream();
       now = 4000;
       timing.finishFailure(
         const XmaxError(code: XmaxErrorCode.timeout, message: 'frame timeout'),

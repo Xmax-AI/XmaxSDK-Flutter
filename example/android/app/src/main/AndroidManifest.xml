@@ -6,7 +6,7 @@
 
     <!-- XmaxSDK camera-only does not capture microphone, share the screen, or
          access legacy external storage. Remove capabilities merged by the
-         full Volc RTC native AAR that this SDK subset never invokes. -->
+         full RTC native AAR that this SDK subset never invokes. -->
     <uses-permission
         android:name="android.permission.RECORD_AUDIO"
         tools:node="remove" />
@@ -33,16 +33,6 @@
         android:label="XLab"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
-        <service
-            android:name="com.ss.bytertc.base.media.screen.RXScreenCaptureService"
-            tools:node="remove" />
-        <activity
-            android:name="com.volcengine.VolcApiEngine.pip.FloatingWindowHelper$AssistantActivity"
-            tools:node="remove" />
-        <service
-            android:name="com.volcengine.VolcApiEngine.pip.FloatingWindowService"
-            tools:node="remove" />
-
         <activity
             android:name=".MainActivity"
             android:exported="true"

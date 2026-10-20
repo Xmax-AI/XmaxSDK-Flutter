@@ -14,6 +14,7 @@ import 'package:xmax_sdk/src/service/media/MediaServicing.dart';
 import 'package:xmax_sdk/src/service/media/MediaService.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoFormat.dart';
 import 'package:xmax_sdk/xmax_sdk.dart' show RealtimeModel;
+import 'package:xmax_sdk/src/core/realtime/RealtimeMediaSource.dart';
 
 void main() {
   test(
@@ -173,9 +174,9 @@ void main() {
     final camera = CameraController(
       rtcManager: rtc,
       permissionManager: const _AllowedPermissions(),
-      mediaService: MediaService(model: RealtimeModel.x2_0_pro),
+      mediaService: MediaService(model: RealtimeModel.x2_1_1_preview_us),
     );
-    final format = RealtimeModel.x2_0_pro.defaultCameraVideoFormat;
+    final format = RealtimeModel.x2_1_1_preview_us.defaultCameraVideoFormat;
 
     final stream = await camera.createLocalCameraStream(
       videoFormat: format,
@@ -193,7 +194,7 @@ void main() {
     final camera = CameraController(
       rtcManager: rtc,
       permissionManager: const _AllowedPermissions(),
-      mediaService: MediaService(model: RealtimeModel.x2_0_pro),
+      mediaService: MediaService(model: RealtimeModel.x2_1_1_preview_us),
     );
 
     await expectLater(
@@ -275,20 +276,26 @@ final class _IdentityMediaService implements MediaServicing {
   const _IdentityMediaService();
 
   @override
-  RealtimeModel get model => RealtimeModel.x2_0;
+  RealtimeModel get model => RealtimeModel.x2_1_1_preview_cn;
 
   @override
-  Size resolveModelInputSize(Size size) => size;
+  Size resolveMediaSize(Size size, {required RealtimeMediaSource source}) =>
+      size;
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class _ResizingMediaService implements MediaServicing {
   const _ResizingMediaService();
 
   @override
-  RealtimeModel get model => RealtimeModel.x2_0;
+  RealtimeModel get model => RealtimeModel.x2_1_1_preview_cn;
 
   @override
-  Size resolveModelInputSize(Size size) => const Size(800, 1408);
+  Size resolveMediaSize(Size size, {required RealtimeMediaSource source}) =>
+      const Size(800, 1408);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
 final class _FakeRtc implements RtcManaging {

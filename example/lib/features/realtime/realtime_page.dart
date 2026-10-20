@@ -9,6 +9,7 @@ import '../../localization/xlab_localization.dart';
 import 'realtime_control_panel.dart';
 import 'realtime_camera_switch_transition.dart';
 import 'realtime_loading_overlay.dart';
+import 'realtime_statistics_panel.dart';
 import 'realtime_local_input.dart';
 import 'xlab_trajectory_renderer.dart';
 
@@ -26,7 +27,7 @@ class RealtimePage extends StatefulWidget {
   const RealtimePage({
     required this.apiKey,
     this.environment = XmaxEnvironment.china,
-    this.model = RealtimeModel.x2_0,
+    this.model = RealtimeModel.x2_1_1_preview_cn,
     this.customTrajectory = false,
     this.localInput,
     super.key,
@@ -57,6 +58,10 @@ class _RealtimePageState extends State<RealtimePage>
     connectionState: RealtimeConnectionState.idle,
   );
   XmaxError? _lastError;
+  UplinkVideoStatistics? _uplinkStatistics;
+  DownlinkVideoStatistics? _downlinkStatistics;
+  RealtimeNetworkQuality? _networkQuality;
+  bool _isStatisticsVisible = false;
   late XLabRealtimePanelMode _panelMode;
   XLabRealtimeReference? _selectedReference;
   XLabRealtimeReference? _promptReference;
@@ -150,10 +155,31 @@ class _RealtimePageState extends State<RealtimePage>
     _manager = client.createRealtimeManager(
       options: RealtimeConfiguration(model: widget.model),
     );
+    _manager.setUplinkVideoStatisticsListener((statistics) {
+      if (mounted && !_isSuspendedForBackground) {
+        setState(() => _uplinkStatistics = statistics);
+      }
+    });
+    _manager.setDownlinkVideoStatisticsListener((statistics) {
+      if (mounted && !_isSuspendedForBackground) {
+        setState(() => _downlinkStatistics = statistics);
+      }
+    });
+    _manager.setNetworkQualityListener((quality) {
+      if (mounted && !_isSuspendedForBackground) {
+        setState(() => _networkQuality = quality);
+      }
+    });
     _manager.setStateListener((state) {
       if (!mounted || _isSuspendedForBackground) return;
       setState(() {
         _state = state;
+        if (state.connectionState == RealtimeConnectionState.ready ||
+            state.connectionState == RealtimeConnectionState.idle) {
+          _uplinkStatistics = null;
+          _downlinkStatistics = null;
+          _networkQuality = null;
+        }
         if (state.connectionState == RealtimeConnectionState.preparing ||
             state.connectionState == RealtimeConnectionState.idle) {
           _cameraReady = false;
@@ -208,7 +234,10 @@ class _RealtimePageState extends State<RealtimePage>
     }
   }
 
-  Future<void> _startGeneration(RealtimeContext context) async {
+  Future<void> _startGeneration(
+    RealtimeContext context, {
+    bool faceRestoration = false,
+  }) async {
     final localStream = _localStream;
     if (localStream == null) return;
 
@@ -234,6 +263,7 @@ class _RealtimePageState extends State<RealtimePage>
       final remote = await _manager.startGeneration(
         localStream: localStream,
         context: context,
+        faceRestoration: faceRestoration,
       );
 
       if (!_isCurrentRealtimeOperation(operation)) return;
@@ -337,6 +367,7 @@ class _RealtimePageState extends State<RealtimePage>
 
     await _startGeneration(
       RealtimeContext(prompt: _panelMode.prompt, referencePath: referencePath),
+      faceRestoration: reference.categoryID == 'clothx',
     );
   }
 
@@ -464,6 +495,7 @@ class _RealtimePageState extends State<RealtimePage>
               .prompt,
           referencePath: reference.referencePath,
         ),
+        faceRestoration: reference.categoryID == 'clothx',
       );
     } catch (error) {
       if (!mounted || _referenceUploadTokens[reference.id] != token) return;
@@ -548,6 +580,9 @@ class _RealtimePageState extends State<RealtimePage>
     if (mounted) {
       setState(() {
         _localStream = null;
+        _uplinkStatistics = null;
+        _downlinkStatistics = null;
+        _networkQuality = null;
         _remoteStream = null;
         _state = const RealtimeState(
           connectionState: RealtimeConnectionState.idle,
@@ -610,6 +645,9 @@ class _RealtimePageState extends State<RealtimePage>
     _routeAnimation?.removeStatusListener(_routeAnimationDidChange);
     WidgetsBinding.instance.removeObserver(this);
     _manager.setStateListener(null);
+    _manager.setUplinkVideoStatisticsListener(null);
+    _manager.setDownlinkVideoStatisticsListener(null);
+    _manager.setNetworkQualityListener(null);
     unawaited(_manager.close());
     _promptController.removeListener(_promptDidChange);
     _promptController.dispose();
@@ -686,6 +724,21 @@ class _RealtimePageState extends State<RealtimePage>
                         ),
                       ),
                     RealtimeLoadingOverlay(isLoading: _isLoading),
+                    if (_isStatisticsVisible)
+                      SafeArea(
+                        bottom: false,
+                        child: Align(
+                          alignment: Alignment.topLeft,
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(12, 64, 12, 12),
+                            child: RealtimeStatisticsPanel(
+                              uplink: _uplinkStatistics,
+                              downlink: _downlinkStatistics,
+                              networkQuality: _networkQuality,
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -740,6 +793,24 @@ class _RealtimePageState extends State<RealtimePage>
                     ),
                   ),
                 ),
+                if (widget.localInput == null)
+                  Positioned(
+                    right: 72,
+                    top: 10,
+                    child: IconButton(
+                      tooltip: XLabLocalization.shared.text('statistics.title'),
+                      onPressed: () => setState(
+                        () => _isStatisticsVisible = !_isStatisticsVisible,
+                      ),
+                      icon: Icon(
+                        Icons.bar_chart_rounded,
+                        size: 24,
+                        color: _isStatisticsVisible
+                            ? const Color(0xFFB9F5CB)
+                            : Colors.white,
+                      ),
+                    ),
+                  ),
                 if (widget.localInput == null)
                   Positioned(
                     right: 8,

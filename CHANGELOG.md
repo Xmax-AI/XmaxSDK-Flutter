@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Migrate realtime transport and texture rendering to Agora RTC 4.6.4 through the Flutter 6.6.4 plugin.
+- Replace the model catalog with `x2.1.1-preview-cn` and `x2.1.1-preview-us`, including model-specific realtime endpoints and strict RTC credential parsing.
+- Add ordered, rate-limited DataStream signaling with Unicode-safe fragmentation and pending-trajectory coalescing.
+- Confirm generation from published robot video after sending the start signal; remove the previous SEI handshake.
+- Normalize interaction coordinates to the resolved media dimensions while retaining 30 Hz sampling.
+- Add independent adaptive uplink/downlink quality, recovery cooldowns, one-hour model-specific history, and four-pixel-aligned return sizes.
+- Add public video-statistics listeners, XLab statistics, and face restoration for clothing references.
+- Replace `resolveModelInputSize` with media, generation, and return-size resolution methods. Remove `stopGeneration` from the public manager interface; use `disconnect` to stop remote generation.
+
 ## 1.0.2
 
 - 新增 X2.0-PRO 模型支持，X2.0 默认采集帧率调整为 30 fps，并完善分辨率、码率及编码偏好配置。

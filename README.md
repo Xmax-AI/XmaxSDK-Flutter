@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./doc/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
+  <img src="./materials/images/brand/xmax-sdk.png" alt="XmaxSDK — Realtime Interactive Video Generation" width="880">
 </p>
 
 <p align="center">
@@ -21,7 +21,7 @@ capabilities through concise Dart APIs and Flutter widgets, making it easy for
 developers to build next-generation interactive video experiences across iOS and
 Android.
 
-<p align="center"><img src="./doc/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./doc/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./doc/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
+<p align="center"><img src="./materials/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./materials/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./materials/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 
 <br>
 
@@ -52,8 +52,8 @@ video generation is seamless and intuitive.
       Replace anyone in your live feed with a designated avatar in real time.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-Flutter@main/doc/videos/use-cases/character-swapping.mp4">
-        <img src="./doc/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
+      <a href="https://cdn.jsdelivr.net/gh/Xmax-AI/XmaxSDK-Flutter@main/materials/videos/use-cases/character-swapping.mp4">
+        <img src="./materials/images/use-cases/character-swapping-poster.png" alt="Play the Character Swapping demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -75,8 +75,8 @@ video generation is seamless and intuitive.
       an authentic fit.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-Flutter@main/doc/videos/use-cases/virtual-try-on.mp4">
-        <img src="./doc/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
+      <a href="https://cdn.jsdelivr.net/gh/Xmax-AI/XmaxSDK-Flutter@main/materials/videos/use-cases/virtual-try-on.mp4">
+        <img src="./materials/images/use-cases/virtual-try-on-poster.png" alt="Play the Virtual Try-On demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -97,8 +97,8 @@ video generation is seamless and intuitive.
       Reimagine your world in any style with an immersive visual experience.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-Flutter@main/doc/videos/use-cases/video-restyling.mp4">
-        <img src="./doc/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
+      <a href="https://cdn.jsdelivr.net/gh/Xmax-AI/XmaxSDK-Flutter@main/materials/videos/use-cases/video-restyling.mp4">
+        <img src="./materials/images/use-cases/video-restyling-poster.png" alt="Play the Video Restyling demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -120,8 +120,8 @@ video generation is seamless and intuitive.
       through gestures.
     </td>
     <td rowspan="2" width="16%" align="center" valign="middle">
-      <a href="https://cdn.jsdelivr.net/gh/XingMai/XmaxSDK-Flutter@main/doc/videos/use-cases/ai-companions.mp4">
-        <img src="./doc/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
+      <a href="https://cdn.jsdelivr.net/gh/Xmax-AI/XmaxSDK-Flutter@main/materials/videos/use-cases/ai-companions.mp4">
+        <img src="./materials/images/use-cases/ai-companions-poster.png" alt="Play the AI Companions demo" width="120">
         <br>
         <sub>▶ Play demo</sub>
       </a>
@@ -144,21 +144,21 @@ video generation is seamless and intuitive.
   <thead>
     <tr>
       <th height="104" align="center" valign="middle">
-        <img src="./doc/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
+        <img src="./materials/images/why/low-latency.svg" alt="Low latency" width="36" height="36"><br>Low latency
       </th>
       <th height="104" align="center" valign="middle">
-        <img src="./doc/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
+        <img src="./materials/images/why/low-cost.svg" alt="Cost efficiency" width="36" height="36"><br>Cost efficiency
       </th>
       <th height="104" align="center" valign="middle">
-        <img src="./doc/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
+        <img src="./materials/images/why/high-fidelity.svg" alt="High fidelity" width="36" height="36"><br>High fidelity
       </th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td>End-to-end latency is measured in <img src="./doc/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
-      <td>Run on a <img src="./doc/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
-      <td>Our models support real-time generation at up to <img src="./doc/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
+      <td>End-to-end latency is measured in <img src="./materials/images/why/latency-highlight.svg" alt="hundreds of milliseconds" width="192" height="20" align="absmiddle">, ensuring that updates to generation conditions and interaction controls are reflected instantly.</td>
+      <td>Run on a <img src="./materials/images/why/gpu-highlight.svg" alt="single RTX 5090" width="126" height="20" align="absmiddle">, reducing inference costs by orders of magnitude versus datacenter GPUs like H100.</td>
+      <td>Our models support real-time generation at up to <img src="./materials/images/why/resolution-highlight.svg" alt="1080p" width="48" height="20" align="absmiddle">, delivering production-ready, high-quality video output.</td>
     </tr>
   </tbody>
 </table>
@@ -202,7 +202,7 @@ To use a release tag or commit directly from GitHub:
 dependencies:
   xmax_sdk:
     git:
-      url: https://github.com/XingMai/XmaxSDK-Flutter.git
+      url: https://github.com/Xmax-AI/XmaxSDK-Flutter.git
       ref: 1.0.2
 ```
 
@@ -228,11 +228,10 @@ flutter pub get
 
 ### iOS
 
-Set the deployment target to iOS 15.0 or later and add the VolcEngine CocoaPods
-spec source before the CocoaPods CDN source in `ios/Podfile`:
+Set the deployment target to iOS 15.0 or later. For CocoaPods integration, use
+the standard CocoaPods CDN source in `ios/Podfile`:
 
 ```ruby
-source 'https://github.com/volcengine/volcengine-specs.git'
 source 'https://cdn.cocoapods.org/'
 
 platform :ios, '15.0'
@@ -291,13 +290,12 @@ android {
 }
 ```
 
-Add the VolcEngine repository to the project dependency repositories in
+Use the standard Google and Maven Central dependency repositories in
 `android/build.gradle.kts`:
 
 ```kotlin
 allprojects {
     repositories {
-        maven(url = "https://artifact.bytedance.com/repository/Volcengine/")
         google()
         mavenCentral()
     }
@@ -310,7 +308,6 @@ Also make it available while Flutter plugins are resolved in
 ```kotlin
 pluginManagement {
     repositories {
-        maven(url = "https://artifact.bytedance.com/repository/Volcengine/")
         google()
         mavenCentral()
         gradlePluginPortal()
@@ -333,27 +330,15 @@ Declare the required permissions in `android/app/src/main/AndroidManifest.xml`:
 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
 
-The camera-only SDK does not capture microphone audio, share the screen, use legacy
-external storage, read phone state, or draw overlays. The full VolcEngine RTC AAR
-declares permissions and components for those capabilities, so remove them during
-manifest merging. Copy the cleanup declarations from the example's
-[`AndroidManifest.xml`](example/android/app/src/main/AndroidManifest.xml), and see
-[`build.gradle.kts`](example/android/app/build.gradle.kts) for the AndroidX vector
-dependency constraints used by the example.
-
-The full VolcEngine RTC AAR also contains optional native extensions that link
-against the shared NDK C++ runtime without bundling it. Ensure the host APK includes
-`libc++_shared.so` for every enabled ABI. The example's
-[`build.gradle.kts`](example/android/app/build.gradle.kts) includes a cross-platform
-`prepareRtcCppRuntime` task that copies the matching runtime from the pinned NDK;
-apply the same host configuration when integrating XmaxSDK into another Android app.
+The camera-only SDK does not capture microphone audio. The example's
+[`AndroidManifest.xml`](example/android/app/src/main/AndroidManifest.xml)
+removes unused capabilities during manifest merging.
 
 Release builds with R8 must also suppress warnings for optional device and serializer
-APIs referenced by VolcEngine RTC and Tencent COS. Add the following rules to the
+APIs referenced by Tencent COS. Add the following rules to the
 host application's Release ProGuard configuration:
 
 ```proguard
--dontwarn com.hihonor.android.magicx.media.audio.interfaces.**
 -dontwarn java.awt.**
 -dontwarn javax.money.**
 -dontwarn com.google.common.collect.ArrayListMultimap
@@ -372,8 +357,9 @@ The same configuration is available in the example's
 
 `XmaxConfiguration` uses `XmaxEnvironment.china` by default. For the overseas
 service, set `environment: XmaxEnvironment.global` when creating `XmaxClient`.
-The XLab example follows the selected interface language: Simplified Chinese
-uses China, and English uses Global.
+This controls storage-service routing and log language. Realtime session routing
+follows the selected model: `x2_1_1_preview_cn` uses the China endpoint and
+`x2_1_1_preview_us` uses the overseas endpoint. XLab persists the selected model.
 
 ### Generate and display video
 
@@ -395,7 +381,7 @@ class RealtimePage extends StatefulWidget {
 }
 
 class _RealtimePageState extends State<RealtimePage> {
-  static const _model = RealtimeModel.x2_0;
+  static const _model = RealtimeModel.x2_1_1_preview_cn;
   late final XmaxRealtimeManaging _realtime;
   RealtimeMediaStream? _localStream;
   RealtimeMediaStream? _remoteStream;
@@ -455,20 +441,34 @@ class _RealtimePageState extends State<RealtimePage> {
 }
 ```
 
-Use `RealtimeModel.x2_0_pro` for X2.0 Pro. Its camera default is 1024×1920
-at 30 fps, and it accepts only 1024×1920 or 1920×1024 input resolutions.
+Use `RealtimeModel.x2_1_1_preview_us` for the overseas model. Both models default
+to 1024×1920 at 30 fps and accept 1024×1920 or 1920×1024 camera input.
 Keep the selected model and camera format together as shown above; XLab also
 persists the model selected on its home screen.
 
 The widget keeps the local camera preview underneath the generated video, enables
 touch interaction by default, and returns to the local preview after
-`stopGeneration()` or `disconnect()`.
+`disconnect()`.
 
 To display a loading overlay, keep it visible after `startGeneration()` returns
 and bind the returned remote track. Dismiss the overlay in the optional
 `onRemoteVideoReady` callback, which fires when the first remote frame has been
 rendered and the view starts showing it. Condition updates do not repeat this
 notification; a new remote binding cycle does.
+
+The SDK adapts uplink encoding and the returned video size independently as
+network quality changes. Capture settings and the model's generation canvas stay
+fixed. Recent successful quality levels are remembered per model for one hour.
+
+Subscribe to `setUplinkVideoStatisticsListener` and
+`setDownlinkVideoStatisticsListener` to display resolution, frame rate, bitrate,
+packet loss, and media delay. Statistics become `null` when their stream ends.
+These listeners work independently of logging and network-quality listeners.
+
+For virtual try-on, pass `faceRestoration: true` to `startGeneration` to retain
+the original face. The default is `false`; every condition update sends the value
+provided for that call. Switching cameras automatically restores the cached
+generation condition and face-restoration setting.
 
 Camera generation audio is muted by default. To hear it, call
 `await _realtime.setRemoteAudioVolume(0.8)` after creating the local stream;
@@ -531,15 +531,6 @@ call. Runtime failures are reported through `state.reason?.error`.
 <br>
 
 ### Resource Cleanup
-
-- **`stopGeneration()` — Stop the Current Task**
-
-  Stops the active generation task while keeping the remote session and local
-  camera preview available:
-
-  ```dart
-  await realtime.stopGeneration();
-  ```
 
 - **`disconnect()` — Stop Remote Generation**
 
@@ -639,16 +630,16 @@ logging is registered automatically with the SDK; no host-app setup is required.
 ## Example Project
 
 A complete example application for both iOS and Android is available in
-[`example`](https://github.com/XingMai/XmaxSDK-Flutter/tree/main/example). It
+[`example`](https://github.com/Xmax-AI/XmaxSDK-Flutter/tree/main/example). It
 demonstrates real-time generation using live camera feeds.
 
-<p align="center"><img src="./doc/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./doc/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./doc/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./doc/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./doc/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
+<p align="center"><img src="./materials/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./materials/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./materials/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./materials/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./materials/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
 <br>
 
 ## Dependencies
 
-- <ins><strong>VolcEngine RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
+- <ins><strong>Agora RTC SDK</strong></ins> enables low-latency, real-time audio and video communication.
 - <ins><strong>Tencent Cloud COS SDK</strong></ins> handles media upload and download via object storage.
 
 <br>
@@ -656,7 +647,7 @@ demonstrates real-time generation using live camera feeds.
 ## Contact us
 
 For bug reports and feature requests, please open a
-[GitHub Issue](https://github.com/XingMai/XmaxSDK-Flutter/issues). For integration
+[GitHub Issue](https://github.com/Xmax-AI/XmaxSDK-Flutter/issues). For integration
 assistance and technical support, contact us at [sdk@xmax.ai](mailto:sdk@xmax.ai).
 
 <br>

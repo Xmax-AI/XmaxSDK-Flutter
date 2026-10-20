@@ -1,753 +1,373 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:ui';
-
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
-import 'package:xmax_sdk/src/foundation/media/camera/CameraPosition.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
-import 'package:xmax_sdk/src/foundation/runtime/RuntimeInfo.dart';
-import 'package:xmax_sdk/src/service/realtime/RealtimeContext.dart';
-import 'package:xmax_sdk/src/service/realtime/RealtimeNetworkQuality.dart';
-import 'package:xmax_sdk/src/service/realtime/RealtimePerformanceAlarm.dart';
-import 'package:xmax_sdk/src/service/realtime/RealtimePoint.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeSession.dart';
-import 'package:xmax_sdk/src/service/realtime/RealtimeVideoFormat.dart';
 import 'package:xmax_sdk/src/stream/StreamController.dart';
-import 'package:xmax_sdk/src/stream/encoding/EncodingControlling.dart';
-import 'package:xmax_sdk/src/stream/quality/QualityControlling.dart';
 import 'package:xmax_sdk/src/stream/room/RoomControlling.dart';
+import 'package:xmax_sdk/xmax_sdk.dart';
+
+const _remote = RemoteStream(roomID: 'room', userID: 'bot', streamID: 'bot');
+const _format = RealtimeVideoFormat(width: 1024, height: 1920, fps: 30);
+Future<void> _settle() => Future<void>.delayed(Duration.zero);
+Future<StreamController> _controller(
+  _Rtc rtc, {
+  _Room? room,
+  void Function(RemoteStream?)? render,
+  void Function(RemoteStream)? ready,
+  void Function(Object)? error,
+  Duration generationTimeout = const Duration(seconds: 1),
+}) async {
+  final stream = StreamController(
+    rtcManager: rtc,
+    roomController: room ?? _Room(),
+    remoteStreamListener: render,
+    remoteFrameReadyListener: ready,
+    errorListener: error,
+    generationTimeout: generationTimeout,
+  );
+  await stream.connect(
+    connection: const RealtimeSessionConnection(
+      roomID: 'room',
+      userID: 'user',
+      token: 'token',
+      botName: 'bot',
+    ),
+    ensureActive: () {},
+  );
+  return stream;
+}
 
 void main() {
+  test('generation deadline includes a pending signaling send', () async {
+    final rtc = _Rtc(), room = _Room()..startGate = Completer<void>();
+    final rendered = <RemoteStream?>[];
+    final stream = await _controller(
+      rtc,
+      room: room,
+      render: rendered.add,
+      generationTimeout: const Duration(milliseconds: 20),
+    );
+    addTearDown(stream.disconnect);
+    await expectLater(
+      stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'a'),
+      ),
+      throwsA(
+        isA<XmaxError>().having((e) => e.code, 'code', XmaxErrorCode.timeout),
+      ),
+    );
+    room.startGate!.complete();
+    rtc.listener!.onRemoteVideoPublished!(_remote, true);
+    await _settle();
+    expect(rendered.whereType<RemoteStream>(), isEmpty);
+    expect(stream.hasGenerationTask, false);
+  });
+  test(
+    'adaptive quality and condition updates share the latest return size',
+    () async {
+      final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
+      final stream = await _controller(rtc, room: room);
+      addTearDown(stream.disconnect);
+      await stream.prepareQuality(
+        baseline: _format,
+        model: 'x2.1.1-preview-cn',
+      );
+      expect(stream.targetSize, const Size(800, 1500));
+      final generation = await stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'a'),
+      );
+      rtc.listener!.onRemoteVideoPublished!(_remote, true);
+      await generation.value;
+      await stream.activateRemoteAudio();
+      for (var i = 0; i < 3; i++) {
+        rtc.listener!.onNetworkQuality!(
+          const RealtimeNetworkQuality(
+            uplink: RealtimeNetworkQualityLevel.bad,
+            downlink: RealtimeNetworkQualityLevel.bad,
+          ),
+        );
+        await _settle();
+      }
+      await room.targetStarted.future.timeout(const Duration(seconds: 2));
+      var updated = false;
+      final update = stream
+          .updateGeneration(
+            taskID: 'task',
+            videoFormat: _format,
+            context: RealtimeContext(prompt: 'b'),
+            targetSize: const Size(800, 1500),
+          )
+          .then((_) => updated = true);
+      await _settle();
+      expect(updated, false);
+      room.targetGate!.complete();
+      await update;
+      expect(stream.targetSize, const Size(640, 1200));
+      expect(room.conditionTarget, const Size(640, 1200));
+      expect(
+        (
+          rtc.configurations.last.width,
+          rtc.configurations.last.height,
+          rtc.configurations.last.frameRate,
+        ),
+        (656, 1230, 24),
+      );
+      expect(_format.width, 1024);
+    },
+  );
+  test('published video waits for completed start signaling', () async {
+    final rtc = _Rtc(), room = _Room()..startGate = Completer<void>();
+    final rendered = <RemoteStream?>[];
+    final stream = await _controller(rtc, room: room, render: rendered.add);
+    addTearDown(stream.disconnect);
+    final pending = stream.beginGeneration(
+      taskID: 'task',
+      videoFormat: _format,
+      context: RealtimeContext(prompt: 'animate'),
+    );
+    rtc.listener!.onRemoteVideoPublished!(_remote, true);
+    await _settle();
+    expect(rendered, isEmpty);
+    room.startGate!.complete();
+    final generation = await pending;
+    await generation.value;
+    expect(rendered, [_remote]);
+  });
   for (final early in [true, false]) {
     test(
-      'decoded first frame is selected by task SEI (early=$early)',
+      'decoded frame is retained around publication confirmation (early=$early)',
       () async {
-        final rtc = _FakeRtc();
+        final rtc = _Rtc();
         final ready = <RemoteStream>[];
-        final controller = StreamController(
-          rtcManager: rtc,
-          roomController: _FakeRoom(),
-          encodingController: _FakeEncoding(),
-          qualityController: _FakeQuality(),
-          remoteFrameReadyListener: ready.add,
-        );
-        await controller.connect(
-          connection: const RealtimeSessionConnection(
-            roomID: 'room',
-            userID: 'local',
-            token: 'token',
-            botName: 'bot',
-          ),
-          ensureActive: () {},
-        );
-        const remote = RemoteStream(
-          roomID: 'room',
-          userID: 'bot',
-          streamID: 'stream',
-        );
-        if (early) rtc.listener!.onFirstRemoteVideoFrameDecoded!(remote);
-        expect(ready, isEmpty);
-        final generation = await controller.beginGeneration(
+        final stream = await _controller(rtc, ready: ready.add);
+        addTearDown(stream.disconnect);
+        if (early) rtc.listener!.onFirstRemoteVideoFrameDecoded!(_remote);
+        final generation = await stream.beginGeneration(
           taskID: 'task',
-          videoFormat: const RealtimeVideoFormat(
-            width: 832,
-            height: 1472,
-            fps: 30,
-          ),
-          context: RealtimeContext(prompt: 'test'),
+          videoFormat: _format,
+          context: RealtimeContext(prompt: 'animate'),
         );
-        rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task'));
+        rtc.listener!.onRemoteVideoPublished!(_remote, true);
         await generation.value;
         if (!early) {
           expect(ready, isEmpty);
-          rtc.listener!.onFirstRemoteVideoFrameDecoded!(remote);
+          rtc.listener!.onFirstRemoteVideoFrameDecoded!(_remote);
         }
-        expect(ready, [remote]);
-        // Published audio must wait for the coordinator's explicit activation.
-        rtc.listener!.onRemoteAudioPublished!(remote, true);
-        await Future<void>.delayed(Duration.zero);
-        expect(rtc.audioSubscriptions, isEmpty);
-        await controller.activateRemoteAudio();
-        expect(rtc.audioSubscriptions, [('stream', true)]);
-        await controller.stopGeneration(taskID: 'task');
-        rtc.listener!.onRemoteVideoPublished!(remote, false);
+        expect(ready, [_remote]);
+        await stream.stopGeneration(taskID: 'task');
+        rtc.listener!.onRemoteVideoPublished!(_remote, false);
         ready.clear();
-        final next = await controller.beginGeneration(
+        final next = await stream.beginGeneration(
           taskID: 'next',
-          videoFormat: const RealtimeVideoFormat(
-            width: 832,
-            height: 1472,
-            fps: 30,
-          ),
-          context: RealtimeContext(prompt: 'test'),
+          videoFormat: _format,
+          context: RealtimeContext(prompt: 'next'),
         );
-        rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('next'));
+        rtc.listener!.onRemoteVideoPublished!(_remote, true);
         await next.value;
         expect(ready, isEmpty);
-        await controller.disconnect();
       },
     );
   }
-
+  test('unrelated room or publisher cannot confirm a generation', () async {
+    final rtc = _Rtc();
+    final rendered = <RemoteStream?>[];
+    final stream = await _controller(rtc, render: rendered.add);
+    addTearDown(stream.disconnect);
+    final generation = await stream.beginGeneration(
+      taskID: 'task?os=flutter-ios',
+      videoFormat: _format,
+      context: RealtimeContext(prompt: 'a'),
+    );
+    rtc.listener!.onRemoteVideoPublished!(
+      const RemoteStream(roomID: 'other', userID: 'bot', streamID: 'bot'),
+      true,
+    );
+    rtc.listener!.onRemoteVideoPublished!(
+      const RemoteStream(roomID: 'room', userID: 'other', streamID: 'other'),
+      true,
+    );
+    await _settle();
+    expect(rendered, isEmpty);
+    rtc.listener!.onRemoteVideoPublished!(_remote, true);
+    await generation.value;
+    expect(rendered, [_remote]);
+  });
+  test('cancelled confirmation cannot bind a late result', () async {
+    final rtc = _Rtc();
+    final rendered = <RemoteStream?>[];
+    final stream = await _controller(rtc, render: rendered.add);
+    addTearDown(stream.disconnect);
+    final generation = await stream.beginGeneration(
+      taskID: 'old',
+      videoFormat: _format,
+      context: RealtimeContext(prompt: 'a'),
+    );
+    final cancelled = expectLater(generation.value, throwsA(isA<XmaxError>()));
+    generation.cancel();
+    await cancelled;
+    await stream.stopGeneration(taskID: 'old');
+    rendered.clear();
+    rtc.listener!.onRemoteVideoPublished!(_remote, true);
+    await _settle();
+    expect(rendered, isEmpty);
+    final next = await stream.beginGeneration(
+      taskID: 'new',
+      videoFormat: _format,
+      context: RealtimeContext(prompt: 'b'),
+    );
+    await next.value;
+    expect(rendered, [_remote]);
+  });
   test(
-    'late video subscription failure cannot reject a new room with reused IDs',
+    'audio applies saved volume before subscription and retains it on failed writes',
     () async {
-      final rtc = _FakeRtc();
-      final errors = <XmaxError>[];
-      final controller = StreamController(
-        rtcManager: rtc,
-        roomController: _FakeRoom(),
-        encodingController: _FakeEncoding(),
-        qualityController: _FakeQuality(),
-        errorListener: errors.add,
+      final rtc = _Rtc();
+      final stream = await _controller(rtc);
+      addTearDown(stream.disconnect);
+      await stream.setRemoteAudioVolume(0.634);
+      rtc.listener!.onRemoteAudioPublished!(_remote, true);
+      final generation = await stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'a'),
       );
-      const connection = RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local',
-        token: 'token',
-        botName: 'bot',
-      );
-      const remote = RemoteStream(
-        roomID: 'room',
-        userID: 'bot',
-        streamID: 'stream',
-      );
-      await controller.connect(connection: connection, ensureActive: () {});
-      final oldSubscription = Completer<void>();
-      rtc.videoSubscribeGate = oldSubscription;
-      rtc.listener!.onRemoteVideoPublished!(remote, true);
-      await controller.disconnect();
-      rtc.videoSubscribeGate = null;
-      await controller.connect(connection: connection, ensureActive: () {});
-      rtc.listener!.onRemoteVideoPublished!(remote, true);
-      final confirmation = await controller.beginGeneration(
-        taskID: 'new-task',
-        videoFormat: const RealtimeVideoFormat(
-          width: 832,
-          height: 1472,
-          fps: 30,
-        ),
-        context: RealtimeContext(prompt: 'animate'),
-      );
-      oldSubscription.completeError(StateError('old room subscription failed'));
-      await Future<void>.delayed(Duration.zero);
-      rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('new-task'));
-      await confirmation.value;
-      expect(errors, isEmpty);
-      expect(controller.hasGenerationTask, isTrue);
-      await controller.disconnect();
-    },
-  );
-
-  test(
-    'SEI replays an early first frame and retains it until unpublish',
-    () async {
-      final rtc = _FakeRtc();
-      final renderedStreams = <RemoteStream?>[];
-      final renderedFrames = <RemoteStream>[];
-      final controller = StreamController(
-        rtcManager: rtc,
-        roomController: _FakeRoom(),
-        encodingController: _FakeEncoding(),
-        qualityController: _FakeQuality(),
-        remoteStreamListener: renderedStreams.add,
-        remoteFrameRenderedListener: renderedFrames.add,
-      );
-
-      await controller.connect(
-        connection: const RealtimeSessionConnection(
-          roomID: 'room',
-          userID: 'local-user',
-          token: 'token',
-          botName: 'bot',
-        ),
-        ensureActive: () {},
-      );
-
-      const remote = RemoteStream(
-        roomID: 'room',
-        userID: 'bot',
-        streamID: 'bot-stream',
-      );
-      rtc.listener!.onRemoteVideoPublished!(remote, true);
-      rtc.listener!.onFirstRemoteVideoFrameRendered!(remote);
-
-      expect(renderedStreams, isEmpty);
-      expect(renderedFrames, isEmpty);
-
-      final generation = await controller.beginGeneration(
-        taskID: 'task-1',
-        videoFormat: const RealtimeVideoFormat(
-          width: 832,
-          height: 1472,
-          fps: 24,
-        ),
-        context: RealtimeContext(prompt: 'animate'),
-      );
-      rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task-1'));
+      rtc.listener!.onRemoteVideoPublished!(_remote, true);
       await generation.value;
-
-      // RTC can render before the generation SEI arrives. Replaying that first
-      // frame must reveal the selected stream without waiting for a second event.
-      expect(renderedStreams, <RemoteStream?>[remote]);
-      expect(renderedFrames, <RemoteStream>[remote]);
-
-      // A new task in the same subscription does not trigger another RTC first
-      // frame callback, but must still wait for its own SEI before being shown.
-      await controller.stopGeneration(taskID: 'task-1');
-      final next = await controller.beginGeneration(
-        taskID: 'task-2',
-        videoFormat: const RealtimeVideoFormat(
-          width: 832,
-          height: 1472,
-          fps: 30,
-        ),
-        context: RealtimeContext(prompt: 'next'),
-      );
-      expect(renderedFrames, hasLength(1));
-      rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task-2'));
-      await next.value;
-      expect(renderedFrames, <RemoteStream>[remote, remote]);
-
-      // Once unpublished, the stream must prove it has a new rendered frame.
-      rtc.listener!.onRemoteVideoPublished!(remote, false);
-      await controller.stopGeneration(taskID: 'task-2');
-      rtc.listener!.onRemoteVideoPublished!(remote, true);
-      final republished = await controller.beginGeneration(
-        taskID: 'task-3',
-        videoFormat: const RealtimeVideoFormat(
-          width: 832,
-          height: 1472,
-          fps: 30,
-        ),
-        context: RealtimeContext(prompt: 'republished'),
-      );
-      rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task-3'));
-      await republished.value;
-      expect(renderedFrames, hasLength(2));
-      rtc.listener!.onFirstRemoteVideoFrameRendered!(remote);
-      expect(renderedFrames, <RemoteStream>[remote, remote, remote]);
-      await controller.disconnect();
+      expect(rtc.audioSubscriptions, isEmpty);
+      await stream.activateRemoteAudio();
+      expect(rtc.audioVolumes.last, 63);
+      expect(rtc.audioSubscriptions, [true]);
+      rtc.volumeError = StateError('volume failed');
+      await expectLater(stream.setRemoteAudioVolume(.8), throwsStateError);
+      expect(stream.remoteAudioVolume, .63);
+      rtc.volumeError = null;
+      await stream.stopGeneration(taskID: 'task');
+      expect(rtc.audioSubscriptions.last, false);
     },
   );
-
-  for (final taskID in <String>[
-    'task-1',
-    'task-1?os=ios',
-    'task-1?os=flutter-ios',
-    'task-1?os=flutter-android',
-  ]) {
-    for (final message in <String>[
-      'task-1',
-      ' task-1?os=ios&index=0 ',
-      'task-1?index=12',
-      'task-1?os=flutter-ios&index=0',
-      'task-1?os=flutter-android&index=12',
-    ]) {
-      test('generation matches base task ID: $taskID / $message', () async {
-        final rtc = _FakeRtc();
-        final renderedStreams = <RemoteStream?>[];
-        final controller = StreamController(
-          rtcManager: rtc,
-          roomController: _FakeRoom(),
-          remoteStreamListener: renderedStreams.add,
-        );
-        addTearDown(controller.disconnect);
-        await controller.connect(
-          connection: const RealtimeSessionConnection(
-            roomID: 'room',
-            userID: 'local-user',
-            token: 'token',
-            botName: 'bot',
-          ),
-          ensureActive: () {},
-        );
-        final generation = await controller.beginGeneration(
-          taskID: taskID,
-          videoFormat: const RealtimeVideoFormat(
-            width: 832,
-            height: 1472,
-            fps: 30,
-          ),
-          context: RealtimeContext(prompt: 'animate'),
-        );
-        const remote = RemoteStream(
-          roomID: 'room',
-          userID: 'bot',
-          streamID: 'bot-stream',
-        );
-
-        // Query compatibility must not accept another task, room or publisher.
-        for (final invalid in <String>['task-10?index=0', '?index=0']) {
-          rtc.listener!.onSEIMessageReceived!(remote, utf8.encode(invalid));
-        }
-        for (final unrelated in <RemoteStream>[
-          const RemoteStream(
-            roomID: 'other-room',
-            userID: 'bot',
-            streamID: 'bot-stream',
-          ),
-          const RemoteStream(
-            roomID: 'room',
-            userID: 'other-user',
-            streamID: 'other-stream',
-          ),
-        ]) {
-          rtc.listener!.onSEIMessageReceived!(unrelated, utf8.encode(message));
-        }
-        expect(renderedStreams, isEmpty);
-
-        rtc.listener!.onSEIMessageReceived!(remote, utf8.encode(message));
-        await generation.value;
-        expect(renderedStreams, <RemoteStream?>[remote]);
-      });
-    }
-  }
-
-  test('remote audio uses the saved volume and unsubscribes on stop', () async {
-    final rtc = _FakeRtc();
-    final controller = StreamController(
-      rtcManager: rtc,
-      roomController: _FakeRoom(),
-      encodingController: _FakeEncoding(),
-      qualityController: _FakeQuality(),
-    );
-
-    expect(controller.remoteAudioVolume, 1);
-    await controller.setRemoteAudioVolume(0.634);
-    expect(controller.remoteAudioVolume, 0.63);
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-        botName: 'bot',
-      ),
-      ensureActive: () {},
-    );
-
-    const remote = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-stream',
-    );
-    const remoteAudio = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-audio',
-    );
-    rtc.listener!.onRemoteAudioPublished!(remoteAudio, true);
-    final generation = await controller.beginGeneration(
-      taskID: 'task-1',
-      videoFormat: const RealtimeVideoFormat(width: 832, height: 1472, fps: 30),
-      context: RealtimeContext(prompt: 'animate'),
-    );
-    rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task-1'));
-    await generation.value;
-
-    expect(rtc.audioSubscriptions, isEmpty);
-    await controller.activateRemoteAudio();
-    expect(rtc.audioVolumes, <(String, int)>[('bot-audio', 63)]);
-    expect(rtc.audioSubscriptions, <(String, bool)>[('bot-audio', true)]);
-
-    await controller.setRemoteAudioVolume(0.4);
-    expect(rtc.audioVolumes.last, ('bot-audio', 40));
-    expect(controller.remoteAudioVolume, 0.4);
-    rtc.audioVolumeError = StateError('native volume failed');
-    await expectLater(controller.setRemoteAudioVolume(0.8), throwsStateError);
-    expect(
-      controller.remoteAudioVolume,
-      0.4,
-      reason: 'Failed native calls do not commit volume',
-    );
-    rtc.audioVolumeError = null;
-
-    await controller.stopGeneration(taskID: 'task-1');
-    expect(rtc.audioSubscriptions.last, ('bot-audio', false));
-    expect(controller.remoteAudioVolume, 0.4);
-  });
-
-  test('camera audio starts muted and is unsubscribed on disconnect', () async {
-    final rtc = _FakeRtc();
-    final controller = StreamController(
-      rtcManager: rtc,
-      roomController: _FakeRoom(),
-      encodingController: _FakeEncoding(),
-      qualityController: _FakeQuality(),
-    );
-    // The realtime Manager applies the camera-source default after creation.
-    expect(controller.remoteAudioVolume, 1);
-    await controller.setRemoteAudioVolume(0);
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-        botName: 'bot',
-      ),
-      ensureActive: () {},
-    );
-
-    const remote = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-stream',
-    );
-    const remoteAudio = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-audio',
-    );
-    rtc.listener!.onRemoteAudioPublished!(remoteAudio, true);
-    final generation = await controller.beginGeneration(
-      taskID: 'task-1',
-      videoFormat: const RealtimeVideoFormat(width: 832, height: 1472, fps: 30),
-      context: RealtimeContext(prompt: 'animate'),
-    );
-    rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task-1'));
-    await generation.value;
-    await controller.activateRemoteAudio();
-
-    expect(rtc.audioVolumes, <(String, int)>[('bot-audio', 0)]);
-    await controller.disconnect();
-    expect(rtc.audioSubscriptions, <(String, bool)>[
-      ('bot-audio', true),
-      ('bot-audio', false),
-    ]);
-  });
-
-  test('late audio publication subscribes the selected generation', () async {
-    final rtc = _FakeRtc();
-    final controller = StreamController(
-      rtcManager: rtc,
-      roomController: _FakeRoom(),
-      encodingController: _FakeEncoding(),
-      qualityController: _FakeQuality(),
-    );
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-        botName: 'bot',
-      ),
-      ensureActive: () {},
-    );
-
-    const remote = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-video',
-    );
-    const remoteAudio = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-audio',
-    );
-    final generation = await controller.beginGeneration(
-      taskID: 'task-1',
-      videoFormat: const RealtimeVideoFormat(width: 832, height: 1472, fps: 30),
-      context: RealtimeContext(prompt: 'animate'),
-    );
-    rtc.listener!.onSEIMessageReceived!(remote, utf8.encode('task-1'));
-    await generation.value;
-    await controller.activateRemoteAudio();
-    expect(rtc.audioSubscriptions, isEmpty);
-
-    rtc.listener!.onRemoteAudioPublished!(remoteAudio, true);
-    await Future<void>.delayed(Duration.zero);
-    expect(rtc.audioSubscriptions, <(String, bool)>[('bot-audio', true)]);
-
-    rtc.listener!.onRemoteAudioPublished!(remoteAudio, false);
-    await Future<void>.delayed(Duration.zero);
-    expect(rtc.audioSubscriptions.last, ('bot-audio', false));
-  });
-
-  test('stopping generation rolls back a pending audio subscription', () async {
-    final rtc = _FakeRtc();
-    final subscribeGate = Completer<void>();
-    rtc.audioSubscribeGate = subscribeGate;
-    final controller = StreamController(
-      rtcManager: rtc,
-      roomController: _FakeRoom(),
-      encodingController: _FakeEncoding(),
-      qualityController: _FakeQuality(),
-    );
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-        botName: 'bot',
-      ),
-      ensureActive: () {},
-    );
-
-    const remoteVideo = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-video',
-    );
-    const remoteAudio = RemoteStream(
-      roomID: 'room',
-      userID: 'bot',
-      streamID: 'bot-audio',
-    );
-    rtc.listener!.onRemoteAudioPublished!(remoteAudio, true);
-    final generation = await controller.beginGeneration(
-      taskID: 'task-1',
-      videoFormat: const RealtimeVideoFormat(width: 832, height: 1472, fps: 30),
-      context: RealtimeContext(prompt: 'animate'),
-    );
-    rtc.listener!.onSEIMessageReceived!(remoteVideo, utf8.encode('task-1'));
-    await generation.value;
-
-    final activation = expectLater(
-      controller.activateRemoteAudio(),
-      throwsA(
-        isA<XmaxError>().having(
-          (error) => error.code,
-          'code',
-          XmaxErrorCode.cancelled,
-        ),
-      ),
-    );
-    await Future<void>.delayed(Duration.zero);
-    expect(rtc.audioSubscriptions, <(String, bool)>[('bot-audio', true)]);
-
-    await controller.stopGeneration(taskID: 'task-1');
-    subscribeGate.complete();
-    await activation;
-    expect(rtc.audioSubscriptions.last, ('bot-audio', false));
-  });
-
-  test('generation send failure is reported only once', () async {
-    final expectedError = StateError('send failed');
-    final controller = StreamController(
-      rtcManager: _FakeRtc(),
-      roomController: _FakeRoom(startError: expectedError),
-      encodingController: _FakeEncoding(),
-      qualityController: _FakeQuality(),
-    );
-
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-        botName: 'bot',
-      ),
-      ensureActive: () {},
-    );
-
-    await expectLater(
-      controller.beginGeneration(
-        taskID: 'task-1',
-        videoFormat: const RealtimeVideoFormat(
-          width: 832,
-          height: 1472,
-          fps: 24,
-        ),
-        context: RealtimeContext(prompt: 'animate'),
-      ),
-      throwsA(same(expectedError)),
-    );
-
-    // Give the zone a turn to surface any duplicate completer error.
-    await Future<void>.delayed(Duration.zero);
-    expect(controller.hasGenerationTask, isFalse);
-  });
-
   test(
-    'pending generation receives subscription failure without forwarding',
+    'audio activation finishing after stop unsubscribes the stale stream',
     () async {
-      final expectedError = StateError('subscribe failed');
-      final rtc = _FakeRtc(subscribeRemoteVideoError: expectedError);
-      final reportedErrors = <XmaxError>[];
-      final controller = StreamController(
-        rtcManager: rtc,
-        roomController: _FakeRoom(),
-        encodingController: _FakeEncoding(),
-        qualityController: _FakeQuality(),
-        errorListener: reportedErrors.add,
+      final rtc = _Rtc();
+      final stream = await _controller(rtc);
+      addTearDown(stream.disconnect);
+      rtc.listener!.onRemoteAudioPublished!(_remote, true);
+      final generation = await stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'a'),
       );
-
-      await controller.connect(
-        connection: const RealtimeSessionConnection(
-          roomID: 'room',
-          userID: 'local-user',
-          token: 'token',
-          botName: 'bot',
-        ),
-        ensureActive: () {},
+      rtc.listener!.onRemoteVideoPublished!(_remote, true);
+      await generation.value;
+      rtc.audioGate = Completer<void>();
+      final activation = expectLater(
+        stream.activateRemoteAudio(),
+        throwsA(isA<XmaxError>()),
       );
-      final confirmation = await controller.beginGeneration(
-        taskID: 'task-1',
-        videoFormat: const RealtimeVideoFormat(
-          width: 832,
-          height: 1472,
-          fps: 24,
-        ),
-        context: RealtimeContext(prompt: 'animate'),
-      );
-
-      rtc.listener!.onRemoteVideoPublished!(
-        const RemoteStream(
-          roomID: 'room',
-          userID: 'bot',
-          streamID: 'bot-stream',
-        ),
-        true,
-      );
-
-      await expectLater(
-        confirmation.value,
-        throwsA(
-          isA<XmaxError>().having(
-            (error) => error.message,
-            'message',
-            expectedError.toString(),
-          ),
-        ),
-      );
-      expect(reportedErrors, isEmpty);
+      await _settle();
+      await stream.stopGeneration(taskID: 'task');
+      rtc.audioGate!.complete();
+      await activation;
+      expect(rtc.audioSubscriptions.last, false);
     },
   );
-
+  test('subscription failure rejects pending generation once', () async {
+    final rtc = _Rtc()..videoError = StateError('subscribe failed');
+    final errors = <Object>[];
+    final stream = await _controller(rtc, error: errors.add);
+    addTearDown(stream.disconnect);
+    final generation = await stream.beginGeneration(
+      taskID: 'task',
+      videoFormat: _format,
+      context: RealtimeContext(prompt: 'a'),
+    );
+    final failure = expectLater(generation.value, throwsA(isA<XmaxError>()));
+    rtc.listener!.onRemoteVideoPublished!(_remote, true);
+    await failure;
+    expect(errors, isEmpty);
+  });
+  test('send failure does not emit an unobserved completer error', () async {
+    final stream = await _controller(
+      _Rtc(),
+      room: _Room()..startError = StateError('send failed'),
+    );
+    addTearDown(stream.disconnect);
+    await expectLater(
+      stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'a'),
+      ),
+      throwsStateError,
+    );
+    await _settle();
+    expect(stream.hasGenerationTask, isFalse);
+  });
   test(
-    'subscription failure without pending generation is forwarded',
+    'statistics filter unrelated users and clear on stop and disconnect',
     () async {
-      final rtc = _FakeRtc(
-        subscribeRemoteVideoError: StateError('subscribe failed'),
+      final rtc = _Rtc();
+      final stream = await _controller(rtc);
+      addTearDown(stream.disconnect);
+      final up = <UplinkVideoStatistics?>[],
+          down = <DownlinkVideoStatistics?>[];
+      stream.setUplinkVideoStatisticsListener(up.add);
+      stream.setDownlinkVideoStatisticsListener(down.add);
+      rtc.listener!.onUplinkVideoStatistics!(
+        const UplinkVideoStatistics(bitrateKbps: 123),
       );
-      final reportedErrors = <XmaxError>[];
-      final controller = StreamController(
-        rtcManager: rtc,
-        roomController: _FakeRoom(),
-        encodingController: _FakeEncoding(),
-        qualityController: _FakeQuality(),
-        errorListener: reportedErrors.add,
+      expect(up.single?.bitrateKbps, 123);
+      rtc.listener!.onDownlinkVideoStatistics!(
+        const DownlinkVideoStatistics(userID: 'other'),
       );
-
-      await controller.connect(
-        connection: const RealtimeSessionConnection(
-          roomID: 'room',
-          userID: 'local-user',
-          token: 'token',
-          botName: 'bot',
-        ),
-        ensureActive: () {},
+      expect(down, isEmpty);
+      final generation = await stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'a'),
       );
-      rtc.listener!.onRemoteVideoPublished!(
-        const RemoteStream(
-          roomID: 'room',
-          userID: 'bot',
-          streamID: 'bot-stream',
-        ),
-        true,
+      rtc.listener!.onRemoteVideoPublished!(_remote, true);
+      await generation.value;
+      rtc.listener!.onDownlinkVideoStatistics!(
+        const DownlinkVideoStatistics(userID: 'bot', renderFrameRate: 24),
       );
-      await Future<void>.delayed(Duration.zero);
-
-      expect(reportedErrors, hasLength(1));
-      expect(reportedErrors.single.code, XmaxErrorCode.internalError);
+      expect(down.last?.renderFrameRate, 24);
+      await stream.stopGeneration(taskID: 'task');
+      expect(down.last, isNull);
+      await stream.disconnect();
+      expect(up.last, isNull);
     },
   );
-
-  test('target size change reaches the joined RTC room', () async {
-    final rtc = _FakeRtc();
-    final controller = StreamController(rtcManager: rtc);
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-      ),
-      ensureActive: () {},
-    );
-
-    await controller.changeTargetSize(
-      taskID: 'task-1',
-      targetSize: const Size(1280, 720),
-      ensureActive: () {},
-    );
-    final event = jsonDecode(rtc.roomMessages.single) as Map<String, dynamic>;
-    expect(event['event'], 'change_target_size');
-    expect(event['params'], <String, Object?>{
-      'target_size': <int>[1280, 720],
-    });
-    expect(event['user_id'], 'local-user');
-    expect(event['uid'], 'task-1');
-    expect(event['runtime'], isA<Map<String, dynamic>>());
-    expect(event['runtime'], (await RuntimeInfo.resolve()).toJson());
-
-    await expectLater(
-      () => controller.changeTargetSize(
-        taskID: 'task-1',
-        targetSize: const Size(1920, 1080),
-        ensureActive: () => throw StateError('stale operation'),
-      ),
-      throwsA(isA<StateError>()),
-    );
-    expect(rtc.roomMessages, hasLength(1));
-    await controller.disconnect();
-  });
-
-  test('RTC room signaling failure is normalized like iOS', () async {
-    final rtc = _FakeRtc(roomMessageError: StateError('send failed'));
-    final controller = StreamController(rtcManager: rtc);
-    await controller.connect(
-      connection: const RealtimeSessionConnection(
-        roomID: 'room',
-        userID: 'local-user',
-        token: 'token',
-      ),
-      ensureActive: () {},
-    );
-
-    await expectLater(
-      controller.changeTargetSize(
-        taskID: 'task-1',
-        targetSize: const Size(1280, 720),
-        ensureActive: () {},
-      ),
-      throwsA(isA<XmaxError>()),
-    );
-    await controller.disconnect();
-  });
 }
 
-final class _FakeRtc implements RtcManaging {
-  _FakeRtc({this.subscribeRemoteVideoError, this.roomMessageError});
+class _Rtc implements RtcManaging {
+  final configurations = <VideoEncodingConfiguration>[];
+  @override
+  Future<void> configureVideoEncoding(
+    VideoEncodingConfiguration configuration,
+  ) async {
+    configurations.add(configuration);
+  }
 
-  final Object? subscribeRemoteVideoError;
-  final Object? roomMessageError;
   RtcEventListener? listener;
-  Completer<void>? audioSubscribeGate;
-  Completer<void>? videoSubscribeGate;
-  Object? audioVolumeError;
-  final List<(String, bool)> audioSubscriptions = <(String, bool)>[];
-  final List<(String, int)> audioVolumes = <(String, int)>[];
-  final List<String> roomMessages = <String>[];
-
+  Object? volumeError, videoError;
+  Completer<void>? audioGate;
+  final audioSubscriptions = <bool>[], audioVolumes = <int>[];
   @override
   void setEventListener(RtcEventListener? listener) => this.listener = listener;
-
-  @override
-  Future<void> publishLocalVideo({required bool publish}) async {}
-
   @override
   Future<void> subscribeRemoteVideo({
     required String streamID,
     required bool subscribe,
   }) async {
-    if (subscribe) await videoSubscribeGate?.future;
-    final error = subscribeRemoteVideoError;
-    if (subscribe && error != null) {
-      throw error;
-    }
+    if (subscribe && videoError != null) throw videoError!;
   }
 
   @override
@@ -755,64 +375,37 @@ final class _FakeRtc implements RtcManaging {
     required String streamID,
     required bool subscribe,
   }) async {
-    audioSubscriptions.add((streamID, subscribe));
-    if (subscribe) await audioSubscribeGate?.future;
+    audioSubscriptions.add(subscribe);
+    if (subscribe) await audioGate?.future;
   }
 
   @override
   Future<void> setRemoteAudioVolume({
-    required int volume,
     required String streamID,
+    required int volume,
   }) async {
-    final error = audioVolumeError;
-    if (error != null) throw error;
-    audioVolumes.add((streamID, volume));
+    if (volumeError != null) throw volumeError!;
+    audioVolumes.add(volume);
   }
 
   @override
-  Future<void> configureVideoEncoding(
-    VideoEncodingConfiguration configuration,
-  ) async {}
-
-  @override
-  Future<void> destroy() async {}
-
-  @override
-  Future<void> initialize() async {}
-
-  @override
-  Future<void> joinRoom({required RoomJoinConfiguration configuration}) async {}
-
-  @override
-  Future<void> leaveRoom() async {}
-
-  @override
-  Future<void> sendRoomMessage(String message) async {
-    if (roomMessageError case final error?) throw error;
-    roomMessages.add(message);
-  }
-
-  @override
-  void setCameraPreviewReadyListener(void Function()? listener) {}
-
-  @override
-  Future<void> startVideoCapture({
-    required int width,
-    required int height,
-    required int frameRate,
-  }) async {}
-
-  @override
-  Future<void> stopVideoCapture() async {}
-
-  @override
-  Future<void> switchCamera({required CameraPosition position}) async {}
+  dynamic noSuchMethod(Invocation call) => Future<void>.value();
 }
 
-final class _FakeRoom implements RoomControlling {
-  _FakeRoom({this.startError});
-
-  final Object? startError;
+class _Room implements RoomControlling {
+  Completer<void>? targetGate;
+  final targetStarted = Completer<void>();
+  Size? conditionTarget;
+  @override
+  Future<void> changeTargetSize({
+    required String taskID,
+    required Size targetSize,
+    required void Function() ensureActive,
+  }) async {
+    ensureActive();
+    if (!targetStarted.isCompleted) targetStarted.complete();
+    await targetGate?.future;
+  }
 
   @override
   Future<void> changeGenerationCondition({
@@ -820,64 +413,25 @@ final class _FakeRoom implements RoomControlling {
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
-  }) async {}
+    bool faceRestoration = false,
+  }) async {
+    conditionTarget = targetSize;
+  }
 
-  @override
-  Future<void> changeTargetSize({
-    required String taskID,
-    required Size targetSize,
-    required void Function() ensureActive,
-  }) async => ensureActive();
-
-  @override
-  Future<void> join({
-    required RealtimeSessionConnection connection,
-    required void Function() ensureActive,
-  }) async => ensureActive();
-
-  @override
-  Future<void> leave() async {}
-
-  @override
-  Future<void> sendTracks({
-    required String taskID,
-    required List<RealtimePoint> points,
-  }) async {}
-
+  Completer<void>? startGate;
+  Object? startError;
   @override
   Future<void> startGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
+    bool faceRestoration = false,
   }) async {
-    final error = startError;
-    if (error != null) {
-      throw error;
-    }
+    if (startError != null) throw startError!;
+    await startGate?.future;
   }
 
   @override
-  Future<void> stopGeneration({required String taskID}) async {}
-}
-
-final class _FakeEncoding implements EncodingControlling {
-  @override
-  Future<void> configure(RealtimeVideoFormat videoFormat) async {}
-}
-
-final class _FakeQuality implements QualityControlling {
-  @override
-  void emitNetworkQuality(RealtimeNetworkQuality quality) {}
-
-  @override
-  void emitPerformanceAlarm(RealtimePerformanceAlarm alarm) {}
-
-  @override
-  void setNetworkQualityListener(RealtimeNetworkQualityListener? listener) {}
-
-  @override
-  void setPerformanceAlarmListener(
-    RealtimePerformanceAlarmListener? listener,
-  ) {}
+  dynamic noSuchMethod(Invocation call) => Future<void>.value();
 }

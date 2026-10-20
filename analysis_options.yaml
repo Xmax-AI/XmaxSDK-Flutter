@@ -12,7 +12,7 @@ analyzer:
 
 linter:
   rules:
-    # SDK source filenames intentionally mirror the iOS PascalCase convention.
+    # SDK source filenames use PascalCase; example files retain snake_case.
     file_names: false
 
 # Additional information about this file can be found at
