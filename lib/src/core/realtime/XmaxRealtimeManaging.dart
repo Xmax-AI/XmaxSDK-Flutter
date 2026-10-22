@@ -16,6 +16,8 @@ import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeState.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'RealtimeConfiguration.dart';
+import 'RealtimeCameraPreset.dart';
+import 'RealtimeQualityLevel.dart';
 import '../../foundation/rtc/VideoStatistics.dart';
 
 /// 实时媒体采集、连接和生成接口。
@@ -26,6 +28,49 @@ abstract interface class XmaxRealtimeManaging {
 
   /// 当前实时连接与生成状态。
   Future<RealtimeState> get currentState;
+
+  /// 当前摄像头采集规格，不随传输档位变化；没有摄像头流时为空。
+  Future<RealtimeVideoFormat?> get currentCameraVideoFormat;
+
+  /// 当前采集分辨率对应的预设；不匹配预设或没有摄像头流时为空。
+  Future<RealtimeCameraPreset?> get currentCameraPreset;
+
+  /// 当前连接成功应用的上行档位；连接完成前或开始断开后为空。
+  Future<RealtimeQualityLevel?> get uplinkQualityLevel;
+
+  /// 当前连接成功提交的下行目标档位；实际回传画面可能稍后才变化。
+  /// 连接完成前或开始断开后为空。
+  Future<RealtimeQualityLevel?> get downlinkQualityLevel;
+
+  /// 原地更新摄像头规格，不重建本地流或预览视图。
+  ///
+  /// - [videoFormat]：完整采集规格，分辨率须属于模型支持列表。
+  /// - [preset]：只更新分辨率，保留当前帧率、码率与编码偏好。
+  ///
+  /// 两个参数须且只能提供一个。仅允许在预览就绪且未连接时调用，
+  /// 与其他媒体操作冲突或设置失败时抛出错误。
+  Future<void> updateCameraFormat({
+    RealtimeVideoFormat? videoFormat,
+    RealtimeCameraPreset? preset,
+  });
+
+  /// 设置上行传输档位，不改变摄像头采集和模型生成规格。
+  ///
+  /// - [level]：目标档位，仅允许在生成中调用。
+  ///
+  /// 调档失败或存在冲突操作时抛出错误；成功后仍保留自动网络调档。
+  Future<void> setUplinkQualityLevel(
+    RealtimeQualityLevel level,
+  );
+
+  /// 设置下行回传档位，成功提交后更新目标档位，实际画面稍后生效。
+  ///
+  /// - [level]：目标档位，仅允许在生成中调用。
+  ///
+  /// 调档失败或存在冲突操作时抛出错误；成功后仍保留自动网络调档。
+  Future<void> setDownlinkQualityLevel(
+    RealtimeQualityLevel level,
+  );
 
   /// 当前本地媒体预览音量，范围为 0～1。
   /// 摄像头没有本地音频播放器，返回默认值 `0.45`。

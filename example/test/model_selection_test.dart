@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
@@ -12,15 +11,13 @@ void main() {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.withData(<String, Object>{
           'xlab.language': 'en',
-          'xlab.realtime.model': 'x2.1.1-preview-us',
+          'xlab.realtime.model': 'x2.1',
         });
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
     await tester.pumpWidget(const XLabApp());
     await tester.pumpAndSettle();
-    final proRow = find.byKey(
-      const ValueKey<String>('model-x2.1.1-preview-us'),
-    );
+    final proRow = find.byKey(const ValueKey<String>('model-x2.1'));
     expect(
       tester
           .widget<Semantics>(
@@ -33,30 +30,25 @@ void main() {
   });
 
   testWidgets(
-    'XLab persists x2.1.1-preview-us and passes it to the realtime page',
+    'XLab falls back from a retired model and opens the realtime page with x2.1',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.withData(<String, Object>{
             'xlab.language': 'en',
             'xlab.realtime.apiKey': 'test-key',
+            'xlab.realtime.model': 'x2.1.1-preview-us',
           });
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
       await tester.pumpWidget(const XLabApp());
       await tester.pumpAndSettle();
-      expect(find.text('MODELS: 2'), findsOneWidget);
+      expect(find.text('MODELS: 1'), findsOneWidget);
       expect(find.text('X2.0 PRO'), findsNothing);
-      expect(find.text('X2.1.1-preview-us'), findsOneWidget);
+      expect(find.text('X2.1'), findsOneWidget);
 
-      final proRow = find.byKey(
-        const ValueKey<String>('model-x2.1.1-preview-us'),
-      );
+      final proRow = find.byKey(const ValueKey<String>('model-x2.1'));
       await tester.tap(proRow);
       await tester.pump();
-      expect(
-        await SharedPreferencesAsync().getString('xlab.realtime.model'),
-        'x2.1.1-preview-us',
-      );
       expect(
         tester
             .widget<Semantics>(
@@ -77,7 +69,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(
         tester.widget<RealtimePage>(find.byType(RealtimePage)).model,
-        RealtimeModel.x2_1_1_preview_us,
+        RealtimeModel.x2_1,
       );
     },
   );

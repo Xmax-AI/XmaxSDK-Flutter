@@ -9,6 +9,7 @@
 //
 
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../encoding/EncodingBitratePolicy.dart';
 import 'QualityVideoFormat.dart';
@@ -19,15 +20,15 @@ final class QualityDirection {
   /// 创建单方向质量策略，并将初始档位限制到可用范围。
   ///
   /// - [baseline]：不随网络调档改变的媒体规格。
-  /// - [level]：初始档位，先限制为 1～5，再向下回退到编码预算支持的档位。
+  /// - [level]：初始档位；预算不支持时逐级提高规格，直到预算有效或达到 L1。
   /// - [downlink]：是否应用下行策略；false 表示上行。
   QualityDirection({
     required this.baseline,
-    required int level,
+    required this.level,
     required this.downlink,
-  }) : level = level.clamp(1, 5) {
-    while (this.level > 1 && !_supports(this.level)) {
-      this.level--;
+  }) {
+    while (level != RealtimeQualityLevel.l1 && !_supports(level)) {
+      level = RealtimeQualityLevel.values[level.index - 1];
     }
   }
 
@@ -38,7 +39,7 @@ final class QualityDirection {
   final bool downlink;
 
   /// 目标质量档位，范围为 1～5。
-  int level;
+  RealtimeQualityLevel level;
 
   /// 连续网络质量良好的采样次数。
   int _good = 0;
@@ -75,7 +76,7 @@ final class QualityDirection {
   ///
   /// 返回目标质量档位能否解析为有效的传输规格。
   bool _supports(
-    int level,
+    RealtimeQualityLevel level,
   ) {
     if (downlink) return true;
 
@@ -97,7 +98,7 @@ final class QualityDirection {
   /// - [now]：当前单调时钟时间，单位为秒。
   ///
   /// 返回候选档位；样本无效、处于冷却期或无需调整时返回 null。
-  int? observe(
+  RealtimeQualityLevel? observe(
     RealtimeNetworkQualityLevel quality, {
     required double sampledAt,
     required double now,
@@ -135,14 +136,16 @@ final class QualityDirection {
         return null;
     }
     for (
-      var candidate = level + step;
+      var candidate = level.value + step;
       candidate >= 1 && candidate <= 5;
       candidate += step
     ) {
-      if (QualityVideoFormat.resolve(baseline, candidate, downlink: downlink) !=
+      final next = RealtimeQualityLevel.values[candidate - 1];
+
+      if (QualityVideoFormat.resolve(baseline, next, downlink: downlink) !=
               format &&
-          _supports(candidate)) {
-        return candidate;
+          _supports(next)) {
+        return next;
       }
     }
 
@@ -155,7 +158,7 @@ final class QualityDirection {
   /// - [success]：目标档位是否已成功应用。
   /// - [now]：当前单调时钟时间，单位为秒。
   void complete(
-    int next, {
+    RealtimeQualityLevel next, {
     required bool success,
     required double now,
   }) {
@@ -163,9 +166,9 @@ final class QualityDirection {
     _stableUntil = now + 4;
     if (!success) return;
 
-    if (next < level) {
+    if (next.value < level.value) {
       _probeUntil = now + 20;
-    } else if (next > level) {
+    } else if (next.value > level.value) {
       if (now < _probeUntil) _upgradeAfter = now + 60;
 
       _probeUntil = 0;

@@ -17,6 +17,7 @@ import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../errors/XmaxError.dart';
+import '../logging/XmaxLogger.dart';
 import 'RtcEventListener.dart';
 import 'RtcMessageQueue.dart';
 import 'RtcModels.dart';
@@ -32,10 +33,11 @@ final class AgoraRtcRoom implements RtcRoom {
     required this.engine,
     required this.roomID,
     required this.listener,
+    this.leaveTimeout = const Duration(seconds: 2),
   });
 
   /// 当前使用的原生 RTC 引擎。
-  final RtcEngine engine;
+  final RtcEngineEx engine;
 
   /// 云端分配的 RTC 房间标识。
   final String roomID;
@@ -43,8 +45,37 @@ final class AgoraRtcRoom implements RtcRoom {
   /// 读取当前 RTC 事件接收器的函数；返回 null 时停止向上分发事件。
   final RtcEventListener? Function() listener;
 
+  /// 等待原生退房请求和离房回调的最长时限，默认 2 秒。
+  final Duration leaveTimeout;
+
   /// 用于通知加入房间和发送队列初始化完成的完成器。
   final _joined = Completer<void>();
+
+  /// 对应房间已收到原生离房通知的完成器。
+  final _left = Completer<void>();
+
+  /// 当前房间的关闭任务，供重复清理及入房失败回滚共同等待。
+  Future<void>? _destroying;
+
+  /// 入房使用的 RTC 用户账号，供已加入或正在加入的房间定向退房。
+  String? _userAccount;
+
+  /// 入房成功回调确认的连接，包含原生分配的本地数字 UID。
+  RtcConnection? _connection;
+
+  /// 当前房间的原生连接；房间已关闭或尚未确认本地 UID 时抛出 RTC 错误。
+  RtcConnection get connection {
+    final current = _connection;
+
+    if (_isClosed || current == null) {
+      throw const XmaxError(
+        code: XmaxErrorCode.rtcError,
+        message: 'RTC room connection is unavailable',
+      );
+    }
+
+    return current;
+  }
 
   /// 数字 UID 到 RTC 用户账号的映射。
   final _accounts = <int, String>{};
@@ -80,6 +111,9 @@ final class AgoraRtcRoom implements RtcRoom {
   @override
   bool get isClosed => _isClosed;
 
+  /// 是否已收到原生入房成功回调，且当前房间尚未关闭。
+  bool get isJoined => !_isClosed && _connection != null;
+
   /// 检查回调是否来自尚未关闭的当前房间。
   ///
   /// - [connection]：当前会话的 RTC 房间参数。
@@ -87,7 +121,12 @@ final class AgoraRtcRoom implements RtcRoom {
   /// 返回回调是否来自尚未关闭的当前房间。
   bool _isCurrent(
     RtcConnection connection,
-  ) => !_isClosed && connection.channelId == roomID;
+  ) =>
+      !_isClosed &&
+      connection.channelId == roomID &&
+      (_connection == null ||
+          connection.localUid == null ||
+          connection.localUid == _connection!.localUid);
 
   /// 加入 RTC 房间并创建信令发送队列，不自动发布或订阅媒体。
   ///
@@ -97,7 +136,24 @@ final class AgoraRtcRoom implements RtcRoom {
     RoomJoinConfiguration configuration,
   ) async {
     _joined.future.ignore();
+    _userAccount = configuration.userID;
     _handler = RtcEngineEventHandler(
+      onLeaveChannel: (connection, _) {
+        if (!_isClosed ||
+            connection.channelId != roomID ||
+            (_connection != null &&
+                connection.localUid != null &&
+                connection.localUid != _connection!.localUid) ||
+            _left.isCompleted) {
+          return;
+        }
+
+        _left.complete();
+        XmaxLogger.debug(
+          category: XmaxLoggerCategory.rtc,
+          message: 'RTC 房间已退出 (RTC Room Left)',
+        );
+      },
       onJoinChannelSuccess: (connection, _) {
         if (!_isCurrent(connection) ||
             _joined.isCompleted ||
@@ -105,6 +161,15 @@ final class AgoraRtcRoom implements RtcRoom {
           return;
         }
 
+        final uid = connection.localUid;
+
+        if (uid == null || uid <= 0) {
+          _failure(StateError('RTC join returned no local UID'));
+
+          return;
+        }
+
+        _connection = RtcConnection(channelId: roomID, localUid: uid);
         _preparingSender = true;
         unawaited(_prepareSender());
       },
@@ -132,7 +197,7 @@ final class AgoraRtcRoom implements RtcRoom {
         _announced.remove(uid);
         _decoded.remove(uid);
         _rendered.remove(uid);
-        if (account != null) {
+        if (account != null && _connection != null) {
           final stream = _stream(uid, account);
 
           listener()?.onRemoteVideoPublished?.call(stream, false);
@@ -271,7 +336,7 @@ final class AgoraRtcRoom implements RtcRoom {
     engine.registerEventHandler(_handler);
 
     try {
-      await engine.joinChannelWithUserAccount(
+      await engine.joinChannelWithUserAccountEx(
         token: configuration.token,
         channelId: roomID,
         userAccount: configuration.userID,
@@ -279,14 +344,24 @@ final class AgoraRtcRoom implements RtcRoom {
           channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
           clientRoleType: ClientRoleType.clientRoleBroadcaster,
           publishCameraTrack: false,
+          publishCustomVideoTrack: false,
           publishMicrophoneTrack: false,
+          publishCustomAudioTrack: false,
           autoSubscribeAudio: false,
           autoSubscribeVideo: false,
         ),
       );
       await _joined.future;
     } catch (_) {
-      await destroy();
+      try {
+        await destroy();
+      } catch (error) {
+        XmaxLogger.error(
+          category: XmaxLoggerCategory.rtc,
+          message: '释放 RTC 资源失败 (Failed to Release RTC Resources)\n└─ $error',
+        );
+      }
+
       rethrow;
     }
   }
@@ -294,8 +369,9 @@ final class AgoraRtcRoom implements RtcRoom {
   /// 创建有序信令队列，然后通知加入房间的操作已完成。
   Future<void> _prepareSender() async {
     try {
-      final id = await engine.createDataStream(
-        const DataStreamConfig(ordered: true, syncWithAudio: false),
+      final id = await engine.createDataStreamEx(
+        config: const DataStreamConfig(ordered: true, syncWithAudio: false),
+        connection: connection,
       );
 
       if (_isClosed) return;
@@ -303,23 +379,29 @@ final class AgoraRtcRoom implements RtcRoom {
       _sender = RtcMessageQueue(
         send: (packet) async {
           try {
-            await engine.sendStreamMessage(
+            await engine.sendStreamMessageEx(
               streamId: id,
               data: packet,
               length: packet.length,
+              connection: connection,
             );
           } catch (error) {
             throw error is XmaxError
                 ? error
                 : XmaxError(
                     code: XmaxErrorCode.rtcError,
-                    message: 'RTC sendStreamMessage failed: $error',
+                    message: 'RTC sendStreamMessageEx failed: $error',
                   );
           }
         },
         onFailure: _failure,
       );
       if (!_joined.isCompleted) _joined.complete();
+
+      // 远端发布可能早于本地入房确认，连接就绪后补查尚未解析的用户账号。
+      for (final uid in _online.toList()) {
+        unawaited(_publish(uid));
+      }
     } catch (error) {
       _failure(error);
     }
@@ -358,7 +440,10 @@ final class AgoraRtcRoom implements RtcRoom {
 
     final future = () async {
       try {
-        final info = await engine.getUserInfoByUid(uid);
+        final info = await engine.getUserInfoByUidEx(
+          uid: uid,
+          connection: connection,
+        );
         final account = info.userAccount;
 
         if (!_isClosed &&
@@ -394,6 +479,8 @@ final class AgoraRtcRoom implements RtcRoom {
     )
     action,
   ) async {
+    if (_isClosed || _connection == null) return;
+
     final account = await _account(uid);
 
     if (!_isClosed && _online.contains(uid) && account != null) {
@@ -434,6 +521,7 @@ final class AgoraRtcRoom implements RtcRoom {
     userID: account,
     streamID: account,
     uid: uid,
+    localUid: connection.localUid,
     engine: engine,
   );
 
@@ -449,7 +537,10 @@ final class AgoraRtcRoom implements RtcRoom {
       if (entry.value == account) return entry.key;
     }
 
-    final info = await engine.getUserInfoByUserAccount(account);
+    final info = await engine.getUserInfoByUserAccountEx(
+      userAccount: account,
+      connection: connection,
+    );
 
     if (_isClosed || info.uid == null) {
       throw const XmaxError(
@@ -493,10 +584,10 @@ final class AgoraRtcRoom implements RtcRoom {
     );
   }
 
-  /// 关闭当前 RTC 资源，并使后续原生回调失效。
+  /// 关闭房间并等待原生离房，期间仅保留离房通知，不改变本地摄像头采集。
   @override
-  Future<void> destroy() async {
-    if (_isClosed) return;
+  Future<void> destroy() {
+    if (_destroying case final active?) return active;
 
     _isClosed = true;
     _sender?.close();
@@ -514,11 +605,31 @@ final class AgoraRtcRoom implements RtcRoom {
     _announced.clear();
     _decoded.clear();
     _rendered.clear();
-    // 即使移除事件处理器失败，也要继续退出房间。
+
+    final future = _leave();
+
+    _destroying = future;
+
+    return future;
+  }
+
+  /// 定向退出当前账号所在房间，在离房确认或等待超时后解除房间事件监听。
+  Future<void> _leave() async {
     try {
-      engine.unregisterEventHandler(_handler);
+      // 原生退房接口返回后，仍需等待对应连接的离房通知。
+      await (() async {
+        final account = _userAccount;
+
+        if (account != null) {
+          await engine.leaveChannelWithUserAccountEx(
+            channelId: roomID,
+            userAccount: account,
+          );
+          await _left.future;
+        }
+      })().timeout(leaveTimeout);
     } finally {
-      await engine.leaveChannel();
+      engine.unregisterEventHandler(_handler);
     }
   }
 

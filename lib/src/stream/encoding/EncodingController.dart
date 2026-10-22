@@ -8,6 +8,8 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import 'dart:math' as math;
+
 import '../../foundation/rtc/RtcManaging.dart';
 import '../../foundation/rtc/RtcModels.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
@@ -26,6 +28,7 @@ final class EncodingController implements EncodingControlling {
   final RtcManaging _rtcManager;
 
   /// 按视频规格解析码率预算，并提交 RTC 编码配置。
+  /// 未指定最低码率时使用 500 kbps，但不超过当前规格的最高码率。
   ///
   /// - [format]：目标视频尺寸、帧率和编码配置。
   @override
@@ -39,7 +42,7 @@ final class EncodingController implements EncodingControlling {
         width: format.width,
         height: format.height,
         frameRate: format.fps,
-        minimumBitrate: budget.$1,
+        minimumBitrate: format.minimumBitrate ?? math.min(500, budget.$2),
         maximumBitrate: budget.$2,
         encoderPreference: format.encoderPreference,
       ),

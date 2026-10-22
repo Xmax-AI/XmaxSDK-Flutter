@@ -17,7 +17,6 @@ import '../service/network/ApiServicing.dart';
 import '../service/storage/StorageService.dart';
 import 'realtime/RealtimeConfiguration.dart';
 import 'realtime/RealtimeModel.dart';
-import 'realtime/RealtimeModelRouting.dart';
 import 'realtime/XmaxRealtimeManager.dart';
 import 'realtime/XmaxRealtimeManaging.dart';
 import 'storage/XmaxStorageManager.dart';
@@ -65,7 +64,7 @@ final class XmaxClient {
   /// 云端 API 请求服务。
   final ApiServicing _apiService;
 
-  /// 显式注入的实时请求服务；为空时按模型选择地址。
+  /// 显式注入的实时请求服务；为空时按客户端环境选择地址。
   ApiServicing? _realtimeApiOverride;
 
   /// 创建使用指定模型的实时管理器。
@@ -81,7 +80,7 @@ final class XmaxClient {
         _realtimeApiOverride ??
         ApiService(
           apiKey: configuration.apiKey,
-          baseURL: options.model.apiBaseURL,
+          baseURL: configuration.environment.realtimeApiBaseURL,
         ),
   );
 
@@ -101,10 +100,10 @@ final class XmaxClient {
 
   /// 创建用于解析指定模型媒体尺寸的服务。
   ///
-  /// - [model]：实时模型；用于确定会话路由及媒体规格约束。省略时使用国内 X2.1.1-preview-cn 模型。
+  /// - [model]：媒体规格约束所属模型，默认使用 X2.1。
   ///
   /// 返回指定模型的媒体尺寸解析服务。
   MediaServicing createMediaService({
-    RealtimeModel model = RealtimeModel.x2_1_1_preview_cn,
+    RealtimeModel model = RealtimeModel.x2_1,
   }) => MediaService(model: model);
 }

@@ -23,7 +23,7 @@ abstract interface class RtcRoom {
     RoomJoinConfiguration configuration,
   );
 
-  /// 关闭当前 RTC 资源，并使后续原生回调失效。
+  /// 关闭房间并等待原生离房，期间仅保留离房通知，不改变本地摄像头采集。
   Future<void> destroy();
 
   /// 提交房间 JSON 信令；条件变更清理待发轨迹，自动调档失败不关闭连接。

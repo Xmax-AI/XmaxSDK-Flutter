@@ -6,36 +6,12 @@ PODS:
   - tencentcloud_cos_sdk_plugin_nobeacon (1.2.9):
     - Flutter
     - QCloudCOSXML/Slim (= 6.5.5)
-  - volc_engine_rtc (3.60.6):
-    - Flutter
-    - VolcApiEngine (= 1.7.0)
-    - VolcEngineRTC (= 3.60.105.2300)
-  - VolcApiEngine (1.7.0)
-  - VolcEngineRTC (3.60.105.2300):
-    - VolcEngineRTC/BMF (= 3.60.105.2300)
-    - VolcEngineRTC/ByteRTCVideoDenoiseExtension (= 3.60.105.2300)
-    - VolcEngineRTC/ByteRTCVideoSharpenExtension (= 3.60.105.2300)
-    - VolcEngineRTC/ByteRTCVideoSRExtension (= 3.60.105.2300)
-    - VolcEngineRTC/Core (= 3.60.105.2300)
-    - VolcEngineRTC/RealXBase (= 3.60.105.2300)
-    - VolcEngineRTC/RTCFFmpeg (= 3.60.105.2300)
-  - VolcEngineRTC/BMF (3.60.105.2300)
-  - VolcEngineRTC/ByteRTCVideoDenoiseExtension (3.60.105.2300)
-  - VolcEngineRTC/ByteRTCVideoSharpenExtension (3.60.105.2300)
-  - VolcEngineRTC/ByteRTCVideoSRExtension (3.60.105.2300)
-  - VolcEngineRTC/Core (3.60.105.2300)
-  - VolcEngineRTC/RealXBase (3.60.105.2300)
-  - VolcEngineRTC/RTCFFmpeg (3.60.105.2300)
 
 DEPENDENCIES:
   - Flutter (from `Flutter`)
   - tencentcloud_cos_sdk_plugin_nobeacon (from `.symlinks/plugins/tencentcloud_cos_sdk_plugin_nobeacon/ios`)
-  - volc_engine_rtc (from `.symlinks/plugins/volc_engine_rtc/ios`)
 
 SPEC REPOS:
-  https://github.com/volcengine/volcengine-specs.git:
-    - VolcApiEngine
-    - VolcEngineRTC
   trunk:
     - QCloudCore
     - QCloudCOSXML
@@ -45,18 +21,13 @@ EXTERNAL SOURCES:
     :path: Flutter
   tencentcloud_cos_sdk_plugin_nobeacon:
     :path: ".symlinks/plugins/tencentcloud_cos_sdk_plugin_nobeacon/ios"
-  volc_engine_rtc:
-    :path: ".symlinks/plugins/volc_engine_rtc/ios"
 
 SPEC CHECKSUMS:
   Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
   QCloudCore: cbdf50b7cee5dd515b0467f55361ac8af36349cd
   QCloudCOSXML: 89406febd7844d84a778d3d2f71b2f39e4167ae1
   tencentcloud_cos_sdk_plugin_nobeacon: 5ee18b7d82330034c5fe5ae3dc44280f2155155f
-  volc_engine_rtc: 00d6cf5804700092a75f06583735b68114e854f3
-  VolcApiEngine: e1f8b47ec5ef64bf6b48e3600be132c42643f8f0
-  VolcEngineRTC: bdf318a6c70fc27f4487bbc6cfe5945b7a27efc1
 
-PODFILE CHECKSUM: 126dfff04618f2c04ff89de7c0e1e2ae72cae22b
+PODFILE CHECKSUM: 885b307dcd305e6a391c64a4ec3aeaa20ef6f51d
 
 COCOAPODS: 1.17.0

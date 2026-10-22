@@ -35,7 +35,7 @@ final class RealtimeVideoFormat {
     required this.fps,
     this.minimumBitrate,
     this.maximumBitrate,
-    this.encoderPreference = RealtimeVideoEncoderPreference.auto,
+    this.encoderPreference = RealtimeVideoEncoderPreference.maintainFramerate,
   });
 
   /// 视频宽度，单位为像素，必须为正偶数。
@@ -47,13 +47,14 @@ final class RealtimeVideoFormat {
   /// 目标视频帧率，单位为 fps，必须大于 0。
   final int fps;
 
-  /// 最低上传码率，单位为 kbps；`null` 使用 SDK 默认值，0 表示不设最低码率。
+  /// 最低上传码率，单位为 kbps；省略时使用 500，且不超过最高码率。
+  /// 0 表示不设最低码率。
   final int? minimumBitrate;
 
   /// 最高上传码率，单位为 kbps；`null` 使用 SDK 默认值，指定时必须大于 0。
   final int? maximumBitrate;
 
-  /// 上传编码策略偏好，默认兼顾帧率和分辨率。
+  /// 上传编码策略偏好，默认优先保障帧率。
   final RealtimeVideoEncoderPreference encoderPreference;
 
   /// 校验尺寸、帧率及码率区间，不满足约束时抛出 invalidConfiguration。

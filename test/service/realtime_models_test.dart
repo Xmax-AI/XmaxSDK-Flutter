@@ -3,9 +3,32 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  test('realtime routing is selected by environment rather than model', () {
+    expect(
+      XmaxEnvironment.china.realtimeApiBaseURL.toString(),
+      'https://cloud.xmax.22duck.cn/open/api/v1',
+    );
+    expect(
+      XmaxEnvironment.global.realtimeApiBaseURL.toString(),
+      'https://api.xmax.ai/open/api/v1',
+    );
+    expect(RealtimeCameraPreset.values.map((preset) => preset.size), [
+      const Size(1920, 1080),
+      const Size(1080, 1920),
+      const Size(1408, 1408),
+      const Size(1152, 1536),
+      const Size(1536, 1152),
+    ]);
+    expect(RealtimeQualityLevel.values.map((level) => level.value), [
+      1,
+      2,
+      3,
+      4,
+      5,
+    ]);
+  });
   test('public enum values match iOS raw values', () {
-    expect(RealtimeModel.x2_1_1_preview_cn.value, 'x2.1.1-preview-cn');
-    expect(RealtimeModel.x2_1_1_preview_us.value, 'x2.1.1-preview-us');
+    expect(RealtimeModel.x2_1.value, 'x2.1');
     expect(CameraPosition.front.value, 'front');
     expect(VideoContentMode.fill.value, 'fill');
     expect(RealtimeConnectionState.generating.value, 'Generating');
@@ -45,32 +68,33 @@ void main() {
     );
   });
 
-  test('RealtimeModel follows iOS input and camera defaults', () {
-    expect(RealtimeModel.values, <RealtimeModel>[
-      RealtimeModel.x2_1_1_preview_cn,
-      RealtimeModel.x2_1_1_preview_us,
-    ]);
-    expect(RealtimeModel.x2_1_1_preview_cn.resolutionBuckets, const [
-      Size(1024, 1920),
-      Size(1920, 1024),
-    ]);
-    expect(RealtimeModel.x2_1_1_preview_us.resolutionBuckets, const <Size>[
-      Size(1024, 1920),
-      Size(1920, 1024),
-    ]);
-    expect(RealtimeModel.x2_1_1_preview_cn.minimumInputPixels, 600000);
-    expect(RealtimeModel.x2_1_1_preview_cn.maximumInputPixels, 2100000);
-    expect(RealtimeModel.x2_1_1_preview_us.maximumInputPixels, 2100000);
-    expect(RealtimeModel.x2_1_1_preview_cn.inputSizeAlignment, 32);
-    expect(RealtimeModel.x2_1_1_preview_cn.defaultFrameRate, 30);
-    expect(RealtimeModel.x2_1_1_preview_us.defaultFrameRate, 30);
+  test('RealtimeModel exposes supported camera formats and defaults', () {
+    expect(RealtimeModel.values, <RealtimeModel>[RealtimeModel.x2_1]);
     expect(
-      RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
-      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
+      RealtimeModel.x2_1.supportedVideoFormats.map(
+        (format) => Size(format.width.toDouble(), format.height.toDouble()),
+      ),
+      const [
+        Size(1920, 1080),
+        Size(1080, 1920),
+        Size(1408, 1408),
+        Size(1152, 1536),
+        Size(1536, 1152),
+      ],
+    );
+    expect(RealtimeModel.x2_1.minimumInputPixels, 600000);
+    expect(RealtimeModel.x2_1.maximumInputPixels, 2100000);
+    expect(RealtimeModel.x2_1.maximumInputPixels, 2100000);
+    expect(RealtimeModel.x2_1.inputSizeAlignment, 32);
+    expect(RealtimeModel.x2_1.defaultFrameRate, 30);
+    expect(RealtimeModel.x2_1.defaultFrameRate, 30);
+    expect(
+      RealtimeModel.x2_1.defaultCameraVideoFormat,
+      const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
     );
     expect(
-      RealtimeModel.x2_1_1_preview_us.defaultCameraVideoFormat,
-      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
+      RealtimeModel.x2_1.defaultCameraVideoFormat,
+      const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
     );
   });
 

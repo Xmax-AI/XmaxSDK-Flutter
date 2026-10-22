@@ -21,7 +21,7 @@ void main() {
         await expectLater(
           RealtimeSessionService(
             apiService: api,
-          ).createSession(model: RealtimeModel.x2_1_1_preview_cn),
+          ).createSession(model: RealtimeModel.x2_1),
           throwsA(
             isA<XmaxError>().having(
               (error) => error.code,
@@ -36,13 +36,13 @@ void main() {
       await expectLater(
         RealtimeSessionService(
           apiService: invalid,
-        ).createSession(model: RealtimeModel.x2_1_1_preview_cn),
+        ).createSession(model: RealtimeModel.x2_1),
         throwsA(isA<XmaxError>()),
       );
       final valid = _RecordingApiService()..modelExtra = jsonEncode(extra);
       final session = await RealtimeSessionService(
         apiService: valid,
-      ).createSession(model: RealtimeModel.x2_1_1_preview_cn);
+      ).createSession(model: RealtimeModel.x2_1);
       expect(session.connection!.userID, 'rtc-user');
       expect(session.connection!.botName, 'bot');
     },
@@ -52,12 +52,12 @@ void main() {
     final service = RealtimeSessionService(apiService: api);
 
     final session = await service.createSession(
-      model: RealtimeModel.x2_1_1_preview_us,
+      model: RealtimeModel.x2_1,
     );
 
     expect(api.method, ApiMethod.post);
     expect(api.path, '/session');
-    expect(api.body, <String, Object?>{'model': 'x2.1.1-preview-us'});
+    expect(api.body, <String, Object?>{'model': 'x2.1'});
     expect(session.id, 'session-pro');
   });
 }

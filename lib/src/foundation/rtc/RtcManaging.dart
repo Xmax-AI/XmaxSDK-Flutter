@@ -42,6 +42,17 @@ abstract interface class RtcManaging {
   /// 停止本地预览和摄像头采集。
   Future<void> stopVideoCapture();
 
+  /// 原地更新摄像头采集规格，不停止采集或重新挂载预览。
+  ///
+  /// - [width]：采集宽度，单位为像素。
+  /// - [height]：采集高度，单位为像素。
+  /// - [frameRate]：采集帧率，单位为 fps。
+  Future<void> updateVideoCapture({
+    required int width,
+    required int height,
+    required int frameRate,
+  });
+
   /// 将原生采集切换到指定摄像头。
   ///
   /// - [position]：需要切换到的摄像头位置。
@@ -56,7 +67,7 @@ abstract interface class RtcManaging {
     required RoomJoinConfiguration configuration,
   });
 
-  /// 退出当前 RTC 房间，取消待发信令并移除房间事件。
+  /// 退出当前 RTC 房间，取消待发信令并保留仍在使用的本地摄像头预览。
   Future<void> leaveRoom();
 
   /// 设置当前房间是否发布摄像头视频；不发布麦克风音频。

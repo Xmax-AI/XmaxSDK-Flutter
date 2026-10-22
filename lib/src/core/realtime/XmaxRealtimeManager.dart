@@ -31,6 +31,8 @@ import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../stream/StreamController.dart';
 import '../../stream/StreamControlling.dart';
 import 'RealtimeConfiguration.dart';
+import 'RealtimeCameraPreset.dart';
+import 'RealtimeQualityLevel.dart';
 import 'RealtimeErrorHandler.dart';
 import 'RealtimeTiming.dart';
 import 'XmaxRealtimeConnectionManager.dart';
@@ -178,6 +180,129 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /// 正在进行的摄像头流创建任务。
   Future<RealtimeMediaStream>? _cameraCreationFuture;
+
+  /// 当前是否正在原地更新摄像头规格。
+  bool _isUpdatingCameraFormat = false;
+
+  /// 当前摄像头采集规格，不随传输调档变化。
+  @override
+  Future<RealtimeVideoFormat?> get currentCameraVideoFormat async =>
+      _mediaController.currentTrack?.position == null
+      ? null
+      : _mediaController.currentVideoFormat;
+
+  /// 当前采集分辨率对应的预设。
+  @override
+  Future<RealtimeCameraPreset?> get currentCameraPreset async {
+    final format = await currentCameraVideoFormat;
+
+    if (format == null) return null;
+
+    for (final preset in RealtimeCameraPreset.values) {
+      if (preset.size.width == format.width &&
+          preset.size.height == format.height) {
+        return preset;
+      }
+    }
+
+    return null;
+  }
+
+  /// 已连接或生成中，允许读取当前连接的传输档位。
+  bool get _hasConnectedQuality =>
+      _state.connectionState == RealtimeConnectionState.connected ||
+      _state.connectionState == RealtimeConnectionState.generating;
+
+  /// 当前连接成功应用的上行档位。
+  @override
+  Future<RealtimeQualityLevel?> get uplinkQualityLevel async =>
+      _hasConnectedQuality
+      ? _streamController.qualityConfiguration?.uplinkLevel
+      : null;
+
+  /// 当前连接成功提交的下行目标档位。
+  @override
+  Future<RealtimeQualityLevel?> get downlinkQualityLevel async =>
+      _hasConnectedQuality
+      ? _streamController.qualityConfiguration?.downlinkLevel
+      : null;
+
+  /// 设置生成中的上行传输档位。
+  ///
+  /// 详细说明见 [XmaxRealtimeManaging.setUplinkQualityLevel]。
+  @override
+  Future<void> setUplinkQualityLevel(
+    RealtimeQualityLevel level,
+  ) => _setQualityLevel(level, downlink: false);
+
+  /// 设置生成中的下行回传档位。
+  ///
+  /// 详细说明见 [XmaxRealtimeManaging.setDownlinkQualityLevel]。
+  @override
+  Future<void> setDownlinkQualityLevel(
+    RealtimeQualityLevel level,
+  ) => _setQualityLevel(level, downlink: true);
+
+  /// 校验生成状态后，将手动档位交由传输组件统一应用。
+  ///
+  /// - [level]：目标传输档位。
+  /// - [downlink]：是否更新下行，false 表示上行。
+  Future<void> _setQualityLevel(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+  }) async {
+    if (_state.connectionState != RealtimeConnectionState.generating) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Quality levels can only be changed while generating',
+      );
+    }
+
+    await _streamController.setQualityLevel(level, downlink: downlink);
+  }
+
+  /// 原地更新采集规格，保持本地轨道与预览绑定。
+  ///
+  /// 详细说明见 [XmaxRealtimeManaging.updateCameraFormat]。
+  @override
+  Future<void> updateCameraFormat({
+    RealtimeVideoFormat? videoFormat,
+    RealtimeCameraPreset? preset,
+  }) async {
+    final current = _mediaController.currentVideoFormat;
+
+    if ((videoFormat == null) == (preset == null) ||
+        _isUpdatingCameraFormat ||
+        current == null ||
+        _state.connectionState != RealtimeConnectionState.ready ||
+        _connectionManager.currentSessionID.isNotEmpty ||
+        _closeFuture != null ||
+        _disconnectFuture != null) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Provide exactly one camera format or preset '
+            'while preview is ready and disconnected',
+      );
+    }
+
+    final format = videoFormat ??
+        current.resized(
+          width: preset!.size.width.toInt(),
+          height: preset.size.height.toInt(),
+        );
+    final version = _operationVersion;
+
+    _isUpdatingCameraFormat = true;
+
+    try {
+      await _mediaController.updateCameraFormat(format);
+      _ensureCurrent(version);
+    } catch (error) {
+      throw XmaxError.from(error);
+    } finally {
+      _isUpdatingCameraFormat = false;
+    }
+  }
 
   /// 当前实时连接与生成状态。
   ///
@@ -355,7 +480,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /// 详细说明见 [XmaxRealtimeManaging.stopLocalCameraStream]。
   @override
   Future<void> stopLocalCameraStream() async {
-    if (_connectionManager.currentSessionID.isNotEmpty ||
+    if (_isUpdatingCameraFormat ||
+        _connectionManager.currentSessionID.isNotEmpty ||
         _state.connectionState == RealtimeConnectionState.connecting ||
         _state.connectionState == RealtimeConnectionState.disconnecting) {
       throw _report(
@@ -381,7 +507,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /// 详细说明见 [XmaxRealtimeManaging.switchCamera]。
   @override
   Future<RealtimeMediaStream> switchCamera() async {
-    if (_state.connectionState == RealtimeConnectionState.connecting ||
+    if (_isUpdatingCameraFormat ||
+        _state.connectionState == RealtimeConnectionState.connecting ||
         _state.connectionState == RealtimeConnectionState.disconnecting) {
       throw _report(
         const XmaxError(
@@ -447,7 +574,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     required RealtimeMediaStream localStream,
     RealtimeTiming? timing,
   }) async {
-    if (_connectionManager.currentSessionID.isNotEmpty ||
+    if (_isUpdatingCameraFormat ||
+        _connectionManager.currentSessionID.isNotEmpty ||
         _state.connectionState == RealtimeConnectionState.connecting ||
         _state.connectionState == RealtimeConnectionState.disconnecting) {
       throw _report(

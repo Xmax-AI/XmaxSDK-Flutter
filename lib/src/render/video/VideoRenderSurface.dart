@@ -52,7 +52,8 @@ final class VideoRenderSurface extends StatelessWidget {
         : null;
     final engine = local?.engine ?? remote?.engine;
 
-    if (engine == null || (remote != null && remote.uid == null)) {
+    if (engine == null ||
+        (remote != null && (remote.uid == null || remote.localUid == null))) {
       return const ColoredBox(color: Colors.black);
     }
     // 使用 Flutter 纹理，保留透明度和多层视频的叠加效果。
@@ -74,7 +75,10 @@ final class VideoRenderSurface extends StatelessWidget {
         : VideoViewController.remote(
             rtcEngine: engine,
             canvas: canvas,
-            connection: RtcConnection(channelId: remote.roomID),
+            connection: RtcConnection(
+              channelId: remote.roomID,
+              localUid: remote.localUid,
+            ),
             useFlutterTexture: true,
           );
 

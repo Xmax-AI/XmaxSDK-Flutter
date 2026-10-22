@@ -8,9 +8,11 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import 'QualityControlling.dart';
+import 'QualityConfiguration.dart';
 import 'QualityDirection.dart';
 import 'QualityHistory.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
@@ -50,28 +52,31 @@ final class QualityController implements QualityControlling {
     _down = QualityDirection(baseline: baseline, level: down, downlink: true);
   }
 
-  /// 当前上行档位的视频规格；质量策略尚未准备时为空。
+  /// 当前连接的媒体基准和成功应用的档位；未准备或已清理时为空。
   @override
-  RealtimeVideoFormat? get uplinkFormat => _up?.format;
+  QualityConfiguration? get qualityConfiguration {
+    final up = _up;
+    final down = _down;
 
-  /// 不随网络调档改变的媒体尺寸、帧率和编码配置。
-  @override
-  RealtimeVideoFormat? get baseline => _up?.baseline;
+    if (up == null || down == null) return null;
 
-  /// 当前下行质量档位，范围为 1～5；默认值为 2。
-  @override
-  int get downlinkLevel => _down?.level ?? 2;
+    return QualityConfiguration(
+      baseline: up.baseline,
+      uplinkLevel: up.level,
+      downlinkLevel: down.level,
+    );
+  }
 
   /// 依据连续网络样本和冷却期提出独立的上行、下行候选档位。
   ///
   /// 详细说明见 [QualityControlling.proposeQuality]。
   @override
-  (int?, int?) proposeQuality(
+  QualityChange proposeQuality(
     RealtimeNetworkQuality quality,
     double now,
-  ) => (
-    _up?.observe(quality.uplink, sampledAt: now, now: now),
-    _down?.observe(quality.downlink, sampledAt: now, now: now),
+  ) => QualityChange(
+    uplink: _up?.observe(quality.uplink, sampledAt: now, now: now),
+    downlink: _down?.observe(quality.downlink, sampledAt: now, now: now),
   );
 
   /// 提交本次调档结果，成功时保存对应方向的模型档位历史。
@@ -79,7 +84,7 @@ final class QualityController implements QualityControlling {
   /// 详细说明见 [QualityControlling.completeQuality]。
   @override
   Future<void> completeQuality(
-    int level, {
+    RealtimeQualityLevel level, {
     required bool downlink,
     required bool success,
     required double now,

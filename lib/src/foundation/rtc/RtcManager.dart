@@ -51,6 +51,9 @@ final class RtcManager implements RtcManaging {
   /// 当前 RTC 房间实例。
   AgoraRtcRoom? _room;
 
+  /// 正在执行的退房任务；后续入房必须等待该任务结束。
+  Future<void>? _leavingRoom;
+
   /// 当前 RTC 房间和媒体事件监听器。
   RtcEventListener? _eventListener;
 
@@ -67,10 +70,10 @@ final class RtcManager implements RtcManaging {
   VideoEncodingConfiguration? _encoding;
 
   /// 用于原生视频渲染的当前 RTC 引擎。
-  RtcEngine get renderEngine => _lease!.engine.engine;
+  RtcEngineEx get renderEngine => _lease!.engine.engine;
 
   /// 当前使用的原生 RTC 引擎。
-  RtcEngine get _engine {
+  RtcEngineEx get _engine {
     if (_lease == null) {
       throw const XmaxError(
         code: XmaxErrorCode.rtcError,
@@ -117,6 +120,7 @@ final class RtcManager implements RtcManaging {
         onFirstLocalVideoFrame: (_, width, height, _) {
           if (width > 0 && height > 0) _cameraPreviewReadyListener?.call();
         },
+        onLocalVideoStateChanged: _logLocalVideoState,
       );
 
       _handler = handler;
@@ -180,38 +184,62 @@ final class RtcManager implements RtcManaging {
     }
   }
 
-  /// 将视频分辨率、帧率、码率及编码偏好应用到 RTC。
+  /// 将编码配置应用到当前 RTC 连接；尚未入房时配置本地预览使用的引擎。
   ///
   /// - [configuration]：视频分辨率、帧率、最低与目标码率及编码偏好。
   @override
   Future<void> configureVideoEncoding(
     VideoEncodingConfiguration configuration,
   ) async {
-    await _checked(
-      () => _engine.setVideoEncoderConfiguration(
-        VideoEncoderConfiguration(
-          dimensions: VideoDimensions(
-            width: configuration.width,
-            height: configuration.height,
-          ),
-          frameRate: configuration.frameRate,
-          minBitrate: configuration.minimumBitrate,
-          bitrate: configuration.maximumBitrate,
-          orientationMode: OrientationMode.orientationModeAdaptive,
-          mirrorMode: _position == CameraPosition.front
-              ? VideoMirrorModeType.videoMirrorModeEnabled
-              : VideoMirrorModeType.videoMirrorModeDisabled,
-          degradationPreference: switch (configuration.encoderPreference) {
-            RealtimeVideoEncoderPreference.maintainFramerate =>
-              DegradationPreference.maintainFramerate,
-            RealtimeVideoEncoderPreference.maintainQuality =>
-              DegradationPreference.maintainQuality,
-            _ => DegradationPreference.maintainAuto,
-          },
-        ),
+    final encoder = VideoEncoderConfiguration(
+      dimensions: VideoDimensions(
+        width: configuration.width,
+        height: configuration.height,
       ),
+      frameRate: configuration.frameRate,
+      minBitrate: configuration.minimumBitrate,
+      bitrate: configuration.maximumBitrate,
+      orientationMode: OrientationMode.orientationModeAdaptive,
+      mirrorMode: _position == CameraPosition.front
+          ? VideoMirrorModeType.videoMirrorModeEnabled
+          : VideoMirrorModeType.videoMirrorModeDisabled,
+      degradationPreference: switch (configuration.encoderPreference) {
+        RealtimeVideoEncoderPreference.maintainFramerate =>
+          DegradationPreference.maintainFramerate,
+        RealtimeVideoEncoderPreference.maintainQuality =>
+          DegradationPreference.maintainQuality,
+        _ => DegradationPreference.maintainAuto,
+      },
+    );
+    final room = _room;
+    final connection = room?.isJoined == true ? room!.connection : null;
+
+    await _checked(
+      () => connection == null
+          ? _engine.setVideoEncoderConfiguration(encoder)
+          : room!.engine.setVideoEncoderConfigurationEx(
+              config: encoder,
+              connection: connection,
+            ),
     );
     _encoding = configuration;
+
+    final scope = connection == null
+        ? XmaxLogger.localized('本地预览', 'Local Preview')
+        : '${connection.channelId}/${connection.localUid}';
+
+    XmaxLogger.debug(
+      category: XmaxLoggerCategory.rtc,
+      message:
+          '视频编码目标配置 (Video Encoder Target Configuration)\n'
+          '├─ ${XmaxLogger.localized('配置范围：', 'Scope: ')}$scope\n'
+          '├─ ${XmaxLogger.localized('分辨率：', 'Resolution: ')}'
+          '${configuration.width} × ${configuration.height}\n'
+          '├─ ${XmaxLogger.localized('目标帧率：', 'Target Frame Rate: ')}'
+          '${configuration.frameRate} fps\n'
+          '└─ ${XmaxLogger.localized('码率范围：', 'Bitrate Range: ')}'
+          '${configuration.minimumBitrate}–${configuration.maximumBitrate} kbps',
+    );
   }
 
   /// 按给定规格启动摄像头采集和本地预览，不开启麦克风。
@@ -219,6 +247,20 @@ final class RtcManager implements RtcManaging {
   /// 详细说明见 [RtcManaging.startVideoCapture]。
   @override
   Future<void> startVideoCapture({
+    required int width,
+    required int height,
+    required int frameRate,
+  }) async {
+    await updateVideoCapture(width: width, height: height, frameRate: frameRate);
+    await _checked(() => _engine.enableLocalVideo(true));
+    await _checked(() => _engine.startPreview());
+  }
+
+  /// 原地更新采集规格，不改变当前摄像头、采集生命周期或预览绑定。
+  ///
+  /// 详细说明见 [RtcManaging.updateVideoCapture]。
+  @override
+  Future<void> updateVideoCapture({
     required int width,
     required int height,
     required int frameRate,
@@ -234,8 +276,6 @@ final class RtcManager implements RtcManaging {
         ),
       ),
     );
-    await _checked(() => _engine.enableLocalVideo(true));
-    await _checked(() => _engine.startPreview());
   }
 
   /// 停止本地预览和摄像头采集。
@@ -277,6 +317,7 @@ final class RtcManager implements RtcManaging {
       engine: _engine,
       roomID: configuration.roomID,
       listener: () => _eventListener,
+      leaveTimeout: cleanupTimeout,
     );
 
     _room = room;
@@ -294,13 +335,24 @@ final class RtcManager implements RtcManaging {
     }
   }
 
-  /// 退出当前 RTC 房间，取消待发信令并移除房间事件。
+  /// 退出当前 RTC 房间，取消待发信令并保留仍在使用的本地摄像头预览。
   @override
-  Future<void> leaveRoom() async {
+  Future<void> leaveRoom() {
+    if (_leavingRoom case final active?) return active;
+
     final room = _room;
 
+    if (room == null) return Future<void>.value();
+
     _room = null;
-    if (room != null) await room.destroy().timeout(cleanupTimeout);
+
+    final future = room.destroy();
+
+    _leavingRoom = future;
+
+    return future.whenComplete(() {
+      if (identical(_leavingRoom, future)) _leavingRoom = null;
+    });
   }
 
   /// 尚未关闭的当前 RTC 房间；不可用时抛出 RTC 错误。
@@ -324,13 +376,16 @@ final class RtcManager implements RtcManaging {
   Future<void> publishLocalVideo({
     required bool publish,
   }) async {
-    _requiredRoom;
+    final room = _requiredRoom;
+
     await _checked(
-      () => _engine.updateChannelMediaOptions(
-        ChannelMediaOptions(
+      () => room.engine.updateChannelMediaOptionsEx(
+        options: ChannelMediaOptions(
           publishCameraTrack: publish,
+          publishCustomVideoTrack: false,
           publishMicrophoneTrack: false,
         ),
+        connection: room.connection,
       ),
     );
     if (publish && _encoding != null) await configureVideoEncoding(_encoding!);
@@ -343,12 +398,16 @@ final class RtcManager implements RtcManaging {
   Future<void> subscribeRemoteVideo({
     required String streamID,
     required bool subscribe,
-  }) => _checked(
-    () async => _engine.muteRemoteVideoStream(
-      uid: await _requiredRoom.resolveUID(streamID),
+  }) => _checked(() async {
+    final room = _requiredRoom;
+    final uid = await room.resolveUID(streamID);
+
+    await room.engine.muteRemoteVideoStreamEx(
+      uid: uid,
       mute: !subscribe,
-    ),
-  );
+      connection: room.connection,
+    );
+  });
 
   /// 设置是否接收指定远端用户的音频。
   ///
@@ -357,12 +416,16 @@ final class RtcManager implements RtcManaging {
   Future<void> subscribeRemoteAudio({
     required String streamID,
     required bool subscribe,
-  }) => _checked(
-    () async => _engine.muteRemoteAudioStream(
-      uid: await _requiredRoom.resolveUID(streamID),
+  }) => _checked(() async {
+    final room = _requiredRoom;
+    final uid = await room.resolveUID(streamID);
+
+    await room.engine.muteRemoteAudioStreamEx(
+      uid: uid,
       mute: !subscribe,
-    ),
-  );
+      connection: room.connection,
+    );
+  });
 
   /// 将指定远端用户的播放音量百分比提交给 RTC。
   ///
@@ -371,12 +434,16 @@ final class RtcManager implements RtcManaging {
   Future<void> setRemoteAudioVolume({
     required int volume,
     required String streamID,
-  }) => _checked(
-    () async => _engine.adjustUserPlaybackSignalVolume(
-      uid: await _requiredRoom.resolveUID(streamID),
+  }) => _checked(() async {
+    final room = _requiredRoom;
+    final uid = await room.resolveUID(streamID);
+
+    await room.engine.adjustUserPlaybackSignalVolumeEx(
+      uid: uid,
       volume: volume,
-    ),
-  );
+      connection: room.connection,
+    );
+  });
 
   /// 按队列顺序发送完整房间 JSON 信令，必要时进行分片和限速。
   ///
@@ -421,6 +488,26 @@ final class RtcManager implements RtcManaging {
         message: 'RTC operation timed out',
       );
     }
+  }
+
+  /// 记录原生本地视频状态及原因，不更改采集或预览状态。
+  ///
+  /// - [source]：本次状态变化的视频源。
+  /// - [state]：原生采集或编码状态。
+  /// - [reason]：原生上报的状态变化原因。
+  static void _logLocalVideoState(
+    VideoSourceType source,
+    LocalVideoStreamState state,
+    LocalVideoStreamReason reason,
+  ) {
+    XmaxLogger.debug(
+      category: XmaxLoggerCategory.rtc,
+      message:
+          '本地视频状态 (Local Video State)\n'
+          '├─ ${XmaxLogger.localized('视频源：', 'Source: ')}${source.name}\n'
+          '├─ ${XmaxLogger.localized('状态：', 'State: ')}${state.name}\n'
+          '└─ ${XmaxLogger.localized('原因：', 'Reason: ')}${reason.name}',
+    );
   }
 
   /// 记录原生资源释放期间的错误。

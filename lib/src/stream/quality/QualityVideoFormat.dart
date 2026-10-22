@@ -10,6 +10,7 @@
 
 import 'dart:math' as math;
 import 'dart:ui';
+import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
 /// 从固定媒体基准计算传输档位，不改变采集和模型生成规格。
@@ -29,9 +30,9 @@ abstract final class QualityVideoFormat {
   /// 返回计算得到的数值。
   static double scale(
     RealtimeVideoFormat baseline,
-    int level,
+    RealtimeQualityLevel level,
   ) => math.max(
-    scales[level.clamp(1, 5) - 1],
+    scales[level.index],
     math.min(math.min(baseline.width, baseline.height), 240) /
         math.min(baseline.width, baseline.height),
   );
@@ -44,7 +45,7 @@ abstract final class QualityVideoFormat {
   /// 返回该档位允许的最大回传宽高，尚未进行像素对齐。
   static Size downlinkMaximumSize(
     RealtimeVideoFormat baseline,
-    int level,
+    RealtimeQualityLevel level,
   ) => Size(
     baseline.width * scale(baseline, level),
     baseline.height * scale(baseline, level),
@@ -59,7 +60,7 @@ abstract final class QualityVideoFormat {
   /// 返回包含有效尺寸、帧率及编码配置的视频规格。
   static RealtimeVideoFormat resolve(
     RealtimeVideoFormat baseline,
-    int level, {
+    RealtimeQualityLevel level, {
     required bool downlink,
   }) {
     final s = scale(baseline, level),
@@ -77,7 +78,7 @@ abstract final class QualityVideoFormat {
       height: height,
       fps: downlink
           ? 24
-          : math.min(baseline.fps, frameRates[level.clamp(1, 5) - 1]),
+          : math.min(baseline.fps, frameRates[level.index]),
       minimumBitrate: downlink ? null : baseline.minimumBitrate,
       maximumBitrate: downlink ? null : baseline.maximumBitrate,
       encoderPreference: baseline.encoderPreference,

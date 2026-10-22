@@ -84,7 +84,12 @@ final class XLabLocalization extends ChangeNotifier {
       text(key).replaceFirst('%d', count.toString()).replaceAll('%%', '%');
 
   static const _chinese = <String, String>{
-    'statistics.title': '实时统计',
+    'statistics.title': '统计',
+    'statistics.level': '传输档位',
+    'statistics.adjusting': '正在调整档位…',
+    'realtime.cameraFormat': '规格',
+    'realtime.selectCameraFormat': '摄像头采集规格',
+    'realtime.cancelFormat': '取消',
     'statistics.uplink': '视频上行',
     'statistics.downlink': '视频下行',
     'statistics.resolution': '分辨率',
@@ -192,7 +197,12 @@ final class XLabLocalization extends ChangeNotifier {
   };
 
   static const _english = <String, String>{
-    'statistics.title': 'Realtime Statistics',
+    'statistics.title': 'Stats',
+    'statistics.level': 'Quality level',
+    'statistics.adjusting': 'Adjusting quality…',
+    'realtime.cameraFormat': 'Format',
+    'realtime.selectCameraFormat': 'Camera capture format',
+    'realtime.cancelFormat': 'Cancel',
     'statistics.uplink': 'UPLINK',
     'statistics.downlink': 'DOWNLINK',
     'statistics.resolution': 'Resolution',

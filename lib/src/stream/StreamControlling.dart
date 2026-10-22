@@ -17,6 +17,8 @@ import '../service/realtime/RealtimePoint.dart';
 import '../service/realtime/RealtimeSession.dart';
 import '../service/realtime/RealtimeVideoFormat.dart';
 import '../foundation/rtc/VideoStatistics.dart';
+import '../core/realtime/RealtimeQualityLevel.dart';
+import 'quality/QualityConfiguration.dart';
 
 /// 等待生成结果流的任务，可主动取消。
 ///
@@ -46,7 +48,7 @@ abstract interface class StreamControlling {
   /// 读取模型的有效档位历史，准备独立上下行策略并应用初始传输规格。
   ///
   /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [model]：实时模型；用于确定会话路由及媒体规格约束。
+  /// - [model]：用于隔离档位历史的模型标识。
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
@@ -54,6 +56,18 @@ abstract interface class StreamControlling {
 
   /// 生成结果的回传宽高，单位为像素。
   Size? get targetSize;
+
+  /// 当前连接的固定媒体基准和成功应用的档位。
+  QualityConfiguration? get qualityConfiguration;
+
+  /// 手动应用单个方向的档位，与自动调档及生成条件更新互斥。
+  ///
+  /// - [level]：目标传输档位。
+  /// - [downlink]：true 更新回传尺寸，false 更新上行编码。
+  Future<void> setQualityLevel(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+  });
 
   /// 设置上行视频统计监听器；停止发布或断开连接时通知 null。
   ///

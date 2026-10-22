@@ -92,7 +92,7 @@ final class XmaxRealtimeConnectionManager {
 
   /// 创建云端会话并建立 RTC 连接，随后发布本地视频。
   ///
-  /// - [model]：实时模型；用于确定会话路由及媒体规格约束。
+  /// - [model]：实时生成模型，决定可用的媒体规格。
   /// - [videoFormat]：视频尺寸、帧率和编码配置。
   /// - [isCurrent]：检查操作是否仍属于当前生命周期的函数。
   /// - [onHeartbeatFailure]：当前云端会话心跳失败时的处理函数。

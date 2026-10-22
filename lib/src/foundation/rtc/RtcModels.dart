@@ -41,7 +41,7 @@ final class VideoEncodingConfiguration {
     required this.frameRate,
     this.minimumBitrate = 0,
     this.maximumBitrate = -1,
-    this.encoderPreference = RealtimeVideoEncoderPreference.auto,
+    this.encoderPreference = RealtimeVideoEncoderPreference.maintainFramerate,
   });
 
   /// 编码视频宽度，单位为像素。
@@ -59,7 +59,7 @@ final class VideoEncodingConfiguration {
   /// 编码目标码率，单位为 kbps，传给 RTC 的 bitrate；默认 -1，使用 RTC 兼容码率模式。
   final int maximumBitrate;
 
-  /// 带宽变化时的帧率与画质取舍策略，默认自动平衡。
+  /// 带宽变化时的帧率与画质取舍策略，默认优先保障帧率。
   final RealtimeVideoEncoderPreference encoderPreference;
 }
 
@@ -72,6 +72,7 @@ final class RemoteStream {
     required this.userID,
     required this.streamID,
     this.uid,
+    this.localUid,
     this.engine,
   });
 
@@ -86,6 +87,9 @@ final class RemoteStream {
 
   /// 原生 RTC 分配的数字用户标识；未解析出 UID 时不能创建远端视频纹理。
   final int? uid;
+
+  /// 当前房间中本地用户的数字 UID，供远端渲染定位对应的 RTC 连接。
+  final int? localUid;
 
   /// 远端视频渲染使用的 RTC 引擎；未指定时不能创建视频纹理。
   final RtcEngine? engine;

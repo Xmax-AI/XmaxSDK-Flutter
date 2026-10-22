@@ -30,7 +30,7 @@ class _HomePageState extends State<HomePage> {
   final _preferences = SharedPreferencesAsync();
   bool _obscureApiKey = true;
   bool _isPickingImage = false;
-  RealtimeModel _selectedModel = RealtimeModel.x2_1_1_preview_cn;
+  RealtimeModel _selectedModel = RealtimeModel.x2_1;
   int _modelSelectionVersion = 0;
 
   String get _minimumOS => switch (defaultTargetPlatform) {
@@ -53,7 +53,7 @@ class _HomePageState extends State<HomePage> {
 
     final selected = RealtimeModel.values.firstWhere(
       (model) => model.value == saved,
-      orElse: () => RealtimeModel.x2_1_1_preview_cn,
+      orElse: () => RealtimeModel.x2_1,
     );
     setState(() => _selectedModel = selected);
   }

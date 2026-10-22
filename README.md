@@ -357,9 +357,8 @@ The same configuration is available in the example's
 
 `XmaxConfiguration` uses `XmaxEnvironment.china` by default. For the overseas
 service, set `environment: XmaxEnvironment.global` when creating `XmaxClient`.
-This controls storage-service routing and log language. Realtime session routing
-follows the selected model: `x2_1_1_preview_cn` uses the China endpoint and
-`x2_1_1_preview_us` uses the overseas endpoint. XLab persists the selected model.
+This controls realtime-session and storage-service routing as well as log
+language. `RealtimeModel.x2_1` is available in both environments.
 
 ### Generate and display video
 
@@ -381,7 +380,7 @@ class RealtimePage extends StatefulWidget {
 }
 
 class _RealtimePageState extends State<RealtimePage> {
-  static const _model = RealtimeModel.x2_1_1_preview_cn;
+  static const _model = RealtimeModel.x2_1;
   late final XmaxRealtimeManaging _realtime;
   RealtimeMediaStream? _localStream;
   RealtimeMediaStream? _remoteStream;
@@ -441,10 +440,20 @@ class _RealtimePageState extends State<RealtimePage> {
 }
 ```
 
-Use `RealtimeModel.x2_1_1_preview_us` for the overseas model. Both models default
-to 1024×1920 at 30 fps and accept 1024×1920 or 1920×1024 camera input.
-Keep the selected model and camera format together as shown above; XLab also
-persists the model selected on its home screen.
+`RealtimeModel.x2_1` defaults to 1080×1920 at 30 fps. Its
+`supportedVideoFormats` list contains 1920×1080, 1080×1920, 1408×1408,
+1152×1536, and 1536×1152 formats. While the preview is ready and disconnected,
+update the capture format without recreating the stream or view:
+
+```dart
+await _realtime.updateCameraFormat(
+  preset: RealtimeCameraPreset.resolution1408x1408,
+);
+final format = await _realtime.currentCameraVideoFormat;
+```
+
+Use either `preset` (preserves the current frame rate and encoding settings) or
+`videoFormat` (provides a complete format), but not both.
 
 The widget keeps the local camera preview underneath the generated video, enables
 touch interaction by default, and returns to the local preview after
@@ -459,6 +468,15 @@ notification; a new remote binding cycle does.
 The SDK adapts uplink encoding and the returned video size independently as
 network quality changes. Capture settings and the model's generation canvas stay
 fixed. Recent successful quality levels are remembered per model for one hour.
+During generation, call `setUplinkQualityLevel(RealtimeQualityLevel.l1)` or
+`setDownlinkQualityLevel(RealtimeQualityLevel.l3)` to adjust a direction manually.
+Automatic adaptation remains enabled. Read the applied levels through
+`uplinkQualityLevel` and `downlinkQualityLevel`; both are `null` before connection
+completes or once disconnection starts. Downlink changes report the submitted
+target, which may precede the corresponding video frames.
+
+The default encoder preference is `maintainFramerate`. Unless explicitly set,
+the uplink minimum bitrate is 500 kbps, capped at the resolved maximum bitrate.
 
 Subscribe to `setUplinkVideoStatisticsListener` and
 `setDownlinkVideoStatisticsListener` to display resolution, frame rate, bitrate,

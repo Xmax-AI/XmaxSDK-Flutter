@@ -18,7 +18,7 @@ final class RealtimeConfiguration {
     required this.model,
   });
 
-  /// 实时模型；用于确定会话路由及媒体规格约束。
+  /// 实时生成模型，决定可用的媒体规格。
   final RealtimeModel model;
 
   /// 与 [other] 比较类型及 [model] 的值。

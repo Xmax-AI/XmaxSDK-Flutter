@@ -251,6 +251,33 @@ final class CameraController {
     }
   }
 
+  /// 校验并原地更新采集规格；原生设置成功后才更新轨道信息。
+  ///
+  /// - [videoFormat]：符合当前模型约束的采集规格。
+  Future<void> updateVideoFormat(
+    RealtimeVideoFormat videoFormat,
+  ) async {
+    final track = _activeTrack;
+
+    if (track == null) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Camera preview is not started',
+      );
+    }
+
+    final format = _resolveVideoFormat(videoFormat);
+
+    if (format == track.videoFormat) return;
+
+    await _rtcManager.updateVideoCapture(
+      width: format.width,
+      height: format.height,
+      frameRate: format.fps,
+    );
+    updateRealtimeVideoTrack(track: track, videoFormat: format);
+  }
+
   /// 依据当前模型校验并解析摄像头采集规格。
   ///
   /// - [videoFormat]：视频尺寸、帧率和编码配置。

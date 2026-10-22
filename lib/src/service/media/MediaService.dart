@@ -22,10 +22,10 @@ final class MediaService implements MediaServicing {
 
   /// 创建模型媒体尺寸解析服务。
   MediaService({
-    this.model = RealtimeModel.x2_1_1_preview_cn,
+    this.model = RealtimeModel.x2_1,
   });
 
-  /// 尺寸约束所属模型，默认使用国内 X2.1.1-preview-cn。
+  /// 尺寸约束所属模型，默认使用 X2.1。
   @override
   final RealtimeModel model;
 
@@ -36,7 +36,9 @@ final class MediaService implements MediaServicing {
   Size resolveGenerationSize(
     Size size,
   ) {
-    final buckets = model.resolutionBuckets;
+    final buckets = model.supportedVideoFormats.map(
+      (format) => Size(format.width.toDouble(), format.height.toDouble()),
+    ).toList();
 
     if (buckets.isNotEmpty) {
       _validatedSize(size);
@@ -108,7 +110,9 @@ final class MediaService implements MediaServicing {
   }) {
     _validateIntegral(sourceMediaSize);
 
-    final buckets = model.resolutionBuckets;
+    final buckets = model.supportedVideoFormats.map(
+      (format) => Size(format.width.toDouble(), format.height.toDouble()),
+    ).toList();
 
     if (source == RealtimeMediaSource.camera &&
         buckets.isNotEmpty &&

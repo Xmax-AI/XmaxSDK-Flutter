@@ -27,6 +27,8 @@ import '../service/realtime/RealtimeVideoFormat.dart';
 import '../service/media/MediaService.dart';
 import '../service/media/MediaServicing.dart';
 import 'quality/QualityVideoFormat.dart';
+import '../core/realtime/RealtimeQualityLevel.dart';
+import 'quality/QualityConfiguration.dart';
 import 'encoding/EncodingController.dart';
 import 'encoding/EncodingControlling.dart';
 import 'quality/QualityController.dart';
@@ -151,6 +153,60 @@ final class StreamController implements StreamControlling {
   @override
   Size? get targetSize => _targetSize;
 
+  /// 当前连接的固定媒体基准和成功应用的档位。
+  @override
+  QualityConfiguration? get qualityConfiguration =>
+      _qualityController.qualityConfiguration;
+
+  /// 应用手动档位；调档完成后仍允许后续网络采样触发自动调整。
+  ///
+  /// 详细说明见 [StreamControlling.setQualityLevel]。
+  @override
+  Future<void> setQualityLevel(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+  }) async {
+    final configuration = qualityConfiguration;
+    final taskID = _generationTaskID;
+
+    if (!_canAdapt ||
+        taskID == null ||
+        configuration == null ||
+        _generationCompleter != null ||
+        _conditionUpdates > 0 ||
+        _adaptation != null) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Quality adjustment requires an active, available generation',
+      );
+    }
+
+    final future = _applyQuality(
+      QualityChange(
+        uplink: downlink ? null : level,
+        downlink: downlink ? level : null,
+      ),
+      configuration.baseline,
+      taskID,
+      _qualityVersion,
+      propagateErrors: true,
+    );
+
+    // 清理流程等待不抛错的屏障；调用方仍从原任务接收调档错误。
+    final barrier = future.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
+    );
+
+    _adaptation = barrier;
+
+    try {
+      await future;
+    } finally {
+      if (identical(_adaptation, barrier)) _adaptation = null;
+    }
+  }
+
   /// 读取模型的有效档位历史，准备独立上下行策略并应用初始传输规格。
   ///
   /// 详细说明见 [StreamControlling.prepareQuality]。
@@ -164,13 +220,15 @@ final class StreamController implements StreamControlling {
     await _qualityController.prepareQuality(baseline: baseline, model: model);
     if (version != _qualityVersion) return;
 
+    final configuration = qualityConfiguration;
+
+    if (configuration == null) return;
+
     _targetSize = _resolveTargetSize(
-      baseline,
-      _qualityController.downlinkLevel,
+      configuration.baseline,
+      configuration.downlinkLevel,
     );
-    await _encodingController.configure(
-      _qualityController.uplinkFormat ?? baseline,
-    );
+    await _encodingController.configure(configuration.uplink);
   }
 
   /// 按下行档位计算限制内的对齐回传尺寸。
@@ -181,7 +239,7 @@ final class StreamController implements StreamControlling {
   /// 返回当前下行档位限制内的对齐回传尺寸。
   Size _resolveTargetSize(
     RealtimeVideoFormat baseline,
-    int level,
+    RealtimeQualityLevel level,
   ) => _mediaService.resolveTargetSize(
     Size(baseline.width.toDouble(), baseline.height.toDouble()),
     maximumSize: QualityVideoFormat.downlinkMaximumSize(baseline, level),
@@ -204,7 +262,7 @@ final class StreamController implements StreamControlling {
       return;
     }
 
-    final baseline = _qualityController.baseline;
+    final baseline = qualityConfiguration?.baseline;
 
     if (baseline == null) return;
 
@@ -213,7 +271,7 @@ final class StreamController implements StreamControlling {
       _qualityClock.elapsedMicroseconds / 1e6,
     );
 
-    if (changes.$1 == null && changes.$2 == null) return;
+    if (changes.uplink == null && changes.downlink == null) return;
 
     final taskID = _generationTaskID!;
     final version = _qualityVersion;
@@ -233,19 +291,31 @@ final class StreamController implements StreamControlling {
   /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
   /// - [taskID]：当前生成任务标识。
   /// - [version]：当前异步操作的版本号。
+  /// - [propagateErrors]：是否向调用方传播失败；自动调档只记录日志。
   Future<void> _applyQuality(
-    (int?, int?) changes,
+    QualityChange changes,
     RealtimeVideoFormat baseline,
     String taskID,
-    int version,
-  ) async {
+    int version, {
+    bool propagateErrors = false,
+  }) async {
     bool current() =>
         version == _qualityVersion && taskID == _generationTaskID && _canAdapt;
 
     for (final downlink in [false, true]) {
-      final level = downlink ? changes.$2 : changes.$1;
+      final level = downlink ? changes.downlink : changes.uplink;
 
-      if (level == null || !current()) continue;
+      if (level == null) continue;
+
+      if (!current()) {
+        if (propagateErrors) {
+          throw const XmaxError(
+            code: XmaxErrorCode.cancelled,
+            message: 'Quality adjustment cancelled',
+          );
+        }
+        continue;
+      }
 
       var success = false;
 
@@ -253,19 +323,22 @@ final class StreamController implements StreamControlling {
         if (downlink) {
           final target = _resolveTargetSize(baseline, level);
 
-          await changeTargetSize(
-            taskID: taskID,
-            targetSize: target,
-            ensureActive: () {
-              if (!current()) {
-                throw const XmaxError(
-                  code: XmaxErrorCode.cancelled,
-                  message: 'Quality adjustment cancelled',
-                );
-              }
-            },
-          );
-          if (version == _qualityVersion) {
+          if (target != _targetSize) {
+            await changeTargetSize(
+              taskID: taskID,
+              targetSize: target,
+              ensureActive: () {
+                if (!current()) {
+                  throw const XmaxError(
+                    code: XmaxErrorCode.cancelled,
+                    message: 'Quality adjustment cancelled',
+                  );
+                }
+              },
+            );
+          }
+
+          if (current()) {
             _targetSize = target;
             success = true;
           }
@@ -273,7 +346,7 @@ final class StreamController implements StreamControlling {
           await _encodingController.configure(
             QualityVideoFormat.resolve(baseline, level, downlink: false),
           );
-          success = version == _qualityVersion;
+          success = current();
         }
       } catch (error) {
         if (current()) {
@@ -282,14 +355,32 @@ final class StreamController implements StreamControlling {
             message: '网络档位调整失败 (Quality Adjustment Failed)\n└─ $error',
           );
         }
+        if (propagateErrors) {
+          if (current()) {
+            await _qualityController.completeQuality(
+              level,
+              downlink: downlink,
+              success: false,
+              now: _qualityClock.elapsedMicroseconds / 1e6,
+            );
+          }
+          rethrow;
+        }
       }
-      // 原生音量设置即使在生成停止后才完成，也只属于当前连接，不能沿用到新连接。
-      if (version == _qualityVersion) {
+
+      // 仅将仍属于当前任务的配置结果写入档位历史。
+      if (current()) {
         await _qualityController.completeQuality(
           level,
           downlink: downlink,
           success: success,
           now: _qualityClock.elapsedMicroseconds / 1e6,
+        );
+      }
+      if (propagateErrors && !success) {
+        throw const XmaxError(
+          code: XmaxErrorCode.cancelled,
+          message: 'Quality adjustment cancelled',
         );
       }
     }

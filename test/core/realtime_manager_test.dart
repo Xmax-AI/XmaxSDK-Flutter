@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'package:xmax_sdk/src/stream/quality/QualityConfiguration.dart';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/core/realtime/RealtimeConfiguration.dart';
 import 'package:xmax_sdk/src/core/realtime/RealtimeErrorHandler.dart';
 import 'package:xmax_sdk/src/core/realtime/RealtimeModel.dart';
+import 'package:xmax_sdk/src/core/realtime/RealtimeQualityLevel.dart';
+import 'package:xmax_sdk/src/core/realtime/RealtimeCameraPreset.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeConnectionManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeGenerationManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeManager.dart';
@@ -30,6 +33,91 @@ import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 import 'package:xmax_sdk/src/stream/StreamControlling.dart';
 
 void main() {
+  test(
+    'camera presets update ready preview in place and reject connected changes',
+    () async {
+      final deps = _Dependencies();
+      expect(await deps.manager.currentCameraVideoFormat, isNull);
+      await expectLater(
+        deps.manager.updateCameraFormat(
+          preset: RealtimeCameraPreset.resolution1408x1408,
+        ),
+        throwsA(isA<XmaxError>()),
+      );
+      final local = await deps.manager.createLocalCameraStream(
+        videoFormat: _Dependencies.format,
+      );
+      await expectLater(
+        deps.manager.updateCameraFormat(
+          preset: RealtimeCameraPreset.resolution1408x1408,
+        ),
+        throwsA(isA<XmaxError>()),
+      );
+      deps.media.notifyPreviewReady();
+      await deps.manager.updateCameraFormat(
+        preset: RealtimeCameraPreset.resolution1408x1408,
+      );
+      expect(
+        await deps.manager.currentCameraPreset,
+        RealtimeCameraPreset.resolution1408x1408,
+      );
+      expect(local.videoTrack, same(deps.media.track));
+      expect(local.videoTrack!.videoFormat!.fps, _Dependencies.format.fps);
+      expect(deps.media.stopCount, 0);
+      await expectLater(
+        deps.manager.updateCameraFormat(),
+        throwsA(isA<XmaxError>()),
+      );
+      await expectLater(
+        deps.manager.updateCameraFormat(
+          videoFormat: _Dependencies.format,
+          preset: RealtimeCameraPreset.resolution1408x1408,
+        ),
+        throwsA(isA<XmaxError>()),
+      );
+      await deps.manager.connect(localStream: local);
+      await expectLater(
+        deps.manager.updateCameraFormat(
+          preset: RealtimeCameraPreset.resolution1080x1920,
+        ),
+        throwsA(isA<XmaxError>()),
+      );
+      await deps.manager.close();
+      expect(await deps.manager.currentCameraVideoFormat, isNull);
+    },
+  );
+
+  test(
+    'quality getters are connection scoped and setters require generation',
+    () async {
+      final deps = _Dependencies();
+      expect(await deps.manager.uplinkQualityLevel, isNull);
+      final local = await deps.manager.createLocalCameraStream(
+        videoFormat: _Dependencies.format,
+      );
+      await deps.manager.connect(localStream: local);
+      expect(await deps.manager.uplinkQualityLevel, RealtimeQualityLevel.l2);
+      expect(await deps.manager.downlinkQualityLevel, RealtimeQualityLevel.l2);
+      await expectLater(
+        deps.manager.setUplinkQualityLevel(RealtimeQualityLevel.l1),
+        throwsA(isA<XmaxError>()),
+      );
+      await deps.manager.startGeneration(context: RealtimeContext(prompt: 'a'));
+      await deps.manager.setUplinkQualityLevel(RealtimeQualityLevel.l1);
+      await deps.manager.setDownlinkQualityLevel(RealtimeQualityLevel.l4);
+      expect(await deps.manager.uplinkQualityLevel, RealtimeQualityLevel.l1);
+      expect(await deps.manager.downlinkQualityLevel, RealtimeQualityLevel.l4);
+      deps.stream.disconnectGate = Completer<void>();
+      final disconnect = deps.manager.disconnect();
+      await Future<void>.delayed(Duration.zero);
+      expect(await deps.manager.uplinkQualityLevel, isNull);
+      expect(await deps.manager.downlinkQualityLevel, isNull);
+      deps.stream.disconnectGate!.complete();
+      await disconnect;
+      await deps.manager.close();
+    },
+  );
+
   for (final disconnect in [false, true]) {
     test(
       'conceals remote surface before stopping native generation (disconnect=$disconnect)',
@@ -697,9 +785,7 @@ void main() {
           XmaxClient(
             configuration: XmaxConfiguration(apiKey: 'test-key'),
           ).createRealtimeManager(
-            options: const RealtimeConfiguration(
-              model: RealtimeModel.x2_1_1_preview_cn,
-            ),
+            options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
           );
 
       expect(await manager.localAudioVolume, 0.45);
@@ -961,9 +1047,7 @@ final class _Dependencies {
       taskIDGenerator: () => 'task-test',
     );
     manager = XmaxRealtimeManager.internal(
-      options: const RealtimeConfiguration(
-        model: RealtimeModel.x2_1_1_preview_cn,
-      ),
+      options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
       mediaController: media,
       streamController: stream,
       connectionManager: connection,
@@ -984,6 +1068,11 @@ final class _Dependencies {
 }
 
 final class _FakeMedia implements MediaControlling {
+  @override
+  Future<void> updateCameraFormat(RealtimeVideoFormat videoFormat) async {
+    updateRealtimeVideoTrack(track: track, videoFormat: videoFormat);
+  }
+
   _FakeMedia() {
     track = createRealtimeVideoTrack(
       id: 'video0',
@@ -1063,6 +1152,24 @@ final class _FakeMedia implements MediaControlling {
 }
 
 final class _FakeStream implements StreamControlling {
+  QualityConfiguration? configuration;
+
+  @override
+  QualityConfiguration? get qualityConfiguration => configuration;
+
+  @override
+  Future<void> setQualityLevel(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+  }) async {
+    final current = configuration!;
+    configuration = QualityConfiguration(
+      baseline: current.baseline,
+      uplinkLevel: downlink ? current.uplinkLevel : level,
+      downlinkLevel: downlink ? level : current.downlinkLevel,
+    );
+  }
+
   final faceRestorations = <bool>[];
   @override
   Size? get targetSize => null;
@@ -1070,7 +1177,15 @@ final class _FakeStream implements StreamControlling {
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
-  }) async => setVideoEncoderConfig(baseline);
+  }) async {
+    configuration = QualityConfiguration(
+      baseline: baseline,
+      uplinkLevel: RealtimeQualityLevel.l2,
+      downlinkLevel: RealtimeQualityLevel.l2,
+    );
+    await setVideoEncoderConfig(baseline);
+  }
+
   @override
   void setUplinkVideoStatisticsListener(
     UplinkVideoStatisticsListener? listener,

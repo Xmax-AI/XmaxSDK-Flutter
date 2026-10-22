@@ -8,6 +8,8 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import '../../core/realtime/RealtimeQualityLevel.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 按模型及传输方向保存一小时内成功应用的档位。
@@ -22,7 +24,7 @@ final class QualityHistory {
     SharedPreferencesAsync? preferences,
   }) : _preferences = preferences;
 
-  /// 实时模型；用于确定会话路由及媒体规格约束。
+  /// 用于隔离档位历史的模型标识。
   final String model;
 
   /// 档位历史的存储入口；为空时使用设备本地偏好存储。
@@ -46,7 +48,7 @@ final class QualityHistory {
   /// - [now]：判断记录是否过期的时间，默认使用系统时间。
   ///
   /// 记录不存在、已过期或读取失败时，返回默认档位 2。
-  Future<int> read({
+  Future<RealtimeQualityLevel> read({
     required bool downlink,
     DateTime? now,
   }) async {
@@ -67,13 +69,13 @@ final class QualityHistory {
           saved > 0 &&
           time >= saved &&
           time - saved < 3600) {
-        return level;
+        return RealtimeQualityLevel.values[level - 1];
       }
     } catch (_) {
       // 历史不可用时使用默认档位，不阻断连接。
     }
 
-    return 2;
+    return RealtimeQualityLevel.l2;
   }
 
   /// 保存当前方向成功应用的档位和时间，存储失败不影响媒体传输。
@@ -82,14 +84,14 @@ final class QualityHistory {
   /// - [downlink]：是否保存下行档位；false 表示上行。
   /// - [now]：记录保存时间，默认使用系统时间。
   Future<void> write(
-    int level, {
+    RealtimeQualityLevel level, {
     required bool downlink,
     DateTime? now,
   }) async {
     try {
       final key = _key(downlink);
 
-      await _store.setInt(key, level).timeout(const Duration(seconds: 1));
+      await _store.setInt(key, level.value).timeout(const Duration(seconds: 1));
       await _store
           .setDouble(
             '$key.time',

@@ -8,20 +8,14 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import 'package:flutter/widgets.dart';
-
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
 /// SDK 当前支持的实时生成模型。
 enum RealtimeModel {
 
-  /// 国内实时生成模型。
+  /// X2.1 实时生成模型，服务区域由客户端环境决定。
   // ignore: constant_identifier_names
-  x2_1_1_preview_cn('x2.1.1-preview-cn'),
-
-  /// 海外实时生成模型。
-  // ignore: constant_identifier_names
-  x2_1_1_preview_us('x2.1.1-preview-us');
+  x2_1('x2.1');
 
   /// 定义模型的序列化标识。
   const RealtimeModel(
@@ -33,14 +27,16 @@ enum RealtimeModel {
 
   /// 模型展示名称。
   String get displayName => switch (this) {
-    RealtimeModel.x2_1_1_preview_cn => 'X2.1.1-preview-cn',
-    RealtimeModel.x2_1_1_preview_us => 'X2.1.1-preview-us',
+    RealtimeModel.x2_1 => 'X2.1',
   };
 
-  /// 模型支持的摄像头采集分辨率和生成画布分辨率。
-  List<Size> get resolutionBuckets => const [
-    Size(1024, 1920),
-    Size(1920, 1024),
+  /// 模型支持的摄像头和生成画布规格；帧率为推荐默认值。
+  List<RealtimeVideoFormat> get supportedVideoFormats => const [
+    RealtimeVideoFormat(width: 1920, height: 1080, fps: 30),
+    RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
+    RealtimeVideoFormat(width: 1408, height: 1408, fps: 30),
+    RealtimeVideoFormat(width: 1152, height: 1536, fps: 30),
+    RealtimeVideoFormat(width: 1536, height: 1152, fps: 30),
   ];
 
   /// 最小输入像素数；仅在模型没有预设分辨率时用于计算尺寸。
@@ -57,5 +53,5 @@ enum RealtimeModel {
 
   /// 摄像头采集使用的默认视频规格。
   RealtimeVideoFormat get defaultCameraVideoFormat =>
-      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30);
+      const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30);
 }

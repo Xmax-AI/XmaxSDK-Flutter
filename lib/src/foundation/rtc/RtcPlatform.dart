@@ -14,7 +14,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 abstract interface class RtcPlatform {
 
   /// 当前使用的原生 RTC 引擎。
-  RtcEngine get engine;
+  RtcEngineEx get engine;
 
   /// 关闭当前 RTC 资源，并使后续原生回调失效。
   Future<void> destroy();

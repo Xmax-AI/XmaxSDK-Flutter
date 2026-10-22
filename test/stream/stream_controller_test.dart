@@ -41,6 +41,150 @@ Future<StreamController> _controller(
 }
 
 void main() {
+  Future<StreamController> generating(_Rtc rtc, _Room room) async {
+    final stream = await _controller(rtc, room: room);
+    await stream.prepareQuality(baseline: _format, model: 'x2.1');
+    final generation = await stream.beginGeneration(
+      taskID: 'task',
+      videoFormat: _format,
+      context: RealtimeContext(prompt: 'a'),
+    );
+    rtc.listener!.onRemoteVideoPublished!(_remote, true);
+    await generation.value;
+    await stream.activateRemoteAudio();
+    return stream;
+  }
+
+  test(
+    'manual quality applies independent directions and retains the source baseline',
+    () async {
+      final rtc = _Rtc(), room = _Room();
+      final stream = await generating(rtc, room);
+      addTearDown(stream.disconnect);
+      await stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false);
+      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l1);
+      expect(
+        stream.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l2,
+      );
+      expect(
+        (
+          rtc.configurations.last.width,
+          rtc.configurations.last.height,
+          rtc.configurations.last.frameRate,
+        ),
+        (1024, 1920, 30),
+      );
+      await stream.setQualityLevel(RealtimeQualityLevel.l4, downlink: true);
+      expect(
+        stream.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l4,
+      );
+      expect(stream.targetSize, const Size(512, 960));
+      expect(stream.qualityConfiguration!.baseline, _format);
+      await stream.stopGeneration(taskID: 'task');
+      await expectLater(
+        stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false),
+        throwsA(isA<XmaxError>()),
+      );
+    },
+  );
+
+  test(
+    'rejected quality changes do not commit levels or block later updates',
+    () async {
+      final rtc = _Rtc(), room = _Room();
+      final stream = await generating(rtc, room);
+      addTearDown(stream.disconnect);
+      rtc.encodingError = StateError('encoder rejected');
+      await expectLater(
+        stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false),
+        throwsStateError,
+      );
+      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l2);
+      rtc.encodingError = null;
+      room.targetError = StateError('send rejected');
+      final previous = stream.targetSize;
+      await expectLater(
+        stream.setQualityLevel(RealtimeQualityLevel.l5, downlink: true),
+        throwsStateError,
+      );
+      expect(
+        stream.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l2,
+      );
+      expect(stream.targetSize, previous);
+      room.targetError = null;
+      await stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false);
+      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l1);
+    },
+  );
+
+  test(
+    'manual changes serialize condition signaling and reject overlapping quality writes',
+    () async {
+      final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
+      final stream = await generating(rtc, room);
+      addTearDown(stream.disconnect);
+      final manual = stream.setQualityLevel(
+        RealtimeQualityLevel.l4,
+        downlink: true,
+      );
+      await room.targetStarted.future;
+      await expectLater(
+        stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false),
+        throwsA(isA<XmaxError>()),
+      );
+      final update = stream.updateGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'b'),
+      );
+      await _settle();
+      expect(room.conditionTarget, isNull);
+      room.targetGate!.complete();
+      await manual;
+      await update;
+      expect(room.conditionTarget, stream.targetSize);
+    },
+  );
+
+  test(
+    'stop cancels a pending manual change without committing its target',
+    () async {
+      final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
+      final stream = await generating(rtc, room);
+      addTearDown(stream.disconnect);
+      final previous = stream.targetSize;
+      final manual = stream.setQualityLevel(
+        RealtimeQualityLevel.l4,
+        downlink: true,
+      );
+      final rejected = expectLater(
+        manual,
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.cancelled,
+          ),
+        ),
+      );
+      await room.targetStarted.future;
+      final stop = stream.stopGeneration(taskID: 'task');
+      await _settle();
+      room.targetGate!.complete();
+      await rejected;
+      await stop;
+      expect(
+        stream.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l2,
+      );
+      expect(stream.targetSize, previous);
+      expect(stream.hasGenerationTask, isFalse);
+    },
+  );
+
   test('generation deadline includes a pending signaling send', () async {
     final rtc = _Rtc(), room = _Room()..startGate = Completer<void>();
     final rendered = <RemoteStream?>[];
@@ -73,10 +217,7 @@ void main() {
       final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
       final stream = await _controller(rtc, room: room);
       addTearDown(stream.disconnect);
-      await stream.prepareQuality(
-        baseline: _format,
-        model: 'x2.1.1-preview-cn',
-      );
+      await stream.prepareQuality(baseline: _format, model: 'x2.1');
       expect(stream.targetSize, const Size(800, 1500));
       final generation = await stream.beginGeneration(
         taskID: 'task',
@@ -348,11 +489,13 @@ void main() {
 }
 
 class _Rtc implements RtcManaging {
+  Object? encodingError;
   final configurations = <VideoEncodingConfiguration>[];
   @override
   Future<void> configureVideoEncoding(
     VideoEncodingConfiguration configuration,
   ) async {
+    if (encodingError case final error?) throw error;
     configurations.add(configuration);
   }
 
@@ -393,6 +536,7 @@ class _Rtc implements RtcManaging {
 }
 
 class _Room implements RoomControlling {
+  Object? targetError;
   Completer<void>? targetGate;
   final targetStarted = Completer<void>();
   Size? conditionTarget;
@@ -403,6 +547,7 @@ class _Room implements RoomControlling {
     required void Function() ensureActive,
   }) async {
     ensureActive();
+    if (targetError case final error?) throw error;
     if (!targetStarted.isCompleted) targetStarted.complete();
     await targetGate?.future;
   }

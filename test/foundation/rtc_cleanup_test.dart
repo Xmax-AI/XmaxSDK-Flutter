@@ -103,7 +103,8 @@ class _Platform implements RtcPlatform {
   }
 }
 
-class _Engine implements RtcEngine {
+class _Engine implements RtcEngineEx {
+  final handlers = <RtcEngineEventHandler>{};
   final joinStarted = Completer<void>();
   bool failLeave = false;
   bool failUnregister = false;
@@ -113,17 +114,27 @@ class _Engine implements RtcEngine {
     if (call.memberName == #unregisterEventHandler && failUnregister) {
       throw StateError('handler removal failed');
     }
-    if (call.memberName == #registerEventHandler ||
-        call.memberName == #unregisterEventHandler) {
+    if (call.memberName == #registerEventHandler) {
+      handlers.add(call.positionalArguments.single as RtcEngineEventHandler);
       return null;
     }
-    if (call.memberName == #joinChannelWithUserAccount) {
+    if (call.memberName == #unregisterEventHandler) {
+      handlers.remove(call.positionalArguments.single);
+      return null;
+    }
+    if (call.memberName == #joinChannelWithUserAccountEx) {
       if (!joinStarted.isCompleted) joinStarted.complete();
       return Future<void>.value();
     }
-    if (call.memberName == #leaveChannel) {
+    if (call.memberName == #leaveChannelWithUserAccountEx) {
       leaveCount++;
       if (failLeave) return Future<void>.error(StateError('leave failed'));
+      for (final handler in handlers.toList()) {
+        handler.onLeaveChannel?.call(
+          const RtcConnection(channelId: 'room'),
+          const RtcStats(),
+        );
+      }
     }
     return Future<void>.value();
   }

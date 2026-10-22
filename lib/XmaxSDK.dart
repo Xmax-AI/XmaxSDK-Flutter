@@ -13,6 +13,8 @@ library;
 
 export 'src/core/realtime/RealtimeConfiguration.dart';
 export 'src/core/realtime/RealtimeModel.dart';
+export 'src/core/realtime/RealtimeCameraPreset.dart';
+export 'src/core/realtime/RealtimeQualityLevel.dart';
 export 'src/core/realtime/RealtimeMediaSource.dart';
 export 'src/foundation/rtc/VideoStatistics.dart';
 export 'src/core/realtime/XmaxRealtimeManaging.dart';

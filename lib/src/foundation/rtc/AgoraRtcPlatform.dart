@@ -22,7 +22,7 @@ final class AgoraRtcPlatform implements RtcPlatform {
 
   /// 当前使用的原生 RTC 引擎。
   @override
-  final RtcEngine engine;
+  final RtcEngineEx engine;
 
   /// 初始化 RTC 引擎并禁用本地采集，具体采集由媒体控制器显式启动。
   ///
@@ -32,7 +32,7 @@ final class AgoraRtcPlatform implements RtcPlatform {
   static Future<RtcPlatform> create(
     String appID,
   ) async {
-    final engine = createAgoraRtcEngine();
+    final engine = createAgoraRtcEngineEx();
 
     try {
       await engine.initialize(

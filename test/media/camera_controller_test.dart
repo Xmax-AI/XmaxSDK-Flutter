@@ -18,6 +18,41 @@ import 'package:xmax_sdk/src/core/realtime/RealtimeMediaSource.dart';
 
 void main() {
   test(
+    'format updates retain the track and render binding without restarting capture',
+    () async {
+      final rtc = _FakeRtc();
+      final camera = CameraController(
+        rtcManager: rtc,
+        permissionManager: const _AllowedPermissions(),
+      );
+      final initial = RealtimeModel.x2_1.defaultCameraVideoFormat;
+      final stream = await camera.createLocalCameraStream(
+        videoFormat: initial,
+        position: CameraPosition.front,
+      );
+      final track = stream.videoTrack!;
+      final handle = VideoRenderRegistry.handleFor(track);
+      final target = initial.resized(width: 1408, height: 1408);
+      await camera.updateVideoFormat(target);
+      expect(camera.currentTrack, same(track));
+      expect(track.videoFormat, target);
+      expect(VideoRenderRegistry.handleFor(track), same(handle));
+      expect(rtc.captureStarts, 1);
+      expect(rtc.captureStops, 0);
+      expect(rtc.lastCaptureSize, const Size(1408, 1408));
+      rtc.formatError = StateError('native configuration rejected');
+      await expectLater(camera.updateVideoFormat(initial), throwsStateError);
+      expect(track.videoFormat, target);
+      await expectLater(
+        camera.updateVideoFormat(initial.resized(width: 800, height: 800)),
+        throwsA(isA<XmaxError>()),
+      );
+      expect(track.videoFormat, target);
+      await camera.stopLocalCameraStream();
+    },
+  );
+
+  test(
     'capture stop failure still destroys engine and clears source ownership',
     () async {
       final rtc = _FakeRtc();
@@ -174,9 +209,9 @@ void main() {
     final camera = CameraController(
       rtcManager: rtc,
       permissionManager: const _AllowedPermissions(),
-      mediaService: MediaService(model: RealtimeModel.x2_1_1_preview_us),
+      mediaService: MediaService(model: RealtimeModel.x2_1),
     );
-    final format = RealtimeModel.x2_1_1_preview_us.defaultCameraVideoFormat;
+    final format = RealtimeModel.x2_1.defaultCameraVideoFormat;
 
     final stream = await camera.createLocalCameraStream(
       videoFormat: format,
@@ -184,7 +219,7 @@ void main() {
     );
 
     expect(stream.videoTrack?.videoFormat, format);
-    expect(rtc.lastCaptureSize, const Size(1024, 1920));
+    expect(rtc.lastCaptureSize, const Size(1080, 1920));
     expect(rtc.lastCaptureFrameRate, 30);
     await camera.stopLocalCameraStream();
   });
@@ -194,7 +229,7 @@ void main() {
     final camera = CameraController(
       rtcManager: rtc,
       permissionManager: const _AllowedPermissions(),
-      mediaService: MediaService(model: RealtimeModel.x2_1_1_preview_us),
+      mediaService: MediaService(model: RealtimeModel.x2_1),
     );
 
     await expectLater(
@@ -276,7 +311,7 @@ final class _IdentityMediaService implements MediaServicing {
   const _IdentityMediaService();
 
   @override
-  RealtimeModel get model => RealtimeModel.x2_1_1_preview_cn;
+  RealtimeModel get model => RealtimeModel.x2_1;
 
   @override
   Size resolveMediaSize(Size size, {required RealtimeMediaSource source}) =>
@@ -289,7 +324,7 @@ final class _ResizingMediaService implements MediaServicing {
   const _ResizingMediaService();
 
   @override
-  RealtimeModel get model => RealtimeModel.x2_1_1_preview_cn;
+  RealtimeModel get model => RealtimeModel.x2_1;
 
   @override
   Size resolveMediaSize(Size size, {required RealtimeMediaSource source}) =>
@@ -299,6 +334,21 @@ final class _ResizingMediaService implements MediaServicing {
 }
 
 final class _FakeRtc implements RtcManaging {
+  int captureStarts = 0;
+  int captureStops = 0;
+  Object? formatError;
+
+  @override
+  Future<void> updateVideoCapture({
+    required int width,
+    required int height,
+    required int frameRate,
+  }) async {
+    if (formatError case final error?) throw error;
+    lastCaptureSize = Size(width.toDouble(), height.toDouble());
+    lastCaptureFrameRate = frameRate;
+  }
+
   Object? stopError;
   Object? destroyError;
   int destroyCount = 0;
@@ -356,12 +406,14 @@ final class _FakeRtc implements RtcManaging {
     required int height,
     required int frameRate,
   }) async {
+    captureStarts++;
     lastCaptureSize = Size(width.toDouble(), height.toDouble());
     lastCaptureFrameRate = frameRate;
   }
 
   @override
   Future<void> stopVideoCapture() async {
+    captureStops++;
     if (stopError case final error?) throw error;
   }
 

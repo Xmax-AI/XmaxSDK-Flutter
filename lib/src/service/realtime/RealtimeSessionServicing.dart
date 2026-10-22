@@ -16,7 +16,7 @@ abstract interface class RealtimeSessionServicing {
 
   /// 为指定模型创建云端实时会话，并校验完整 RTC 连接凭证。
   ///
-  /// - [model]：实时模型；用于确定会话路由及媒体规格约束。
+  /// - [model]：实时生成模型，决定可用的媒体规格。
   ///
   /// 返回解析后的云端实时会话。
   Future<RealtimeSession> createSession({

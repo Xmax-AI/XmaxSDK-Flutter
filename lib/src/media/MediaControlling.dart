@@ -58,6 +58,13 @@ abstract interface class MediaControlling implements InteractionControlling {
   /// 返回切换后的本地摄像头媒体流。
   Future<RealtimeMediaStream> switchCamera();
 
+  /// 原地更新摄像头规格，保留本地轨道与预览绑定。
+  ///
+  /// - [videoFormat]：符合当前模型约束的采集规格。
+  Future<void> updateCameraFormat(
+    RealtimeVideoFormat videoFormat,
+  );
+
   /// 校验并设置本地媒体音量；摄像头没有音频播放器，合法设置不改变默认读取值 0.45。
   ///
   /// - [volume]：0～1 范围内的有限音量值。

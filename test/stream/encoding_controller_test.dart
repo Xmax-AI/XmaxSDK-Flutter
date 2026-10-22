@@ -5,6 +5,32 @@ import 'package:xmax_sdk/src/stream/encoding/EncodingController.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  test(
+    'explicit zero minimum disables the floor and default minimum respects a low maximum',
+    () async {
+      final rtc = _Rtc();
+      final encoder = EncodingController(rtcManager: rtc);
+      await encoder.configure(
+        const RealtimeVideoFormat(
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          minimumBitrate: 0,
+          maximumBitrate: 3000,
+        ),
+      );
+      expect(rtc.configuration!.minimumBitrate, 0);
+      await encoder.configure(
+        const RealtimeVideoFormat(
+          width: 1080,
+          height: 1920,
+          fps: 30,
+          maximumBitrate: 300,
+        ),
+      );
+      expect(rtc.configuration!.minimumBitrate, 300);
+    },
+  );
   test('default video budgets match the transport reference values', () async {
     final rtc = _Rtc(), encoder = EncodingController(rtcManager: _Rtc());
     final controller = EncodingController(rtcManager: rtc);
@@ -22,7 +48,11 @@ void main() {
       await controller.configure(
         RealtimeVideoFormat(width: width, height: height, fps: fps),
       );
-      expect(rtc.configuration!.minimumBitrate, 100);
+      expect(rtc.configuration!.minimumBitrate, maximum < 500 ? maximum : 500);
+      expect(
+        rtc.configuration!.encoderPreference,
+        RealtimeVideoEncoderPreference.maintainFramerate,
+      );
       expect(
         rtc.configuration!.maximumBitrate,
         maximum,
@@ -71,7 +101,7 @@ void main() {
     );
     expect(
       (rtc.configuration!.minimumBitrate, rtc.configuration!.maximumBitrate),
-      (100, 4000),
+      (500, 4000),
     );
     await encoder.configure(
       const RealtimeVideoFormat(

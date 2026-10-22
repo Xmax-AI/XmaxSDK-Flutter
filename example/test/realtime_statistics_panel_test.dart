@@ -7,6 +7,58 @@ import 'package:xmax_sdk_example/features/realtime/realtime_statistics_panel.dar
 import 'package:xmax_sdk_example/localization/xlab_localization.dart';
 
 void main() {
+  for (final enabled in [false, true]) {
+    testWidgets(
+      'quality controls dispatch only while available (enabled=$enabled)',
+      (tester) async {
+        SharedPreferencesAsyncPlatform.instance =
+            InMemorySharedPreferencesAsync.withData({});
+        addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+        await XLabLocalization.shared.setLanguage(XLabLanguage.english);
+        RealtimeQualityLevel? selected;
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: RealtimeStatisticsPanel(
+                uplinkLevel: RealtimeQualityLevel.l2,
+                downlinkLevel: RealtimeQualityLevel.l3,
+                canAdjustQuality: enabled,
+                onUplinkLevelChanged: (value) => selected = value,
+              ),
+            ),
+          ),
+        );
+        await tester.tap(find.text('L1').first);
+        expect(selected, enabled ? RealtimeQualityLevel.l1 : isNull);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  testWidgets(
+    'quality changes are disabled while a previous change is pending',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData({});
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await XLabLocalization.shared.setLanguage(XLabLanguage.english);
+      var changes = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: RealtimeStatisticsPanel(
+              canAdjustQuality: true,
+              isAdjustingQuality: true,
+              onUplinkLevelChanged: (_) => changes++,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('L1').first);
+      expect(changes, 0);
+    },
+  );
+
   testWidgets(
     'statistics display SDK values and localized empty placeholders',
     (tester) async {

@@ -7,7 +7,8 @@ void main() {
   for (final model in RealtimeModel.values) {
     final service = MediaService(model: model);
     test('${model.value} camera accepts only exact buckets', () {
-      for (final size in const [Size(1024, 1920), Size(1920, 1024)]) {
+      for (final preset in RealtimeCameraPreset.values) {
+        final size = preset.size;
         expect(
           service.resolveMediaSize(size, source: RealtimeMediaSource.camera),
           size,
@@ -15,7 +16,7 @@ void main() {
       }
       for (final size in const [
         Size(832, 1472),
-        Size(1920, 1080),
+        Size(1024, 1920),
         Size(1024, 1919.9),
         Size(double.nan, 1920),
       ]) {
@@ -31,11 +32,11 @@ void main() {
     test('${model.value} separates generation canvas from media size', () {
       expect(
         service.resolveGenerationSize(const Size(300, 500)),
-        const Size(1024, 1920),
+        const Size(1080, 1920),
       );
       expect(
         service.resolveGenerationSize(const Size(500, 300)),
-        const Size(1920, 1024),
+        const Size(1920, 1080),
       );
       expect(
         () => service.resolveGenerationSize(const Size(0, 300)),

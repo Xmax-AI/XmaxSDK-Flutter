@@ -7,6 +7,7 @@ import 'package:xmax_sdk/xmax_sdk.dart';
 
 import '../../localization/xlab_localization.dart';
 import 'realtime_control_panel.dart';
+import 'realtime_camera_action_bar.dart';
 import 'realtime_camera_switch_transition.dart';
 import 'realtime_loading_overlay.dart';
 import 'realtime_statistics_panel.dart';
@@ -27,7 +28,7 @@ class RealtimePage extends StatefulWidget {
   const RealtimePage({
     required this.apiKey,
     this.environment = XmaxEnvironment.china,
-    this.model = RealtimeModel.x2_1_1_preview_cn,
+    this.model = RealtimeModel.x2_1,
     this.customTrajectory = false,
     this.localInput,
     super.key,
@@ -62,6 +63,12 @@ class _RealtimePageState extends State<RealtimePage>
   DownlinkVideoStatistics? _downlinkStatistics;
   RealtimeNetworkQuality? _networkQuality;
   bool _isStatisticsVisible = false;
+  RealtimeQualityLevel? _uplinkLevel;
+  RealtimeQualityLevel? _downlinkLevel;
+  bool _isAdjustingQuality = false;
+  String? _qualityError;
+  int _qualityReadVersion = 0;
+  bool _isUpdatingCameraFormat = false;
   late XLabRealtimePanelMode _panelMode;
   XLabRealtimeReference? _selectedReference;
   XLabRealtimeReference? _promptReference;
@@ -158,20 +165,24 @@ class _RealtimePageState extends State<RealtimePage>
     _manager.setUplinkVideoStatisticsListener((statistics) {
       if (mounted && !_isSuspendedForBackground) {
         setState(() => _uplinkStatistics = statistics);
+        unawaited(_refreshQualityLevels());
       }
     });
     _manager.setDownlinkVideoStatisticsListener((statistics) {
       if (mounted && !_isSuspendedForBackground) {
         setState(() => _downlinkStatistics = statistics);
+        unawaited(_refreshQualityLevels());
       }
     });
     _manager.setNetworkQualityListener((quality) {
       if (mounted && !_isSuspendedForBackground) {
         setState(() => _networkQuality = quality);
+        unawaited(_refreshQualityLevels());
       }
     });
     _manager.setStateListener((state) {
       if (!mounted || _isSuspendedForBackground) return;
+      unawaited(_refreshQualityLevels());
       setState(() {
         _state = state;
         if (state.connectionState == RealtimeConnectionState.ready ||
@@ -231,6 +242,107 @@ class _RealtimePageState extends State<RealtimePage>
       if (_isCurrentRealtimeOperation(operation)) {
         setState(() => _busy = false);
       }
+    }
+  }
+
+  Future<void> _refreshQualityLevels() async {
+    final version = ++_qualityReadVersion;
+    final uplink = await _manager.uplinkQualityLevel;
+    final downlink = await _manager.downlinkQualityLevel;
+    if (!mounted ||
+        _isSuspendedForBackground ||
+        version != _qualityReadVersion) {
+      return;
+    }
+    setState(() {
+      _uplinkLevel = uplink;
+      _downlinkLevel = downlink;
+    });
+  }
+
+  Future<void> _setQualityLevel(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+  }) async {
+    if (_isAdjustingQuality ||
+        _state.connectionState != RealtimeConnectionState.generating) {
+      return;
+    }
+    setState(() {
+      _isAdjustingQuality = true;
+      _qualityError = null;
+    });
+    try {
+      if (downlink) {
+        await _manager.setDownlinkQualityLevel(level);
+      } else {
+        await _manager.setUplinkQualityLevel(level);
+      }
+      await _refreshQualityLevels();
+    } catch (error) {
+      if (mounted &&
+          _state.connectionState == RealtimeConnectionState.generating) {
+        setState(() => _qualityError = XmaxError.from(error).message);
+      }
+    } finally {
+      if (mounted) setState(() => _isAdjustingQuality = false);
+    }
+  }
+
+  Future<void> _selectCameraFormat() async {
+    if (_busy ||
+        !_cameraReady ||
+        _isUpdatingCameraFormat ||
+        _state.connectionState != RealtimeConnectionState.ready) {
+      return;
+    }
+    final operation = _realtimeOperationVersion;
+    setState(() => _isUpdatingCameraFormat = true);
+    try {
+      final current = await _manager.currentCameraVideoFormat;
+      if (!mounted) return;
+      final t = XLabLocalization.shared.text;
+      final selected = await showModalBottomSheet<RealtimeVideoFormat>(
+        context: context,
+        builder: (context) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(title: Text(t('realtime.selectCameraFormat'))),
+              for (final format in widget.model.supportedVideoFormats)
+                ListTile(
+                  title: Text('${format.width} × ${format.height}'),
+                  trailing:
+                      current?.width == format.width &&
+                          current?.height == format.height
+                      ? const Icon(Icons.check, color: Color(0xFF007AFF))
+                      : null,
+                  onTap: () => Navigator.pop(context, format),
+                ),
+              ListTile(
+                title: Text(t('realtime.cancelFormat')),
+                onTap: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (selected == null ||
+          !mounted ||
+          _isSuspendedForBackground ||
+          operation != _realtimeOperationVersion) {
+        return;
+      }
+      await _manager.updateCameraFormat(
+        videoFormat:
+            current?.resized(width: selected.width, height: selected.height) ??
+            selected,
+      );
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted && !_isSuspendedForBackground) _showError(error);
+    } finally {
+      if (mounted) setState(() => _isUpdatingCameraFormat = false);
     }
   }
 
@@ -735,6 +847,17 @@ class _RealtimePageState extends State<RealtimePage>
                               uplink: _uplinkStatistics,
                               downlink: _downlinkStatistics,
                               networkQuality: _networkQuality,
+                              uplinkLevel: _uplinkLevel,
+                              downlinkLevel: _downlinkLevel,
+                              canAdjustQuality:
+                                  _state.connectionState ==
+                                  RealtimeConnectionState.generating,
+                              isAdjustingQuality: _isAdjustingQuality,
+                              qualityError: _qualityError,
+                              onUplinkLevelChanged: (level) =>
+                                  _setQualityLevel(level, downlink: false),
+                              onDownlinkLevelChanged: (level) =>
+                                  _setQualityLevel(level, downlink: true),
                             ),
                           ),
                         ),
@@ -746,7 +869,7 @@ class _RealtimePageState extends State<RealtimePage>
                 mode: _panelMode,
                 generating: generating,
                 busy: _busy,
-                enabled: _cameraReady,
+                enabled: _cameraReady && !_isUpdatingCameraFormat,
                 promptController: _promptController,
                 referencesByCategory: _referencesByCategory,
                 selectedReference: _selectedReference,
@@ -795,29 +918,26 @@ class _RealtimePageState extends State<RealtimePage>
                 ),
                 if (widget.localInput == null)
                   Positioned(
-                    right: 72,
-                    top: 10,
-                    child: IconButton(
-                      tooltip: XLabLocalization.shared.text('statistics.title'),
-                      onPressed: () => setState(
-                        () => _isStatisticsVisible = !_isStatisticsVisible,
-                      ),
-                      icon: Icon(
-                        Icons.bar_chart_rounded,
-                        size: 24,
-                        color: _isStatisticsVisible
-                            ? const Color(0xFFB9F5CB)
-                            : Colors.white,
-                      ),
-                    ),
-                  ),
-                if (widget.localInput == null)
-                  Positioned(
                     right: 8,
                     top: 6,
-                    child: _CameraActionButton(
-                      enabled: !_busy && _localStream != null,
-                      onPressed: _switchCamera,
+                    child: RealtimeCameraActionBar(
+                      cameraEnabled:
+                          !_busy &&
+                          !_isUpdatingCameraFormat &&
+                          _localStream != null,
+                      onSelectFormat:
+                          !_busy &&
+                              _cameraReady &&
+                              !_isUpdatingCameraFormat &&
+                              _state.connectionState ==
+                                  RealtimeConnectionState.ready
+                          ? _selectCameraFormat
+                          : null,
+                      statisticsVisible: _isStatisticsVisible,
+                      onSwitchCamera: _switchCamera,
+                      onToggleStatistics: () => setState(
+                        () => _isStatisticsVisible = !_isStatisticsVisible,
+                      ),
                     ),
                   ),
               ],
@@ -854,60 +974,4 @@ class _RealtimePageState extends State<RealtimePage>
       ),
     );
   }
-}
-
-final class _CameraActionButton extends StatelessWidget {
-  const _CameraActionButton({required this.enabled, required this.onPressed});
-
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-    width: 58,
-    height: 62,
-    child: Tooltip(
-      message: XLabLocalization.shared.text('realtime.flipCamera'),
-      child: InkResponse(
-        onTap: enabled ? onPressed : null,
-        radius: 29,
-        child: Opacity(
-          opacity: enabled ? 1 : 0.45,
-          child: Column(
-            children: <Widget>[
-              const SizedBox(height: 9),
-              const Icon(
-                Icons.sync_rounded,
-                color: Colors.white,
-                size: 22,
-                shadows: <Shadow>[
-                  Shadow(
-                    color: Colors.black54,
-                    blurRadius: 2,
-                    offset: Offset(0, 1),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 5),
-              Text(
-                XLabLocalization.shared.text('realtime.flip'),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  shadows: <Shadow>[
-                    Shadow(
-                      color: Colors.black54,
-                      blurRadius: 2,
-                      offset: Offset(0, 1),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
 }

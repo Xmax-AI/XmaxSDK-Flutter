@@ -232,6 +232,26 @@ final class MediaController implements MediaControlling {
     }
   }
 
+  /// 原地更新摄像头规格，并与其他本地媒体操作互斥。
+  ///
+  /// - [videoFormat]：符合当前模型约束的采集规格。
+  @override
+  Future<void> updateCameraFormat(
+    RealtimeVideoFormat videoFormat,
+  ) async {
+    _ensureNoOperation();
+    _operationInProgress = true;
+
+    final completion = _operationCompletion = Completer<void>();
+
+    try {
+      await _cameraController.updateVideoFormat(videoFormat);
+    } finally {
+      _operationInProgress = false;
+      completion.complete();
+    }
+  }
+
   /// 校验并设置本地媒体音量；摄像头没有音频播放器，合法设置不改变默认读取值 0.45。
   ///
   /// - [volume]：0～1 范围内的有限音量值。

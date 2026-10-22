@@ -8,9 +8,11 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import 'QualityConfiguration.dart';
 
 /// 上下行档位准备、候选决策、结果提交和质量通知接口。
 abstract interface class QualityControlling {
@@ -18,28 +20,22 @@ abstract interface class QualityControlling {
   /// 读取模型的有效档位历史，准备独立上下行策略并应用初始传输规格。
   ///
   /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [model]：实时模型；用于确定会话路由及媒体规格约束。
+  /// - [model]：用于隔离档位历史的模型标识。
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
   });
 
-  /// 当前上行档位的视频规格；质量策略尚未准备时为空。
-  RealtimeVideoFormat? get uplinkFormat;
-
-  /// 不随网络调档改变的媒体尺寸、帧率和编码配置。
-  RealtimeVideoFormat? get baseline;
-
-  /// 当前下行质量档位，范围为 1～5；默认值为 2。
-  int get downlinkLevel;
+  /// 当前连接的媒体基准和成功应用的上下行档位。
+  QualityConfiguration? get qualityConfiguration;
 
   /// 依据连续网络样本和冷却期提出独立的上行、下行候选档位。
   ///
   /// - [quality]：同一次采样得到的上下行网络质量。
   /// - [now]：当前单调时钟时间，单位为秒。
   ///
-  /// 按上行、下行顺序返回候选档位；null 表示该方向保持不变。
-  (int?, int?) proposeQuality(
+  /// 返回上下行候选档位；空值表示该方向保持不变。
+  QualityChange proposeQuality(
     RealtimeNetworkQuality quality,
     double now,
   );
@@ -51,7 +47,7 @@ abstract interface class QualityControlling {
   /// - [success]：目标档位是否已成功应用。
   /// - [now]：当前单调时钟时间，单位为秒。
   Future<void> completeQuality(
-    int level, {
+    RealtimeQualityLevel level, {
     required bool downlink,
     required bool success,
     required double now,
