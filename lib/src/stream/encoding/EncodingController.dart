@@ -16,21 +16,22 @@ import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'EncodingBitratePolicy.dart';
 import 'EncodingControlling.dart';
 
-/// 将传输规格及其码率预算应用到当前 RTC 编码器。
+/// Applies RTC encoding settings for a realtime video format.
 final class EncodingController implements EncodingControlling {
 
-  /// 创建视频编码配置控制器。
+  /// Creates a video encoding controller.
   const EncodingController({
     required RtcManaging rtcManager,
   }) : _rtcManager = rtcManager;
 
-  /// RTC 采集、房间及传输操作入口。
+  /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// 按视频规格解析码率预算，并提交 RTC 编码配置。
-  /// 未指定最低码率时使用 500 kbps，但不超过当前规格的最高码率。
+  /// Resolves the format's bitrate budget and applies RTC encoding settings.
+  /// An unspecified minimum defaults to 500 kbps, capped at the format's maximum bitrate.
   ///
-  /// - [format]：目标视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [format]: The target video dimensions, frame rate, and encoding settings.
   @override
   Future<void> configure(
     RealtimeVideoFormat format,

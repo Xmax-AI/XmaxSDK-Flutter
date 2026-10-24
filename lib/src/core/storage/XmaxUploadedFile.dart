@@ -8,50 +8,62 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 文件上传结果，包含访问地址、对象键和可用的 ETag。
+/// A stored object's access URL, key, and optional ETag.
 final class XmaxUploadedFile {
 
-  /// 创建文件上传结果。
+  /// Creates a file upload result.
   const XmaxUploadedFile._({
     required this.url,
     required this.objectKey,
     this.etag,
   });
 
-  /// 上传对象的访问地址。
+  /// The uploaded object's access URL.
   final Uri url;
 
-  /// 对象在存储桶内的完整键，不是本地文件路径。
+  /// The full object key within the bucket, not a local file path.
   final String objectKey;
 
-  /// 对象存储返回的 ETag；服务未返回时为空。
+  /// The ETag returned by storage, or null when not provided.
   final String? etag;
 
-  /// 与 [other] 比较类型及 [url]、[objectKey]、[etag] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is XmaxUploadedFile &&
           url == other.url &&
           objectKey == other.objectKey &&
           etag == other.etag;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(url, objectKey, etag);
+  int get hashCode => Object.hash(
+    url,
+    objectKey,
+    etag,
+  );
 }
 
-/// 将对象访问地址、对象键及 ETag 封装为上传结果。
+/// Creates an upload result from an object URL, key, and ETag.
 ///
-/// - [url]：上传对象的访问地址。
-/// - [objectKey]：对象在存储桶内的完整键，不是本地文件路径。
-/// - [etag]：对象存储返回的 ETag；服务未返回时为空。
+/// Parameters:
+/// - [url]: The uploaded object's access URL.
+/// - [objectKey]: The full object key within the bucket, not a local file path.
+/// - [etag]: The ETag returned by storage, or null when not provided.
 ///
-/// 返回对象访问地址、对象键和可用的 ETag。
+/// Returns the object URL, key, and ETag when provided by storage.
 XmaxUploadedFile createXmaxUploadedFile({
   required Uri url,
   required String objectKey,
   String? etag,
-}) => XmaxUploadedFile._(url: url, objectKey: objectKey, etag: etag);
+}) => XmaxUploadedFile._(
+  url: url,
+  objectKey: objectKey,
+  etag: etag,
+);

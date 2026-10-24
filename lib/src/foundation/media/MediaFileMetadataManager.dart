@@ -12,31 +12,37 @@ import 'package:flutter/services.dart';
 
 import '../storage/StorageModels.dart';
 
-/// 读取媒体文件的像素尺寸；读取失败时返回占位文本，不阻断文件上传。
+/// Reads media pixel dimensions, returning a placeholder on failure without blocking uploads.
 final class MediaFileMetadataManager {
 
-  /// 创建媒体尺寸读取入口。
+  /// Creates a media dimension reader.
   const MediaFileMetadataManager();
 
-  /// 与原生平台通信的方法通道。
+  /// The method channel for communication with the native platform.
   static const _channel = MethodChannel('ai.xmax.sdk/media');
 
-  /// 读取图片或视频的宽高文本；无法读取时返回 --。
+  /// Reads image or video dimensions as text; returns -- when unavailable.
   ///
-  /// - [source]：待处理媒体或上传数据的来源。
-  /// - [isVideo]：是否按视频文件读取媒体信息。
+  /// Parameters:
+  /// - [source]: The media or upload data source to inspect.
+  /// - [isVideo]: Whether to read metadata as a video file.
   ///
-  /// 返回“宽 × 高”的像素尺寸文本；内存视频或两秒内无法完成读取时返回 --。
+  /// Returns pixel dimensions as width × height, or -- for in-memory video or a read exceeding two
+  /// seconds.
   Future<String> readResolution(
     StorageUploadSource source, {
     required bool isVideo,
   }) async {
-    // 内存视频不为日志额外创建临时文件；本地视频读取旋转后的显示尺寸。
-    if (isVideo && source is StorageDataUploadSource) return '--';
+    // Avoid temporary files for in-memory video diagnostics; use rotated display dimensions for local video.
+    if (isVideo && source is StorageDataUploadSource) {
+      return '--';
+    }
 
     try {
       final result = await _channel
-          .invokeMapMethod<String, dynamic>('readResolution', <String, Object>{
+          .invokeMapMethod<String, dynamic>(
+            'readResolution',
+            <String, Object>{
             'mediaType': isVideo ? 'video' : 'image',
             ...switch (source) {
               StorageDataUploadSource(:final data) => {'data': data},
@@ -44,7 +50,8 @@ final class MediaFileMetadataManager {
                 'filePath': fileURL.toFilePath(),
               },
             },
-          })
+          },
+          )
           .timeout(const Duration(seconds: 2));
       final width = result?['width'];
       final height = result?['height'];
@@ -53,7 +60,7 @@ final class MediaFileMetadataManager {
         return '$width × $height';
       }
     } catch (_) {
-      // 媒体尺寸仅用于日志。插件缺失、文件损坏或读取超时，都不能阻止上传。
+      // Dimensions are diagnostic only; missing plugins, corrupt files, and timeouts must not block uploads.
     }
 
     return '--';

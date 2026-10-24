@@ -8,20 +8,20 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 摄像头的前后置位置。
+/// The position of a device camera.
 enum CameraPosition {
 
-  /// 前置摄像头。
+  /// The front-facing camera.
   front('front'),
 
-  /// 后置摄像头。
+  /// The rear-facing camera.
   back('back');
 
-  /// 定义摄像头位置标识。
+  /// Defines a camera position identifier.
   const CameraPosition(
     this.value,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 }

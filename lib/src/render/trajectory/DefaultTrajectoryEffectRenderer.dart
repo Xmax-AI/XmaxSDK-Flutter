@@ -15,39 +15,40 @@ import 'package:flutter/scheduler.dart';
 
 import 'TrajectoryEffectRendering.dart';
 
-/// SDK 默认轨迹效果，中心为白色线条，外层为绿色光晕。
+/// The default interaction trail renderer, with a white core and green glow.
 final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
     implements TrajectoryEffectRendering {
 
-  /// 每个渲染时间步的拖尾透明度保留系数。
+  /// The fraction of trail opacity retained per rendering time step.
   static const _fadeFactor = 0.93;
 
-  /// 触点结束后允许拖尾继续显示的渲染帧数。
+  /// The number of rendering frames for which a trail remains after input ends.
   static const _idleFadeFrameLimit = 48;
 
-  /// 活动轨迹保留的最大历史帧数。
+  /// The maximum number of historical frames retained for an active trail.
   static const _activeTrailFrameLimit = 66;
 
-  /// 按轨迹标识保存的当前轨迹状态。
+  /// Current trail states indexed by trail identifier.
   final Map<TrajectoryID, _Trajectory> _trajectories =
       <TrajectoryID, _Trajectory>{};
 
-  /// 驱动轨迹位置效果和拖尾消退的动画时钟。
+  /// The animation clock driving trail effects and fading.
   late final Ticker _animationTicker = Ticker(_tick);
 
-  /// 按 60 fps 时间基准计算的渲染帧序号。
+  /// The rendering frame index based on a 60 fps time base.
   int _frameIndex = 0;
 
-  /// 用于叠加显示当前轨迹效果的视图。
+  /// The overlay view displaying the current trail effects.
   @override
   Widget get view => CustomPaint(
     painter: _TrajectoryPainter(renderer: this),
     size: Size.infinite,
   );
 
-  /// 创建或替换指定触点的轨迹，并开始绘制效果。
+  /// Creates or replaces a pointer's trail and begins rendering its effects.
   ///
-  /// - [points]：本次采样的触点集合，顺序保持不变。
+  /// Parameters:
+  /// - [points]: The sampled interaction points, preserving their order.
   @override
   void renderBegan(
     List<TrajectoryPoint> points,
@@ -64,9 +65,10 @@ final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
     notifyListeners();
   }
 
-  /// 更新指定触点轨迹的位置；没有对应轨迹时创建。
+  /// Updates a pointer's trail position, creating the trail if it does not exist.
   ///
-  /// - [points]：本次采样的触点集合，顺序保持不变。
+  /// Parameters:
+  /// - [points]: The sampled interaction points, preserving their order.
   @override
   void renderMoved(
     List<TrajectoryPoint> points,
@@ -83,16 +85,20 @@ final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
         continue;
       }
 
-      trajectory.add(point.location, frameIndex: _frameIndex);
+      trajectory.add(
+        point.location,
+        frameIndex: _frameIndex,
+      );
     }
 
     _startAnimating();
     notifyListeners();
   }
 
-  /// 结束指定轨迹的输入，使其按渲染器策略消退。
+  /// Ends input for the specified trails, allowing them to fade according to the renderer policy.
   ///
-  /// - [identifiers]：需要结束渲染的轨迹标识集合。
+  /// Parameters:
+  /// - [identifiers]: The identifiers of trails whose input should end.
   @override
   void renderEnded(
     List<TrajectoryID> identifiers,
@@ -100,7 +106,9 @@ final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
     for (final id in identifiers) {
       final trajectory = _trajectories[id];
 
-      if (trajectory == null) continue;
+      if (trajectory == null) {
+        continue;
+      }
 
       if (trajectory.nodes.length < 2) {
         _trajectories.remove(id);
@@ -112,7 +120,7 @@ final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
     notifyListeners();
   }
 
-  /// 清除轨迹节点并停止刷新。
+  /// Clears trail nodes and stops rendering updates.
   @override
   void reset() {
     _trajectories.clear();
@@ -121,35 +129,39 @@ final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
     notifyListeners();
   }
 
-  /// 释放组件拥有的监听、动画和绘制资源。
+  /// Releases listeners, animation resources, and drawing resources owned by the component.
   @override
   void dispose() {
     _animationTicker.dispose();
     super.dispose();
   }
 
-  /// 仅在动画未运行时启动轨迹刷新。
+  /// Starts trail updates only if the animation is not running.
   void _startAnimating() {
     if (!_animationTicker.isActive) {
       _animationTicker.start();
     }
   }
 
-  /// 按实际经过时间推进轨迹消退并清理不可见节点。
+  /// Advances trail fading by elapsed time and removes invisible nodes.
   ///
-  /// - [elapsed]：当前动画或采样周期内已过去的时间。
+  /// Parameters:
+  /// - [elapsed]: The time elapsed in the current animation or sampling cycle.
   void _tick(
     Duration elapsed,
   ) {
-    // 以实际经过时间换算 60 fps 基准帧，保持不同刷新率设备的消退速度一致。
+    // Convert elapsed time to a 60 fps frame index for consistent fading across display refresh rates.
     _frameIndex = elapsed.inMicroseconds * 60 ~/ Duration.microsecondsPerSecond;
 
-    _trajectories.removeWhere((_, trajectory) {
+    _trajectories.removeWhere((
+      _,
+      trajectory,
+    ) {
       if (!trajectory.isActive) {
         return _frameIndex - trajectory.endFrame! > _idleFadeFrameLimit;
       }
 
-      // 额外保留一个前置节点，确保最早的可见线段仍能连续绘制。
+      // Retain one preceding node so the earliest visible segment remains continuous.
       while (trajectory.nodes.length > 2 &&
           _frameIndex - trajectory.nodes[1].frameIndex >
               _activeTrailFrameLimit) {
@@ -167,55 +179,67 @@ final class DefaultTrajectoryEffectRenderer extends ChangeNotifier
   }
 }
 
-/// 单条轨迹的位置节点、起止时间和消退状态。
+/// The position nodes, timing, and fading state for a single trail.
 final class _Trajectory {
 
-  /// 创建轨迹，并以初始位置建立首个拖尾节点。
+  /// Creates a trail with its first node at the initial position.
   ///
-  /// - [location]：首个节点的视图逻辑像素坐标。
-  /// - [startTime]：轨迹开始时间。
-  /// - [frameIndex]：按 60 fps 时间基准计算的帧序号。
+  /// Parameters:
+  /// - [location]: The first node's view coordinates, in logical pixels.
+  /// - [startTime]: The trail start time.
+  /// - [frameIndex]: The frame index based on a 60 fps time base.
   _Trajectory({
     required Offset location,
     required this.startTime,
     required int frameIndex,
   }) : nodes = <_TrailNode>[
-         _TrailNode(location: location, frameIndex: frameIndex),
+         _TrailNode(
+           location: location,
+           frameIndex: frameIndex,
+         ),
        ];
 
-  /// 轨迹开始采样的时间。
+  /// The time at which trail sampling began.
   final Duration startTime;
 
-  /// 按采样顺序保存的轨迹位置节点。
+  /// Trail position nodes in sampling order.
   final List<_TrailNode> nodes;
 
-  /// 当前轨迹是否仍接收触点输入。
+  /// Whether the trail still accepts pointer input.
   bool isActive = true;
 
-  /// 触点结束时的渲染帧；仍在输入时为空。
+  /// The rendering frame at which input ended; null while input remains active.
   int? endFrame;
 
-  /// 触点在视图内的逻辑像素坐标。
+  /// The pointer position within the view, in logical pixels.
   Offset get location => nodes.last.location;
 
-  /// 追加轨迹位置节点，同一渲染帧内更新最新位置。
+  /// Appends a trail node, updating the latest position for samples within the same rendering
+  /// frame.
   ///
-  /// - [location]：触点在视图内的逻辑像素坐标。
-  /// - [frameIndex]：按 60 fps 时间基准计算的渲染帧序号。
+  /// Parameters:
+  /// - [location]: The pointer position within the view, in logical pixels.
+  /// - [frameIndex]: The rendering frame index based on a 60 fps time base.
   void add(
     Offset location, {
     required int frameIndex,
   }) {
-    if ((location - this.location).distanceSquared < 0.25) return;
+    if ((location - this.location).distanceSquared < 0.25) {
+      return;
+    }
 
     isActive = true;
     endFrame = null;
-    nodes.add(_TrailNode(location: location, frameIndex: frameIndex));
+    nodes.add(_TrailNode(
+      location: location,
+      frameIndex: frameIndex,
+    ));
   }
 
-  /// 标记触点结束的渲染帧，后续仅显示逐步消退的拖尾。
+  /// Records the input end frame, leaving only the fading trail visible afterward.
   ///
-  /// - [frameIndex]：按 60 fps 时间基准计算的渲染帧序号。
+  /// Parameters:
+  /// - [frameIndex]: The rendering frame index based on a 60 fps time base.
   void finish({
     required int frameIndex,
   }) {
@@ -224,78 +248,93 @@ final class _Trajectory {
   }
 }
 
-/// 轨迹上的一个位置样本及其渲染帧序号。
+/// A trail position sample and its rendering frame index.
 final class _TrailNode {
 
-  /// 创建轨迹位置样本。
+  /// Creates a trail position sample.
   const _TrailNode({
     required this.location,
     required this.frameIndex,
   });
 
-  /// 触点在视图内的逻辑像素坐标。
+  /// The pointer position within the view, in logical pixels.
   final Offset location;
 
-  /// 按 60 fps 时间基准计算的渲染帧序号。
+  /// The rendering frame index based on a 60 fps time base.
   final int frameIndex;
 }
 
-/// 绘制轨迹核心、光晕和触点动画，并复用绘制资源。
+/// Draws trail cores, glows, and pointer animations using reusable drawing resources.
 final class _TrajectoryPainter extends CustomPainter {
 
-  /// 创建轨迹绘制器，并监听渲染器重绘通知。
+  /// Creates a trail painter that listens for renderer repaint notifications.
   ///
-  /// - [renderer]：提供轨迹状态和重绘通知的渲染器。
+  /// Parameters:
+  /// - [renderer]: The renderer providing trail state and repaint notifications.
   _TrajectoryPainter({
     required this.renderer,
   }) : super(repaint: renderer);
 
-  /// 轨迹核心的绘制颜色。
+  /// The trail core color.
   static const _coreColor = Colors.white;
 
-  /// 轨迹外层光晕的颜色。
+  /// The outer trail glow color.
   static const _glowColor = Color(0xFF00FF64);
 
-  /// 轨迹核心线宽，单位为逻辑像素。
+  /// The trail core width, in logical pixels.
   static const _coreWidth = 6.0;
 
-  /// 轨迹外层光晕宽度，单位为逻辑像素。
+  /// The outer glow width, in logical pixels.
   static const _glowWidth = 18.0;
 
-  /// 每个拖尾透明度分组覆盖的渲染帧数。
+  /// The number of rendering frames in each trail opacity group.
   static const _cohortFrameSpan = 6;
 
-  /// 按消退时段分组的轨迹路径缓存数量。
+  /// The number of cached trail paths grouped by fading interval.
   static const _cohortCount = 12;
 
-  /// 提供当前轨迹状态和重绘通知的渲染器。
+  /// The renderer providing current trail state and repaint notifications.
   final DefaultTrajectoryEffectRenderer renderer;
 
-  /// 按透明度时段复用的轨迹绘制路径。
-  final List<Path> _paths = List<Path>.generate(_cohortCount, (_) => Path());
+  /// Reusable trail paths grouped by opacity interval.
+  final List<Path> _paths = List<Path>.generate(
+    _cohortCount,
+    (
+      _,
+    ) => Path(),
+  );
 
-  /// 缓存路径当前对应的时间分组标识。
-  final List<int?> _cohortIDs = List<int?>.filled(_cohortCount, null);
+  /// The time-group identifiers associated with cached paths.
+  final List<int?> _cohortIDs = List<int?>.filled(
+    _cohortCount,
+    null,
+  );
 
-  /// 绘制轨迹外层光晕的画笔，可重复使用。
+  /// The reusable paint for outer trail glows.
   final Paint _outerGlowPaint = Paint()
     ..strokeWidth = _glowWidth
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round
     ..style = PaintingStyle.stroke
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12)
+    ..maskFilter = const MaskFilter.blur(
+      BlurStyle.normal,
+      12,
+    )
     ..blendMode = BlendMode.plus;
 
-  /// 绘制轨迹内层光晕的画笔，可重复使用。
+  /// The reusable paint for inner trail glows.
   final Paint _innerGlowPaint = Paint()
     ..strokeWidth = 10
     ..strokeCap = StrokeCap.round
     ..strokeJoin = StrokeJoin.round
     ..style = PaintingStyle.stroke
-    ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6)
+    ..maskFilter = const MaskFilter.blur(
+      BlurStyle.normal,
+      6,
+    )
     ..blendMode = BlendMode.plus;
 
-  /// 绘制轨迹中心线条的画笔，可重复使用。
+  /// The reusable paint for trail cores.
   final Paint _trailCorePaint = Paint()
     ..strokeWidth = _coreWidth
     ..strokeCap = StrokeCap.round
@@ -303,31 +342,32 @@ final class _TrajectoryPainter extends CustomPainter {
     ..style = PaintingStyle.stroke
     ..blendMode = BlendMode.plus;
 
-  /// 绘制触点动画的画笔，可重复使用。
+  /// The reusable paint for pointer animations.
   final Paint _effectPaint = Paint()..blendMode = BlendMode.plus;
 
-  /// 绘制触点扩散环的画笔，可重复使用。
+  /// The reusable paint for pointer ripple rings.
   final Paint _ringPaint = Paint()
     ..strokeWidth = 2
     ..style = PaintingStyle.stroke
     ..blendMode = BlendMode.plus;
 
-  /// 绘制触点中心的画笔，可重复使用。
+  /// The reusable paint for pointer centers.
   final Paint _headCorePaint = Paint()
     ..color = _coreColor
     ..blendMode = BlendMode.plus;
 
-  /// 在当前画布中绘制可见轨迹及触点效果。
+  /// Draws visible trails and pointer effects on the current canvas.
   ///
-  /// - [canvas]：用于绘制轨迹效果的画布。
-  /// - [size]：当前轨迹绘制区域的逻辑像素尺寸。
+  /// Parameters:
+  /// - [canvas]: The canvas on which to draw trail effects.
+  /// - [size]: The trail drawing area's dimensions, in logical pixels.
   @override
   void paint(
     Canvas canvas,
     Size size,
   ) {
-    // 每条线段在显示期间始终归入同一消退分组。
-    // 若不断切换分组，线段叠加处的亮度会变化，拖尾就会出现不自然的流动感。
+    // Keep each segment in the same fading group throughout its visible lifetime.
+    // Changing groups alters brightness at overlaps and creates an artificial flowing effect.
     for (var index = 0; index < _cohortCount; index += 1) {
       _paths[index].reset();
       _cohortIDs[index] = null;
@@ -339,10 +379,15 @@ final class _TrajectoryPainter extends CustomPainter {
         final end = trajectory.nodes[index];
         final age = renderer._frameIndex - end.frameIndex;
         final opacity = math
-            .pow(DefaultTrajectoryEffectRenderer._fadeFactor, age)
+            .pow(
+              DefaultTrajectoryEffectRenderer._fadeFactor,
+              age,
+            )
             .toDouble();
 
-        if (opacity < 0.01) continue;
+        if (opacity < 0.01) {
+          continue;
+        }
 
         final cohortID = end.frameIndex ~/ _cohortFrameSpan;
         final cohortSlot = cohortID % _cohortCount;
@@ -353,30 +398,47 @@ final class _TrajectoryPainter extends CustomPainter {
         }
 
         _paths[cohortSlot]
-          ..moveTo(start.location.dx, start.location.dy)
-          ..lineTo(end.location.dx, end.location.dy);
+          ..moveTo(
+            start.location.dx,
+            start.location.dy,
+          )
+          ..lineTo(
+            end.location.dx,
+            end.location.dy,
+          );
       }
     }
 
     for (var index = 0; index < _paths.length; index += 1) {
       final cohortID = _cohortIDs[index];
 
-      if (cohortID == null) continue;
+      if (cohortID == null) {
+        continue;
+      }
 
       final cohortMiddleFrame =
           cohortID * _cohortFrameSpan + (_cohortFrameSpan - 1) / 2;
       final age = math.max(0.0, renderer._frameIndex - cohortMiddleFrame);
       final opacity = math
-          .pow(DefaultTrajectoryEffectRenderer._fadeFactor, age)
+          .pow(
+            DefaultTrajectoryEffectRenderer._fadeFactor,
+            age,
+          )
           .toDouble();
 
-      _drawTrailPath(canvas, _paths[index], opacity: opacity);
+      _drawTrailPath(
+        canvas,
+        _paths[index],
+        opacity: opacity,
+      );
     }
 
     final now = Duration(microseconds: DateTime.now().microsecondsSinceEpoch);
 
     for (final trajectory in renderer._trajectories.values) {
-      if (!trajectory.isActive) continue;
+      if (!trajectory.isActive) {
+        continue;
+      }
 
       final elapsed = math.max(
         0.0,
@@ -384,57 +446,91 @@ final class _TrajectoryPainter extends CustomPainter {
             Duration.microsecondsPerSecond,
       );
 
-      _drawPulsingRings(canvas, trajectory.location, elapsed);
-      _drawOrbitParticles(canvas, trajectory.location, elapsed);
-      _drawHeadGlow(canvas, trajectory.location);
+      _drawPulsingRings(
+        canvas,
+        trajectory.location,
+        elapsed,
+      );
+      _drawOrbitParticles(
+        canvas,
+        trajectory.location,
+        elapsed,
+      );
+      _drawHeadGlow(
+        canvas,
+        trajectory.location,
+      );
     }
   }
 
-  /// 按指定透明度绘制路径核心和外层光晕。
+  /// Draws a path's core and outer glow at the specified opacity.
   ///
-  /// - [canvas]：用于绘制轨迹效果的画布。
-  /// - [path]：需要绘制的拖尾路径。
-  /// - [opacity]：0～1 范围内的不透明度。
+  /// Parameters:
+  /// - [canvas]: The canvas on which to draw trail effects.
+  /// - [path]: The trail path to draw.
+  /// - [opacity]: The opacity, from 0 to 1.
   void _drawTrailPath(
     Canvas canvas,
     Path path, {
     required double opacity,
   }) {
     _outerGlowPaint.color = _glowColor.withValues(alpha: 0.18 * opacity);
-    canvas.drawPath(path, _outerGlowPaint);
+    canvas.drawPath(
+      path,
+      _outerGlowPaint,
+    );
 
     _innerGlowPaint.color = _glowColor.withValues(alpha: 0.44 * opacity);
-    canvas.drawPath(path, _innerGlowPaint);
+    canvas.drawPath(
+      path,
+      _innerGlowPaint,
+    );
 
     _trailCorePaint.color = _coreColor.withValues(alpha: 0.72 * opacity);
-    canvas.drawPath(path, _trailCorePaint);
+    canvas.drawPath(
+      path,
+      _trailCorePaint,
+    );
   }
 
-  /// 绘制当前触点的核心和光晕。
+  /// Draws the current pointer's core and glow.
   ///
-  /// - [canvas]：用于绘制轨迹效果的画布。
-  /// - [point]：视图内的单个触点位置。
+  /// Parameters:
+  /// - [canvas]: The canvas on which to draw trail effects.
+  /// - [point]: A single interaction point within the view.
   void _drawHeadGlow(
     Canvas canvas,
     Offset point,
   ) {
     const glowRadius = 16.0;
-    final bounds = Rect.fromCircle(center: point, radius: glowRadius);
+    final bounds = Rect.fromCircle(
+      center: point,
+      radius: glowRadius,
+    );
 
     _effectPaint.shader = const RadialGradient(
       colors: <Color>[Color(0xC200FF64), Color(0x7400FF64), Color(0x0000FF64)],
       stops: <double>[0, 0.4, 1],
     ).createShader(bounds);
-    canvas.drawCircle(point, glowRadius, _effectPaint);
+    canvas.drawCircle(
+      point,
+      glowRadius,
+      _effectPaint,
+    );
     _headCorePaint.color = _coreColor.withValues(alpha: 0.88);
-    canvas.drawCircle(point, 5, _headCorePaint);
+    canvas.drawCircle(
+      point,
+      5,
+      _headCorePaint,
+    );
   }
 
-  /// 依据轨迹经过时间绘制扩散环。
+  /// Draws ripple rings using the trail's elapsed time.
   ///
-  /// - [canvas]：用于绘制轨迹效果的画布。
-  /// - [point]：视图内的单个触点位置。
-  /// - [elapsed]：当前动画或采样周期内已过去的时间。
+  /// Parameters:
+  /// - [canvas]: The canvas on which to draw trail effects.
+  /// - [point]: A single interaction point within the view.
+  /// - [elapsed]: The time elapsed in the current animation or sampling cycle.
   void _drawPulsingRings(
     Canvas canvas,
     Offset point,
@@ -449,15 +545,20 @@ final class _TrajectoryPainter extends CustomPainter {
       final alpha = 0.42 * (1 - indexValue * 0.2) * (0.5 + pulse * 0.5);
 
       _ringPaint.color = _glowColor.withValues(alpha: alpha);
-      canvas.drawCircle(point, radius, _ringPaint);
+      canvas.drawCircle(
+        point,
+        radius,
+        _ringPaint,
+      );
     }
   }
 
-  /// 依据轨迹经过时间绘制环绕触点的粒子。
+  /// Draws particles around the pointer using the trail's elapsed time.
   ///
-  /// - [canvas]：用于绘制轨迹效果的画布。
-  /// - [point]：视图内的单个触点位置。
-  /// - [elapsed]：当前动画或采样周期内已过去的时间。
+  /// Parameters:
+  /// - [canvas]: The canvas on which to draw trail effects.
+  /// - [point]: A single interaction point within the view.
+  /// - [elapsed]: The time elapsed in the current animation or sampling cycle.
   void _drawOrbitParticles(
     Canvas canvas,
     Offset point,
@@ -473,7 +574,10 @@ final class _TrajectoryPainter extends CustomPainter {
         point.dy + math.sin(angle) * 22,
       );
       final alpha = 0.5 * (0.6 + math.sin(elapsed * 3 + indexValue) * 0.4);
-      final bounds = Rect.fromCircle(center: center, radius: 6);
+      final bounds = Rect.fromCircle(
+        center: center,
+        radius: 6,
+      );
 
       _effectPaint.shader = RadialGradient(
         colors: <Color>[
@@ -483,15 +587,20 @@ final class _TrajectoryPainter extends CustomPainter {
         ],
         stops: const <double>[0, 0.4, 1],
       ).createShader(bounds);
-      canvas.drawCircle(center, 6, _effectPaint);
+      canvas.drawCircle(
+        center,
+        6,
+        _effectPaint,
+      );
     }
   }
 
-  /// 判断新旧绘制代理是否需要重绘。
+  /// Determines whether a change of painter requires repainting.
   ///
-  /// - [oldDelegate]：上一次绘制使用的代理。
+  /// Parameters:
+  /// - [oldDelegate]: The painter used for the previous paint operation.
   ///
-  /// 返回绘制代理是否需要更新当前画面。
+  /// Returns whether the painter needs to update the current image.
   @override
   bool shouldRepaint(
     covariant _TrajectoryPainter oldDelegate,

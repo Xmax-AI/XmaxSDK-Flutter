@@ -12,23 +12,26 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
 import 'RtcPlatform.dart';
 
-/// 声网平台资源。摄像头采集由 SDK 显式开启，麦克风始终关闭。
+/// The Agora platform resources; camera capture starts explicitly and microphone capture remains
+/// disabled.
 final class AgoraRtcPlatform implements RtcPlatform {
 
-  /// 绑定已创建的 RTC 引擎。
+  /// Wraps an existing RTC engine.
   AgoraRtcPlatform(
     this.engine,
   );
 
-  /// 当前使用的原生 RTC 引擎。
+  /// The native RTC engine in use.
   @override
   final RtcEngineEx engine;
 
-  /// 初始化 RTC 引擎并禁用本地采集，具体采集由媒体控制器显式启动。
+  /// Initializes the RTC engine with local capture disabled until explicitly started by media
+  /// control.
   ///
-  /// - [appID]：服务端约定的 RTC 应用标识。
+  /// Parameters:
+  /// - [appID]: The RTC application identifier expected by the server.
   ///
-  /// 返回已初始化且本地采集尚未开启的 RTC 平台资源。
+  /// Returns initialized platform resources with local capture disabled.
   static Future<RtcPlatform> create(
     String appID,
   ) async {
@@ -52,7 +55,7 @@ final class AgoraRtcPlatform implements RtcPlatform {
     }
   }
 
-  /// 关闭当前 RTC 资源，并使后续原生回调失效。
+  /// Releases RTC resources and invalidates subsequent native callbacks.
   @override
   Future<void> destroy() => engine.release();
 }

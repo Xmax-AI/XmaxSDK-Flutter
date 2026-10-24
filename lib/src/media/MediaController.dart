@@ -22,14 +22,16 @@ import 'interaction/InteractionController.dart';
 import 'interaction/InteractionFrame.dart';
 import 'MediaControlling.dart';
 
-/// 管理本地摄像头、媒体资源所有权和交互输入的生命周期。
+/// Coordinates local media ownership and the RTC engine lifecycle.
 final class MediaController implements MediaControlling {
 
-  /// 创建本地媒体控制器，并将触点采样连接到指定处理入口。
+  /// Creates a local media controller and connects interaction samples to their handler.
   ///
-  /// - [rtcManager]：采集和传输入口。
-  /// - [cameraController]：摄像头组件；默认基于同一 RTC 管理器创建。
-  /// - [interactionListener]：接收任务标识及归一化触点的处理函数。
+  /// Parameters:
+  /// - [rtcManager]: The capture and transport interface.
+  /// - [cameraController]: The camera controller; defaults to one using the same RTC manager.
+  /// - [interactionListener]: The handler receiving task identifiers and normalized interaction
+  ///   points.
   MediaController({
     required RtcManaging rtcManager,
     CameraController? cameraController,
@@ -41,49 +43,50 @@ final class MediaController implements MediaControlling {
          listener: interactionListener,
        );
 
-  /// RTC 采集、房间及传输操作入口。
+  /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// 摄像头轨道创建、预览就绪及切换组件。
+  /// The controller for camera track creation, preview readiness, and camera switching.
   final CameraController _cameraController;
 
-  /// 当前生成任务的触点采样和坐标处理组件。
+  /// The controller that samples and maps interactions for the generation task.
   final InteractionController _interactionController;
 
-  /// 当前是否已创建本地媒体流。
+  /// Whether a local media stream has been created.
   bool _hasActiveSource = false;
 
-  /// 是否正在执行不能并发的本地媒体操作。
+  /// Whether an exclusive local media operation is in progress.
   bool _operationInProgress = false;
 
-  /// 当前本地媒体操作结束时的通知。
+  /// The completion notification for the current local media operation.
   Completer<void>? _operationCompletion;
 
-  /// 正在进行的本地媒体停止任务。
+  /// The local media stop operation in progress.
   Future<void>? _stopFuture;
 
-  /// 当前有效的本地视频轨道；尚未创建或已停止时为空。
+  /// The active local video track; null before creation or after stopping.
   @override
   RealtimeVideoTrack? get currentTrack =>
       _hasActiveSource ? _cameraController.currentTrack : null;
 
-  /// 当前本地轨道的视频规格；尚未创建时为空。
+  /// The current local track's video format; null before creation.
   @override
   RealtimeVideoFormat? get currentVideoFormat => currentTrack?.videoFormat;
 
-  /// 本地媒体是否包含可播放音频；摄像头来源为 false。
+  /// Whether local media has playable audio; false for camera sources.
   @override
   bool get hasAudio => false;
 
-  // 没有本地文件播放器时，读取固定的预览音量。
+  // Without a local file player, report the fixed preview volume.
 
-  /// 本地媒体预览音量；摄像头没有音频播放器，固定为 0.45。
+  /// The local preview volume; fixed at 0.45 because camera sources have no audio player.
   @override
   Future<double> get localAudioVolume async => 0.45;
 
-  /// 设置本地摄像头首帧就绪的内部通知。
+  /// Sets the internal local camera first-frame callback.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setCameraPreviewReadyListener(
     RealtimeCameraPreviewReadyListener? listener,
@@ -91,9 +94,9 @@ final class MediaController implements MediaControlling {
     _cameraController.setPreviewReadyListener(listener);
   }
 
-  /// 创建本地摄像头流并开始预览，就绪后调用预览监听器。
+  /// Creates a local camera stream, starts preview, and notifies the listener when ready.
   ///
-  /// 详细说明见 [MediaControlling.createLocalCameraStream]。
+  /// See [MediaControlling.createLocalCameraStream] for the usage contract.
   @override
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
@@ -109,7 +112,7 @@ final class MediaController implements MediaControlling {
 
     _ensureNoOperation();
 
-    // 等待 RTC 初始化前先标记媒体操作已开始，防止重复创建。
+    // Acquire the media operation guard before awaiting RTC initialization to prevent duplicate creation.
     _operationInProgress = true;
 
     final completion = _operationCompletion = Completer<void>();
@@ -133,7 +136,8 @@ final class MediaController implements MediaControlling {
     }
   }
 
-  /// 停止本地摄像头流并释放采集资源；公开管理器仅允许在实时连接断开后调用。
+  /// Stops local camera capture and releases resources; the public manager requires a disconnected
+  /// session.
   @override
   Future<void> stopLocalCameraStream() async {
     if (!_hasActiveSource) {
@@ -143,15 +147,17 @@ final class MediaController implements MediaControlling {
     await _stopCurrentSource();
   }
 
-  /// 停止当前本地媒体来源并释放其 RTC 引擎使用权。
+  /// Stops the local media source and releases its ownership of the RTC engine.
   @override
   Future<void> stopLocalStream() => stopLocalCameraStream();
 
-  /// 共享正在进行的本地媒体停止操作。
+  /// Share an existing stop operation rather than starting duplicate cleanup.
   Future<void> _stopCurrentSource() {
     final active = _stopFuture;
 
-    if (active != null) return active;
+    if (active != null) {
+      return active;
+    }
 
     final future = _performStopCurrentSource();
 
@@ -160,9 +166,9 @@ final class MediaController implements MediaControlling {
     return future.whenComplete(() => _stopFuture = null);
   }
 
-  /// 等待当前媒体操作结束，再停止采集和释放资源。
+  /// Waits for the active media operation before stopping capture and releasing resources.
   Future<void> _performStopCurrentSource() async {
-    // 先等待正在进行的采集或切换操作完成，再释放共用的 RTC 引擎。
+    // Wait for capture or camera switching to finish before releasing the shared RTC engine.
     await _operationCompletion?.future;
     _operationInProgress = true;
 
@@ -170,7 +176,10 @@ final class MediaController implements MediaControlling {
       try {
         await _cameraController.stopLocalCameraStream();
       } catch (error) {
-        _logCleanupFailure('停止相机采集失败 (Failed to Stop Camera Capture)', error);
+        _logCleanupFailure(
+          '停止相机采集失败 (Failed to Stop Camera Capture)',
+          error,
+        );
       }
 
       await _releaseEngine();
@@ -180,19 +189,23 @@ final class MediaController implements MediaControlling {
     }
   }
 
-  /// 释放当前媒体持有的 RTC 引擎资源。
+  /// Releases RTC engine resources owned by the current media source.
   Future<void> _releaseEngine() async {
     try {
       await _rtcManager.destroy();
     } catch (error) {
-      _logCleanupFailure('释放 RTC 引擎失败 (Failed to Release RTC Engine)', error);
+      _logCleanupFailure(
+        '释放 RTC 引擎失败 (Failed to Release RTC Engine)',
+        error,
+      );
     }
   }
 
-  /// 记录资源释放错误，不替换当前业务错误。
+  /// Logs cleanup failures without replacing the operation error.
   ///
-  /// - [title]：日志组的标题。
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [title]: The log group's title.
+  /// - [error]: The operation error.
   void _logCleanupFailure(
     String title,
     Object error,
@@ -203,13 +216,13 @@ final class MediaController implements MediaControlling {
         message: '$title\n└─ ${XmaxLogger.localized('原因：', 'Reason: ')}$error',
       );
     } catch (_) {
-      // 记录日志失败不能中断资源清理。
+      // Logging failures must not interrupt resource cleanup.
     }
   }
 
-  /// 切换前后置摄像头，返回更新后的本地媒体流。
+  /// Switches between front and rear cameras and returns the updated local media stream.
   ///
-  /// 返回切换后的本地摄像头媒体流。
+  /// Returns the local camera stream after switching cameras.
   @override
   Future<RealtimeMediaStream> switchCamera() async {
     if (!_hasActiveSource) {
@@ -232,9 +245,10 @@ final class MediaController implements MediaControlling {
     }
   }
 
-  /// 原地更新摄像头规格，并与其他本地媒体操作互斥。
+  /// Updates the camera format in place, excluding concurrent local media operations.
   ///
-  /// - [videoFormat]：符合当前模型约束的采集规格。
+  /// Parameters:
+  /// - [videoFormat]: The capture format satisfying the current model's constraints.
   @override
   Future<void> updateCameraFormat(
     RealtimeVideoFormat videoFormat,
@@ -252,32 +266,37 @@ final class MediaController implements MediaControlling {
     }
   }
 
-  /// 校验并设置本地媒体音量；摄像头没有音频播放器，合法设置不改变默认读取值 0.45。
+  /// Validates local volume; camera sources have no audio player and continue to report 0.45.
   ///
-  /// - [volume]：0～1 范围内的有限音量值。
+  /// Parameters:
+  /// - [volume]: A finite volume value between 0 and 1.
   @override
   Future<void> setLocalAudioVolume(
     double volume,
   ) async {
-    // 摄像头没有本地播放器，因此这里只校验音量，不调整播放音量。
+    // Camera sources have no local player; validate the value without changing playback volume.
   }
 
-  /// 检查媒体流是否属于当前本地媒体生命周期。
+  /// Checks whether a stream belongs to the current local media lifecycle.
   ///
-  /// 详细说明见 [MediaControlling.owns]。
+  /// See [MediaControlling.owns] for the usage contract.
   @override
   bool owns(
     RealtimeMediaStream stream,
   ) {
     final track = stream.videoTrack;
 
-    return track != null && identical(track, currentTrack);
+    return track != null && identical(
+      track,
+      currentTrack,
+    );
   }
 
-  /// 为当前生成任务启用交互输入，并清除旧任务的待发采样。
+  /// Enables interaction for the current task and clears pending samples from the previous task.
   ///
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   @override
   void startInteraction({
     required String taskID,
@@ -289,15 +308,16 @@ final class MediaController implements MediaControlling {
     );
   }
 
-  /// 停止交互输入，并使尚未提交的采样失效。
+  /// Stops interaction input and invalidates pending samples.
   @override
   void stopInteraction() {
     _interactionController.stopInteraction();
   }
 
-  /// 提交当前视图触点采样；没有有效生成任务时忽略。
+  /// Submits view interaction samples; ignored when no generation task is active.
   ///
-  /// - [frame]：一次视图触点采样。
+  /// Parameters:
+  /// - [frame]: A view interaction sample.
   @override
   void submitInteraction(
     InteractionFrame frame,
@@ -305,7 +325,7 @@ final class MediaController implements MediaControlling {
     _interactionController.submitInteraction(frame);
   }
 
-  /// 检查当前没有相互冲突的本地媒体操作。
+  /// Checks that no conflicting local media operation is active.
   void _ensureNoOperation() {
     if (_operationInProgress) {
       throw const XmaxError(

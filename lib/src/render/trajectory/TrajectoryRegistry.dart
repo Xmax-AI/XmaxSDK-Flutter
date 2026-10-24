@@ -11,17 +11,18 @@
 import '../../service/realtime/RealtimeVideoTrack.dart';
 import 'TrajectoryBinding.dart';
 
-/// 按轨道身份注册交互入口，不在不同轨道之间共享采样绑定。
+/// Registers interaction handlers by track identity without sharing sample bindings between tracks.
 abstract final class TrajectoryRegistry {
 
-  /// 按轨道对象身份保存的绑定集合。
+  /// The bindings indexed by track object identity.
   static final Map<RealtimeVideoTrack, TrajectoryBinding> _bindings =
       <RealtimeVideoTrack, TrajectoryBinding>{};
 
-  /// 为指定视频轨道注册绑定。
+  /// Registers a binding for the specified video track.
   ///
-  /// - [track]：目标视频轨道。
-  /// - [binding]：当前轨道的渲染或交互配置。
+  /// Parameters:
+  /// - [track]: The target video track.
+  /// - [binding]: The rendering or interaction configuration for the current track.
   static void register(
     RealtimeVideoTrack track,
     TrajectoryBinding binding,
@@ -29,20 +30,22 @@ abstract final class TrajectoryRegistry {
     _bindings[track] = binding;
   }
 
-  /// 移除指定视频轨道的绑定。
+  /// Removes the binding for the specified video track.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   static void unregister(
     RealtimeVideoTrack track,
   ) {
     _bindings.remove(track);
   }
 
-  /// 查询指定视频轨道的交互绑定；未注册时返回 null。
+  /// Looks up a video track's interaction binding; returns null if unregistered.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   ///
-  /// 返回已注册的交互绑定；不存在时返回 null。
+  /// Returns the registered interaction binding, or null if none exists.
   static TrajectoryBinding? bindingFor(
     RealtimeVideoTrack track,
   ) => _bindings[track];

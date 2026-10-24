@@ -8,12 +8,13 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// RTC 视频上行统计。
+/// Statistics for the outgoing RTC video stream.
 ///
-/// 未提供或不符合取值范围的指标为 null；有效的零帧率、零码率和零丢包率保留为 0。
+/// Missing or invalid metrics are null; valid zero frame rates, bitrates, and packet loss remain
+/// zero.
 final class UplinkVideoStatistics {
 
-  /// 创建上行视频统计信息。
+  /// Creates uplink video statistics.
   const UplinkVideoStatistics({
     this.width,
     this.height,
@@ -24,34 +25,35 @@ final class UplinkVideoStatistics {
     this.packetLossPercent,
   });
 
-  /// 实际编码宽度，单位为像素。
+  /// The encoded width, in pixels.
   final int? width;
 
-  /// 实际编码高度，单位为像素。
+  /// The encoded height, in pixels.
   final int? height;
 
-  /// 实际采集帧率，单位为 fps。
+  /// The measured capture frame rate, in frames per second.
   final int? captureFrameRate;
 
-  /// 编码器输出帧率，单位为 fps。
+  /// The encoder output frame rate, in fps.
   final int? encodeFrameRate;
 
-  /// 实际发送帧率，单位为 fps。
+  /// The transmitted frame rate, in fps.
   final int? sendFrameRate;
 
-  /// 发送码率，单位为 kbps。
+  /// The sending bitrate, in kbps.
   final int? bitrateKbps;
 
-  /// 本地到 RTC 服务的丢包率，范围为 0～100。
+  /// The local-to-RTC packet loss percentage, from 0 to 100.
   final int? packetLossPercent;
 }
 
-/// RTC 视频下行统计。
+/// Statistics for the incoming RTC video stream.
 ///
-/// 未提供或不符合取值范围的指标为 null；有效的零帧率、零码率、零丢包率和零时延保留为 0。
+/// Missing or invalid metrics are null; valid zero frame rates, bitrates, loss, and delay remain
+/// zero.
 final class DownlinkVideoStatistics {
 
-  /// 创建下行视频统计信息。
+  /// Creates downlink video statistics.
   const DownlinkVideoStatistics({
     required this.userID,
     this.width,
@@ -63,42 +65,46 @@ final class DownlinkVideoStatistics {
     this.endToEndDelayMs,
   });
 
-  /// 远端 RTC 用户账号，不是数字 UID。
+  /// The remote RTC account, not a numeric UID.
   final String userID;
 
-  /// 接收视频宽度，单位为像素。
+  /// The received video width, in pixels.
   final int? width;
 
-  /// 接收视频高度，单位为像素。
+  /// The received height, in pixels.
   final int? height;
 
-  /// 解码器输出帧率，单位为 fps。
+  /// The decoder output frame rate, in fps.
   final int? decodeFrameRate;
 
-  /// RTC 实际渲染帧率，单位为 fps。
+  /// The RTC rendering frame rate, in fps.
   final int? renderFrameRate;
 
-  /// 接收码率，单位为 kbps。
+  /// The receiving bitrate, in kbps.
   final int? bitrateKbps;
 
-  /// 下行视频丢包率，范围为 0～100。
+  /// The downlink packet loss percentage, from 0 to 100.
   final int? packetLossPercent;
 
-  /// RTC 媒体端到端时延，单位为毫秒，不代表完整 AI 生成耗时。
+  /// The RTC media end-to-end delay, in milliseconds; excludes the full AI generation duration.
   final int? endToEndDelayMs;
 }
 
-/// 接收本地视频上行统计。
+/// Receives local uplink video statistics.
 ///
-/// - [statistics]：当前样本；停止发布或断开连接时为 null，表示清除上行统计。
+/// Parameters:
+/// - [statistics]: The sample, or null to clear uplink statistics after unpublishing or
+///   disconnection.
 typedef UplinkVideoStatisticsListener =
     void Function(
       UplinkVideoStatistics? statistics,
     );
 
-/// 接收当前结果流的下行视频统计。
+/// A listener receiving downlink statistics for the current result stream.
 ///
-/// - [statistics]：当前样本；结果流清理或断开连接时为 null，表示清除下行统计。
+/// Parameters:
+/// - [statistics]: The sample, or null to clear downlink statistics after stream removal or
+///   disconnection.
 typedef DownlinkVideoStatisticsListener =
     void Function(
       DownlinkVideoStatistics? statistics,

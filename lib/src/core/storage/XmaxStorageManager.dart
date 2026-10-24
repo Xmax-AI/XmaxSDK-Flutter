@@ -18,20 +18,20 @@ import 'XmaxStorageManaging.dart';
 import 'XmaxStorageProgressHandler.dart';
 import 'XmaxUploadedFile.dart';
 
-/// 统一接收内存数据或本地文件，并返回 SDK 文件传输结果。
+/// Provides public file transfer operations backed by the storage service.
 final class XmaxStorageManager implements XmaxStorageManaging {
 
-  /// 创建文件传输管理器。
+  /// Creates a storage manager.
   XmaxStorageManager({
     required StorageServicing storageService,
   }) : _storageService = storageService;
 
-  /// 包含凭证获取和安全检查的文件服务。
+  /// The service that retrieves credentials and performs file safety checks.
   final StorageServicing _storageService;
 
-  /// 上传图片到对象存储；来源约束见 [XmaxStorageManaging]。
+  /// Uploads an image to object storage; see [XmaxStorageManaging] for source constraints.
   ///
-  /// 详细说明见 [XmaxStorageManaging.uploadImage]。
+  /// See [XmaxStorageManaging.uploadImage] for the usage contract.
   @override
   Future<XmaxUploadedFile> uploadImage({
     Uint8List? data,
@@ -49,9 +49,9 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     fileOperation: _storageService.uploadImageFile,
   );
 
-  /// 上传图片，并检查内容是否安全；未通过时抛出 unsafeImage 错误。
+  /// Uploads an image and performs a safety check, rejecting unsafe content with unsafeImage.
   ///
-  /// 详细说明见 [XmaxStorageManaging.uploadImageWithSafetyCheck]。
+  /// See [XmaxStorageManaging.uploadImageWithSafetyCheck] for the usage contract.
   @override
   Future<XmaxUploadedFile> uploadImageWithSafetyCheck({
     Uint8List? data,
@@ -69,9 +69,9 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     fileOperation: _storageService.uploadImageFileWithSafetyCheck,
   );
 
-  /// 上传视频并返回对象存储结果；不创建实时视频输入流。
+  /// Uploads a video file without creating a realtime video input stream.
   ///
-  /// 详细说明见 [XmaxStorageManaging.uploadVideo]。
+  /// See [XmaxStorageManaging.uploadVideo] for the usage contract.
   @override
   Future<XmaxUploadedFile> uploadVideo({
     Uint8List? data,
@@ -89,9 +89,9 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     fileOperation: _storageService.uploadVideoFile,
   );
 
-  /// 将远程图片下载到指定本地文件位置。
+  /// Downloads an image to a local file.
   ///
-  /// 详细说明见 [XmaxStorageManaging.downloadImage]。
+  /// See [XmaxStorageManaging.downloadImage] for the usage contract.
   @override
   Future<XmaxDownloadedFile> downloadImage({
     required Uri from,
@@ -105,9 +105,9 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     ),
   );
 
-  /// 将远程视频下载到指定本地文件位置。
+  /// Downloads a video to a local file.
   ///
-  /// 详细说明见 [XmaxStorageManaging.downloadVideo]。
+  /// See [XmaxStorageManaging.downloadVideo] for the usage contract.
   @override
   Future<XmaxDownloadedFile> downloadVideo({
     required Uri from,
@@ -121,17 +121,18 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     ),
   );
 
-  /// 校验上传来源并执行上传，返回成功保存的对象信息。
+  /// Validates an upload source and returns the stored object.
   ///
-  /// - [data]：待上传的原始文件字节。
-  /// - [at]：待上传的本地 file URI；与 data 二选一。文件来源使用 URI 中的文件名。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
-  /// - [dataOperation]：处理内存字节来源的上传操作。
-  /// - [fileOperation]：处理本地文件来源的上传操作。
+  /// Parameters:
+  /// - [data]: The encoded file bytes to upload.
+  /// - [at]: The local file URI, mutually exclusive with data; its path supplies the filename.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [dataOperation]: The upload operation for byte-backed sources.
+  /// - [fileOperation]: The upload operation for local files.
   ///
-  /// 返回对象访问地址、对象键和可用的 ETag。
+  /// Returns the object URL, key, and ETag when provided by storage.
   Future<XmaxUploadedFile> _upload({
     required Uint8List? data,
     required Uri? at,
@@ -193,27 +194,35 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     );
   }
 
-  /// 将底层字节进度转换为 SDK 进度值。
+  /// Adapts byte progress to the public SDK progress value.
   ///
-  /// - [handler]：接收公开传输进度的回调；未指定时不创建适配函数。
+  /// Parameters:
+  /// - [handler]: The public progress handler, or null to omit progress adaptation.
   ///
-  /// 返回底层字节进度监听器；未提供监听器时返回 null。
+  /// Returns a byte progress listener, or null when no handler is supplied.
   StorageProgressListener? _progressListener(
     XmaxStorageProgressHandler? handler,
   ) => handler == null
       ? null
-      : (completedBytes, totalBytes) => handler(
+      : (
+        completedBytes,
+        totalBytes,
+      ) => handler(
           XmaxStorageProgress(
-            completedBytes: completedBytes.clamp(0, totalBytes),
+            completedBytes: completedBytes.clamp(
+              0,
+              totalBytes,
+            ),
             totalBytes: totalBytes,
           ),
         );
 
-  /// 将底层下载结果转换为公开文件结果。
+  /// Converts a storage download result to the public file result.
   ///
-  /// - [file]：底层下载返回的本地文件结果。
+  /// Parameters:
+  /// - [file]: The local file result returned by storage.
   ///
-  /// 返回下载后的本地文件 URI 和实际字节数。
+  /// Returns the downloaded file URI and its byte count.
   XmaxDownloadedFile _downloadedFile(
     DownloadedFile file,
   ) => createXmaxDownloadedFile(

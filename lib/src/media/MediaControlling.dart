@@ -14,69 +14,75 @@ import '../service/realtime/RealtimeVideoFormat.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
 import 'interaction/InteractionControlling.dart';
 
-/// 本地媒体创建、停止、切换和所有权检查的内部接口。
+/// The media layer interface used by Core.
 abstract interface class MediaControlling implements InteractionControlling {
 
-  /// 当前有效的本地视频轨道；尚未创建或已停止时为空。
+  /// The active local video track; null before creation or after stopping.
   RealtimeVideoTrack? get currentTrack;
 
-  /// 当前本地轨道的视频规格；尚未创建时为空。
+  /// The current local track's video format; null before creation.
   RealtimeVideoFormat? get currentVideoFormat;
 
-  /// 本地媒体是否包含可播放音频；摄像头来源为 false。
+  /// Whether local media has playable audio; false for camera sources.
   bool get hasAudio;
 
-  /// 本地媒体预览音量；摄像头没有音频播放器，固定为 0.45。
+  /// The local preview volume; fixed at 0.45 because camera sources have no audio player.
   Future<double> get localAudioVolume;
 
-  /// 设置本地摄像头首帧就绪的内部通知。
+  /// Sets the internal local camera first-frame callback.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setCameraPreviewReadyListener(
     RealtimeCameraPreviewReadyListener? listener,
   );
 
-  /// 创建本地摄像头流并开始预览，就绪后调用预览监听器。
+  /// Creates a local camera stream, starts preview, and notifies the listener when ready.
   ///
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
-  /// - [position]：要使用的摄像头位置。
+  /// Parameters:
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
+  /// - [position]: The camera position to use.
   ///
-  /// 返回新建的本地摄像头媒体流；参数或权限错误通过 Future 抛出。
+  /// Returns the new local camera stream; the future fails on invalid arguments or denied
+  /// permission.
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
   });
 
-  /// 停止本地摄像头流并释放采集资源。
+  /// Stops the local camera stream and releases capture resources.
   Future<void> stopLocalCameraStream();
 
-  /// 停止当前本地媒体来源并释放其 RTC 引擎使用权。
+  /// Stops the local media source and releases its ownership of the RTC engine.
   Future<void> stopLocalStream();
 
-  /// 切换前后置摄像头。
+  /// Switches between the front and rear cameras.
   ///
-  /// 返回切换后的本地摄像头媒体流。
+  /// Returns the local camera stream after switching cameras.
   Future<RealtimeMediaStream> switchCamera();
 
-  /// 原地更新摄像头规格，保留本地轨道与预览绑定。
+  /// Updates the camera format in place, preserving the local track and preview binding.
   ///
-  /// - [videoFormat]：符合当前模型约束的采集规格。
+  /// Parameters:
+  /// - [videoFormat]: The capture format satisfying the current model's constraints.
   Future<void> updateCameraFormat(
     RealtimeVideoFormat videoFormat,
   );
 
-  /// 校验并设置本地媒体音量；摄像头没有音频播放器，合法设置不改变默认读取值 0.45。
+  /// Validates local volume; camera sources have no audio player and continue to report 0.45.
   ///
-  /// - [volume]：0～1 范围内的有限音量值。
+  /// Parameters:
+  /// - [volume]: A finite volume value between 0 and 1.
   Future<void> setLocalAudioVolume(
     double volume,
   );
 
-  /// 检查媒体流是否属于当前本地媒体生命周期。
+  /// Checks whether a stream belongs to the current local media lifecycle.
   ///
-  /// - [stream]：待检查的本地媒体流。
+  /// Parameters:
+  /// - [stream]: The local media stream to check.
   ///
-  /// 返回媒体流是否属于当前本地媒体生命周期。
+  /// Returns whether the stream belongs to the current local media lifecycle.
   bool owns(
     RealtimeMediaStream stream,
   );

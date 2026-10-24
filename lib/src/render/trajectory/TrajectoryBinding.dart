@@ -10,15 +10,15 @@
 
 import '../../media/interaction/InteractionFrame.dart';
 
-/// 将视频轨道的交互采样连接到当前任务的处理入口。
+/// Connects a video track's interaction samples to the current task handler.
 final class TrajectoryBinding {
 
-  /// 创建轨道交互采样绑定。
+  /// Creates a track interaction binding.
   const TrajectoryBinding({
     required this.interactionListener,
   });
 
-  /// 接收当前轨道触点采样的函数。
+  /// The handler receiving interaction samples for the current track.
   final void Function(
     InteractionFrame frame,
   )

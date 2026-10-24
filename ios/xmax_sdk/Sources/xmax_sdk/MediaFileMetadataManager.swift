@@ -12,12 +12,14 @@ import AVFoundation
 import Flutter
 import ImageIO
 
-/// 读取媒体文件的像素尺寸，不解码完整图片或视频帧；结果不可用时不阻断上传。
+/// Reads media pixel dimensions without decoding full images or video frames.
+///
+/// Unavailable metadata does not prevent file uploads.
 final class MediaFileMetadataManager: NSObject, FlutterPlugin {
 
-    /// 注册媒体元数据方法通道。
+    /// Registers the media metadata method channel.
     ///
-    /// - Parameter registrar: 当前 Flutter 引擎提供的插件注册上下文。
+    /// - Parameter registrar: The plugin registration context for the current Flutter engine.
     static func register(
         with registrar: FlutterPluginRegistrar
     ) {
@@ -25,16 +27,17 @@ final class MediaFileMetadataManager: NSObject, FlutterPlugin {
             name: "ai.xmax.sdk/media",
             binaryMessenger: registrar.messenger()
         )
-        registrar.addMethodCallDelegate(MediaFileMetadataManager(), channel: channel)
+        registrar.addMethodCallDelegate(
+            MediaFileMetadataManager(),
+            channel: channel
+        )
     }
 
-    /// 分发图片或视频尺寸读取请求，并在主线程交付读取结果。
+    /// Dispatches image or video dimension requests and delivers metadata results on the main thread.
     ///
     /// - Parameters:
-    ///   - call: 包含本地路径或图片字节和媒体类别的请求。
-    ///   - result: 接收宽高对象、空值或方法未实现通知的单次回调。
-    ///
-    /// 元数据结果通过 result 异步通知。
+    ///   - call: The request containing a local path or image bytes and a media type.
+    ///   - result: The one-shot callback receiving dimensions, nil, or an unsupported-method result.
     func handle(
         _ call: FlutterMethodCall,
         result: @escaping FlutterResult
@@ -64,12 +67,12 @@ final class MediaFileMetadataManager: NSObject, FlutterPlugin {
         }
     }
 
-    /// 读取图片头部的宽高，不缓存完整解码位图。
+    /// Reads image header dimensions without caching a fully decoded bitmap.
     ///
     /// - Parameters:
-    ///   - data: 图片原始字节；非空时优先于文件来源。
-    ///   - fileURL: 本地图片文件地址；没有字节来源时使用。
-    /// - Returns: 包含 width 和 height 的像素尺寸；无法读取时为 nil。
+    ///   - data: The image bytes, taking precedence over the file source when present.
+    ///   - fileURL: The local image URL used when no bytes are provided.
+    /// - Returns: Pixel dimensions containing width and height, or nil if unavailable.
     private static func imageResolution(
         data: Data?,
         fileURL: URL?
@@ -77,14 +80,24 @@ final class MediaFileMetadataManager: NSObject, FlutterPlugin {
         let options = [kCGImageSourceShouldCache: false] as CFDictionary
         let source: CGImageSource?
         if let data {
-            source = CGImageSourceCreateWithData(data as CFData, options)
+            source = CGImageSourceCreateWithData(
+                data as CFData,
+                options
+            )
         } else if let fileURL {
-            source = CGImageSourceCreateWithURL(fileURL as CFURL, options)
+            source = CGImageSourceCreateWithURL(
+                fileURL as CFURL,
+                options
+            )
         } else {
             return nil
         }
         guard let source,
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, options) as? [CFString: Any],
+              let properties = CGImageSourceCopyPropertiesAtIndex(
+                  source,
+                  0,
+                  options
+              ) as? [CFString: Any],
               let width = properties[kCGImagePropertyPixelWidth] as? NSNumber,
               let height = properties[kCGImagePropertyPixelHeight] as? NSNumber else {
             return nil
@@ -93,10 +106,10 @@ final class MediaFileMetadataManager: NSObject, FlutterPlugin {
         return ["width": width.intValue, "height": height.intValue]
     }
 
-    /// 读取视频轨道尺寸，并依据首选变换计算显示宽高。
+    /// Reads video track dimensions and applies the preferred transform to obtain display dimensions.
     ///
-    /// - Parameter fileURL: 本地视频文件地址；为空时不读取。
-    /// - Returns: 包含 width 和 height 的显示像素尺寸；轨道不可用或读取失败时为 nil。
+    /// - Parameter fileURL: The local video URL; nil skips reading.
+    /// - Returns: Display pixel dimensions containing width and height, or nil if unavailable.
     private static func videoResolution(
         _ fileURL: URL?
     ) async -> [String: Int]? {

@@ -23,30 +23,32 @@ import 'storage/XmaxStorageManager.dart';
 import 'storage/XmaxStorageManaging.dart';
 import 'XmaxConfiguration.dart';
 
-/// SDK 统一入口，用于创建实时生成、对象存储和媒体尺寸服务。
+/// A client that provides access to Xmax realtime generation, storage, and media services.
 final class XmaxClient {
 
-  /// 创建客户端，并配置进程内共享的 SDK 日志选项。
+  /// Creates a client with the specified configuration.
   ///
-  /// - [configuration]：访问凭证、服务环境和日志配置。
+  /// API credentials are validated when sending requests, not during client creation.
   ///
-  /// 网络服务在创建时初始化；访问凭证在执行服务请求前校验。
+  /// Parameters:
+  /// - [configuration]: The API credentials, service environment, and logging options.
   XmaxClient({
     required this.configuration,
   }) : _apiService = ApiService(
-         apiKey: configuration.apiKey,
-         environment: configuration.environment,
-       ) {
+    apiKey: configuration.apiKey,
+    environment: configuration.environment,
+  ) {
     XmaxLogger.configure(
       options: configuration.loggerOptions,
       environment: configuration.environment,
     );
   }
 
-  /// 使用指定的网络服务创建客户端，并配置共享日志选项。
+  /// Creates a client with an injected API service.
   ///
-  /// - [configuration]：访问凭证、服务环境和日志配置。
-  /// - [apiService]：供实时会话及存储服务使用的网络服务。
+  /// Parameters:
+  /// - [configuration]: The API credentials, service environment, and logging options.
+  /// - [apiService]: The service used for realtime session and storage requests.
   XmaxClient.internal({
     required this.configuration,
     required ApiServicing apiService,
@@ -58,20 +60,21 @@ final class XmaxClient {
     );
   }
 
-  /// 创建客户端时传入的访问凭证、环境和日志配置。
+  /// The configuration used by this client.
   final XmaxConfiguration configuration;
 
-  /// 云端 API 请求服务。
+  /// The service used for API requests.
   final ApiServicing _apiService;
 
-  /// 显式注入的实时请求服务；为空时按客户端环境选择地址。
+  /// The injected realtime service, or null to use the client's environment routing.
   ApiServicing? _realtimeApiOverride;
 
-  /// 创建使用指定模型的实时管理器。
+  /// Creates a manager for local media inputs and realtime generation.
   ///
-  /// - [options]：实时模型配置。
+  /// Managers maintain independent state but must take turns owning the shared RTC engine.
   ///
-  /// 各管理器分别管理自己的状态，但按顺序独占同一个 RTC 引擎。
+  /// Parameters:
+  /// - [options]: The realtime model configuration.
   XmaxRealtimeManaging createRealtimeManager({
     required RealtimeConfiguration options,
   }) => XmaxRealtimeManager(
@@ -84,9 +87,9 @@ final class XmaxClient {
         ),
   );
 
-  /// 创建独立对象存储管理器；API key 为空时抛出错误。
+  /// Creates a manager for uploading and downloading media files. Throws if the API key is empty.
   ///
-  /// 返回独立于实时连接的对象存储管理器。
+  /// Returns a storage manager independent of the realtime connection.
   XmaxStorageManaging createStorageManager() {
     configuration.validate();
 
@@ -98,11 +101,12 @@ final class XmaxClient {
     );
   }
 
-  /// 创建用于解析指定模型媒体尺寸的服务。
+  /// Creates a service for media sizing.
   ///
-  /// - [model]：媒体规格约束所属模型，默认使用 X2.1。
+  /// Parameters:
+  /// - [model]: The model whose sizing rules the service uses; defaults to X2.1.
   ///
-  /// 返回指定模型的媒体尺寸解析服务。
+  /// Returns the media sizing service for the model.
   MediaServicing createMediaService({
     RealtimeModel model = RealtimeModel.x2_1,
   }) => MediaService(model: model);

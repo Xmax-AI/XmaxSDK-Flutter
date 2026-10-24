@@ -20,127 +20,146 @@ import '../foundation/rtc/VideoStatistics.dart';
 import '../core/realtime/RealtimeQualityLevel.dart';
 import 'quality/QualityConfiguration.dart';
 
-/// 等待生成结果流的任务，可主动取消。
+/// A cancellable wait for a generation result stream.
 ///
-/// 启动信令发送成功后，[value] 继续等待服务端发布匹配的结果流。
-/// 调用 [cancel] 可结束等待，但不退出 RTC 房间，后续任务仍可复用该连接。
+/// After the start message is sent, [value] waits for a matching result stream from the server.
+/// Calling [cancel] ends the wait without leaving RTC, allowing later tasks to reuse the
+/// connection.
 final class GenerationStartConfirmation {
 
-  /// 创建可取消的生成结果确认任务。
+  /// Creates a cancellable result confirmation task.
   GenerationStartConfirmation({
     required this.value,
     required void Function() onCancel,
   }) : _onCancel = onCancel;
 
-  /// 等待结果流确认的异步任务；失败或取消时抛出异常。
+  /// The future that completes on result confirmation, or fails on error or cancellation.
   final Future<void> value;
 
-  /// 主动取消结果流确认时执行的函数。
+  /// The function invoked to cancel result confirmation.
   final void Function() _onCancel;
 
-  /// 取消结果流等待，不退出 RTC 房间。
+  /// Cancels the result-stream wait without leaving the RTC room.
   void cancel() => _onCancel();
 }
 
-/// 实时媒体连接、生成信令和网络质量控制的内部接口。
+/// The transport interface used by Core.
 abstract interface class StreamControlling {
 
-  /// 读取模型的有效档位历史，准备独立上下行策略并应用初始传输规格。
+  /// Loads valid model history, prepares independent link policies, and applies the initial
+  /// transport format.
   ///
-  /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [model]：用于隔离档位历史的模型标识。
+  /// Parameters:
+  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
+  ///   updates.
+  /// - [model]: The model identifier used to isolate quality-level history.
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
   });
 
-  /// 生成结果的回传宽高，单位为像素。
+  /// The result-stream width and height, in pixels.
   Size? get targetSize;
 
-  /// 当前连接的固定媒体基准和成功应用的档位。
+  /// The fixed media baseline and successfully applied levels for the current connection.
   QualityConfiguration? get qualityConfiguration;
 
-  /// 手动应用单个方向的档位，与自动调档及生成条件更新互斥。
+  /// Applies a manual level for one direction, excluding concurrent adaptation and condition
+  /// updates.
   ///
-  /// - [level]：目标传输档位。
-  /// - [downlink]：true 更新回传尺寸，false 更新上行编码。
+  /// Parameters:
+  /// - [level]: The requested transport quality level.
+  /// - [downlink]: True to update result dimensions; false to update uplink encoding.
   Future<void> setQualityLevel(
     RealtimeQualityLevel level, {
     required bool downlink,
   });
 
-  /// 设置上行视频统计监听器；停止发布或断开连接时通知 null。
+  /// Sets the uplink statistics listener; reports null when publication stops or the room
+  /// disconnects.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setUplinkVideoStatisticsListener(
     UplinkVideoStatisticsListener? listener,
   );
 
-  /// 设置当前结果流的下行视频统计监听器；结果流清理时通知 null。
+  /// Sets the result-stream downlink statistics listener; reports null when the result is cleared.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setDownlinkVideoStatisticsListener(
     DownlinkVideoStatisticsListener? listener,
   );
 
-  /// 是否有正在启动或运行的生成任务。
+  /// Whether a generation task is starting or running.
   bool get hasGenerationTask;
 
-  /// 远端音频播放音量，范围为 0～1，精度为 0.01。
+  /// The remote playback volume, from 0 to 1 in increments of 0.01.
   double get remoteAudioVolume;
 
-  /// 解析视频码率预算并应用 RTC 编码配置。
+  /// Resolves the video bitrate budget and applies RTC encoding settings.
   ///
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   Future<void> setVideoEncoderConfig(
     RealtimeVideoFormat videoFormat,
   );
 
-  /// 设置上下行网络质量监听器，不替换 SDK 内部自适应策略。
+  /// Sets the network quality listener without replacing the SDK's adaptation policy.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setNetworkQualityListener(
     RealtimeNetworkQualityListener? listener,
   );
 
-  /// 设置性能受限及恢复事件的监听器。
+  /// Sets the listener for performance limitation and recovery events.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setPerformanceAlarmListener(
     RealtimePerformanceAlarmListener? listener,
   );
 
-  /// 设置远端音频音量，范围为 0～1，精度为 0.01；RTC 调用失败时保留上次成功值。
+  /// Sets remote volume from 0 to 1 in increments of 0.01; retains the last applied value on
+  /// failure.
   ///
-  /// - [volume]：0～1 范围内的有限音量值。
+  /// Parameters:
+  /// - [volume]: A finite volume value between 0 and 1.
   Future<void> setRemoteAudioVolume(
     double volume,
   );
 
-  /// 在结果流确认后应用音量并订阅远端音频，同时允许网络自适应。
+  /// Applies volume and subscribes to remote audio after result confirmation, then enables
+  /// adaptation.
   Future<void> activateRemoteAudio();
 
-  /// 使用已有会话凭证加入 RTC 房间，并发布本地视频。
+  /// Joins the RTC room with existing session credentials and publishes local video.
   ///
-  /// - [connection]：当前会话的 RTC 房间参数。
-  /// - [ensureActive]：执行前检查操作是否仍有效的函数；已失效时须抛出取消错误。
+  /// Parameters:
+  /// - [connection]: The RTC connection parameters for this session.
+  /// - [ensureActive]: A validity check invoked before execution; must throw a cancellation error
+  ///   if the operation expired.
   Future<void> connect({
     required RealtimeSessionConnection connection,
     required void Function() ensureActive,
   });
 
-  /// 结束当前生成并断开远端连接，保留本地摄像头预览。
+  /// Ends generation and disconnects realtime while retaining the local camera preview.
   Future<void> disconnect();
 
-  /// 发送生成启动信令，并返回可取消的结果流等待任务。
+  /// Sends the generation start message and returns a cancellable result-stream wait.
   ///
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：生成画布的尺寸和帧率配置。
-  /// - [context]：本次生成条件。
-  /// - [targetSize]：回传宽高；未指定时不发送 target_size 字段，默认使用生成画布尺寸。
-  /// - [faceRestoration]：是否回贴原始人脸，默认关闭。
+  /// The returned task completes only after a subscribed video stream matches the expected user.
   ///
-  /// 返回的任务仅在匹配到预期用户且已订阅的视频流后完成。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The generation canvas dimensions and frame rate.
+  /// - [context]: The generation conditions for this request.
+  /// - [targetSize]: The result dimensions; when omitted, no target_size field is sent and canvas
+  ///   dimensions are used.
+  /// - [faceRestoration]: Whether to restore the original face; defaults to false.
   Future<GenerationStartConfirmation> beginGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
@@ -149,13 +168,16 @@ abstract interface class StreamControlling {
     bool faceRestoration = false,
   });
 
-  /// 等待当前调档完成后更新当前生成条件，使用最新回传尺寸。
+  /// Wait for quality updates before changing conditions so the latest result dimensions are used.
   ///
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
-  /// - [context]：本次生成条件。
-  /// - [targetSize]：未准备质量策略时使用的回传尺寸；优先使用当前自适应尺寸，省略且无当前尺寸时不发送该字段。
-  /// - [faceRestoration]：是否回贴原始人脸，默认关闭；每次调用提交本次值。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
+  /// - [context]: The generation conditions for this request.
+  /// - [targetSize]: Fallback result dimensions before quality setup; adaptive dimensions take
+  ///   precedence. Omit if neither exists.
+  /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
+  ///   on every call.
   Future<void> updateGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
@@ -164,28 +186,33 @@ abstract interface class StreamControlling {
     bool faceRestoration = false,
   });
 
-  /// 提交当前生成任务的回传尺寸和下行码率预算。
+  /// Submits result dimensions and the downlink bitrate budget for the current task.
   ///
-  /// - [taskID]：当前生成任务标识。
-  /// - [targetSize]：生成结果的回传宽高，单位为像素。
-  /// - [ensureActive]：执行前检查操作是否仍有效的函数；已失效时须抛出取消错误。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
+  /// - [targetSize]: The result-stream width and height, in pixels.
+  /// - [ensureActive]: A validity check invoked before execution; must throw a cancellation error
+  ///   if the operation expired.
   Future<void> changeTargetSize({
     required String taskID,
     required Size targetSize,
     required void Function() ensureActive,
   });
 
-  /// 停止当前生成任务和交互输入，保留 RTC 连接。
+  /// Stops generation and interactions while retaining the RTC connection.
   ///
-  /// - [taskID]：当前生成任务标识。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
   Future<void> stopGeneration({
     required String taskID,
   });
 
-  /// 提交当前生成任务的归一化交互轨迹；任务标识或触点列表为空时不发送。
+  /// Submits normalized interaction points; sends nothing if the task identifier or point list is
+  /// empty.
   ///
-  /// - [taskID]：当前生成任务标识。
-  /// - [points]：0～1 范围的媒体坐标点序列，不是视图像素坐标。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
+  /// - [points]: Media coordinates from 0 to 1, not view pixel coordinates.
   Future<void> sendTracks({
     required String taskID,
     required List<RealtimePoint> points,

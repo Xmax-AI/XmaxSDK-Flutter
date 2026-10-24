@@ -23,29 +23,31 @@ import '../errors/XmaxError.dart';
 import 'StorageManaging.dart';
 import 'StorageModels.dart';
 
-/// 普通 PUT 上传阈值，用于禁止自动切换分片上传。
-/// 配合强制普通上传选项，确保不同文件大小均使用单次 PUT。
+/// The simple PUT threshold preventing automatic multipart uploads.
+/// Combined with forced simple upload, ensures every file size uses a single PUT request.
 const int _simpleUploadThreshold = 0x7FFFFFFFFFFFFFFF;
 
-/// 封装腾讯 COS 上传和 HTTP 文件下载能力。
+/// Provides Tencent COS uploads and HTTP file downloads.
 final class StorageManager implements StorageManaging {
 
-  /// 创建对象上传和文件下载入口。
+  /// Creates an object upload and file download transport.
   ///
-  /// - [httpClient]：下载使用的 HTTP 客户端；默认创建独立客户端。
+  /// Parameters:
+  /// - [httpClient]: The HTTP client for downloads; defaults to a dedicated client.
   StorageManager({
     HttpClient? httpClient,
   }) : _httpClient = httpClient ?? HttpClient();
 
-  /// HTTP 下载客户端；未指定时创建独立客户端。
+  /// The HTTP download client; defaults to a dedicated client.
   final HttpClient _httpClient;
 
-  /// 共享凭证提供器的初始化任务。
+  /// The shared credential provider initialization task.
   static Future<void>? _credentialProviderInitialization;
 
-  /// 使用本次临时凭证执行普通 PUT 上传，不自动切换为分片上传。
+  /// Uploads with a single PUT using request-scoped temporary credentials, without multipart
+  /// fallback.
   ///
-  /// 详细说明见 [StorageManaging.upload]。
+  /// See [StorageManaging.upload] for the usage contract.
   @override
   Future<StoredFile> upload({
     required StorageUploadSource source,
@@ -68,7 +70,7 @@ final class StorageManager implements StorageManaging {
       final credential = configuration.credential;
       final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
 
-      // 每次上传都使用本次获取的临时会话凭证。
+      // Use the temporary session credentials obtained for this upload.
       final sessionCredentials = SessionQCloudCredentials(
         secretId: credential.accessKeyID,
         secretKey: credential.secretAccessKey,
@@ -77,9 +79,12 @@ final class StorageManager implements StorageManaging {
         expiredTime: now + 25 * 60,
       );
 
-      // 将插件回调转换为 Future，供 SDK 调用方等待上传结果。
+      // Bridge plugin callbacks to a future that callers can await for the upload result.
       final resultListener = ResultListener(
-        (headers, result) {
+        (
+          headers,
+          result,
+        ) {
           if (completer.isCompleted) {
             return;
           }
@@ -102,10 +107,16 @@ final class StorageManager implements StorageManaging {
               ),
             );
           } catch (error, stackTrace) {
-            completer.completeError(error, stackTrace);
+            completer.completeError(
+              error,
+              stackTrace,
+            );
           }
         },
-        (clientException, serviceException) {
+        (
+          clientException,
+          serviceException,
+        ) {
           if (!completer.isCompleted) {
             final error = serviceException ?? clientException;
 
@@ -179,9 +190,9 @@ final class StorageManager implements StorageManaging {
     }
   }
 
-  /// 流式下载文件到本地目标，并返回实际写入的字节数。
+  /// Streams a download to the local destination and returns the actual number of bytes written.
   ///
-  /// 详细说明见 [StorageManaging.download]。
+  /// See [StorageManaging.download] for the usage contract.
   @override
   Future<DownloadedFile> download({
     required Uri remoteURL,
@@ -227,7 +238,10 @@ final class StorageManager implements StorageManaging {
         sink.add(chunk);
         completed += chunk.length;
         if (total >= completed && total > 0) {
-          progress?.call(completed, total);
+          progress?.call(
+            completed,
+            total,
+          );
         }
       }
 
@@ -235,9 +249,15 @@ final class StorageManager implements StorageManaging {
       await sink.close();
       sink = null;
 
-      progress?.call(completed, completed);
+      progress?.call(
+        completed,
+        completed,
+      );
 
-      return DownloadedFile(fileURL: destinationURL, byteCount: completed);
+      return DownloadedFile(
+        fileURL: destinationURL,
+        byteCount: completed,
+      );
     } on XmaxError {
       rethrow;
     } catch (error) {
@@ -257,15 +277,16 @@ final class StorageManager implements StorageManaging {
     }
   }
 
-  /// 准备使用当前存储区域和凭证策略的传输管理器。
+  /// Prepares a transfer manager for the current region and credential policy.
   ///
-  /// - [configuration]：本次上传使用的存储桶、区域、服务地址和临时凭证。
+  /// Parameters:
+  /// - [configuration]: The bucket, region, endpoint, and temporary credentials for this upload.
   ///
-  /// 返回当前区域的 COS 传输管理器。
+  /// Returns the COS transfer manager for the current region.
   Future<CosTransferManger> _transferManager(
     StorageConfiguration configuration,
   ) async {
-    // 先初始化原生签名器，再注册传输器；并发上传共享同一初始化任务。
+    // Initialize native signing before registering transfers; concurrent uploads share initialization.
     await (_credentialProviderInitialization ??= Cos()
         .initWithSessionCredential(_RequestOnlyCredentials()));
 
@@ -294,12 +315,13 @@ final class StorageManager implements StorageManaging {
     );
   }
 
-  /// 校验上传来源、对象信息和凭证是否满足传输要求。
+  /// Validates the upload source, object information, and credentials for transfer.
   ///
-  /// - [source]：待上传的内存字节或本地文件来源。
-  /// - [objectKey]：对象在存储桶内的完整键，不是本地文件路径。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [configuration]：本次上传使用的存储桶、区域、服务地址和临时凭证。
+  /// Parameters:
+  /// - [source]: The in-memory bytes or local file to upload.
+  /// - [objectKey]: The full object key within the bucket, not a local file path.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [configuration]: The bucket, region, endpoint, and temporary credentials for this upload.
   void _validateUpload({
     required StorageUploadSource source,
     required String objectKey,
@@ -357,13 +379,15 @@ final class StorageManager implements StorageManaging {
     }
   }
 
-  /// 解析有效对象访问地址，必要时依据存储配置和对象键构造地址。
+  /// Resolves a valid object URL, constructing one from storage settings and the object key if
+  /// needed.
   ///
-  /// - [candidate]：对象存储返回的候选访问地址。
-  /// - [configuration]：本次上传使用的存储桶、区域、服务地址和临时凭证。
-  /// - [objectKey]：对象在存储桶内的完整键，不是本地文件路径。
+  /// Parameters:
+  /// - [candidate]: The candidate URL returned by object storage.
+  /// - [configuration]: The bucket, region, endpoint, and temporary credentials for this upload.
+  /// - [objectKey]: The full object key within the bucket, not a local file path.
   ///
-  /// 返回经过校验或根据对象键构造的对象访问 URL。
+  /// Returns a validated object URL or one constructed from the object key.
   static Uri resolveObjectURL({
     required String? candidate,
     required StorageConfiguration configuration,
@@ -394,18 +418,22 @@ final class StorageManager implements StorageManaging {
         );
 
     final segments = <String>[
-      ...endpoint.pathSegments.where((segment) => segment.isNotEmpty),
+      ...endpoint.pathSegments.where((
+        segment,
+      ) => segment.isNotEmpty),
       ...objectKey.split('/'),
     ];
 
     return endpoint.replace(pathSegments: segments);
   }
 
-  /// 将非空服务地址规范化为 HTTP 或 HTTPS URI；地址格式无效时抛出上传错误。
+  /// Normalizes nonblank endpoints to HTTP or HTTPS URIs; throws an upload error for invalid
+  /// endpoints.
   ///
-  /// - [value]：对象存储服务的地址文本，可省略 https 前缀。
+  /// Parameters:
+  /// - [value]: The object storage endpoint text; the https prefix may be omitted.
   ///
-  /// 返回规范化的 HTTP 或 HTTPS URI；输入空白时为 null，格式无效时抛出上传错误。
+  /// Returns a normalized HTTP or HTTPS URI, or null for blank input; throws on invalid endpoints.
   static Uri? _normalizedEndpoint(
     String value,
   ) {
@@ -429,22 +457,23 @@ final class StorageManager implements StorageManaging {
     return uri;
   }
 
-  /// 检查 URI 是否具有有效的 HTTP 或 HTTPS 服务地址。
+  /// Checks whether a URI is a valid HTTP or HTTPS endpoint.
   ///
-  /// - [uri]：待校验或读取的 URI。
+  /// Parameters:
+  /// - [uri]: The URI to validate or read.
   ///
-  /// 返回 URI 是否使用 HTTP 或 HTTPS 且包含非空主机名。
+  /// Returns whether the URI uses HTTP or HTTPS and has a nonempty host.
   static bool _isHTTPURL(
     Uri uri,
   ) => (uri.isScheme('http') || uri.isScheme('https')) && uri.host.isNotEmpty;
 }
 
-/// 禁止使用全局凭证回退，确保每次上传仅使用当前请求的临时凭证。
+/// Disables global credential fallback so uploads use only request-scoped temporary credentials.
 final class _RequestOnlyCredentials implements IFetchCredentials {
 
-  /// 拒绝全局凭证回退；上传必须显式提交本次请求的临时凭证。
+  /// Rejects global credential fallback; uploads must explicitly supply request-scoped credentials.
   ///
-  /// 不返回凭证；Future 始终以上传错误结束，禁止使用全局凭证回退。
+  /// The future always fails with an upload error; no global fallback credentials are returned.
   @override
   Future<SessionQCloudCredentials> fetchSessionCredentials() async {
     throw const XmaxError(

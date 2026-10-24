@@ -10,29 +10,33 @@
 
 import 'RealtimeVideoTrack.dart';
 
-/// 实时生成输入或输出的媒体流。
+/// A local input or remote output media stream for realtime generation.
 final class RealtimeMediaStream {
 
-  /// 创建媒体流及其视频轨道关联。
+  /// Creates a media stream associated with a video track.
   const RealtimeMediaStream._({
     required this.id,
     this.videoTrack,
   });
 
-  /// 当前媒体流的标识，视频显示使用关联的 videoTrack。
+  /// The stream identifier; video rendering uses the associated videoTrack.
   final String id;
 
-  /// 媒体流关联的视频轨道。
+  /// The stream's associated video track.
   final RealtimeVideoTrack? videoTrack;
 }
 
-/// 创建关联指定视频轨道的媒体流。
+/// Creates a media stream with the specified video track.
 ///
-/// - [id]：媒体流标识。
-/// - [videoTrack]：用于显示该流的视频轨道。
+/// Parameters:
+/// - [id]: The media stream identifier.
+/// - [videoTrack]: The video track used to display this stream.
 ///
-/// 返回持有指定身份和视频轨道的媒体流对象。
+/// Returns the media stream with the specified identity and video track.
 RealtimeMediaStream createRealtimeMediaStream({
   required String id,
   RealtimeVideoTrack? videoTrack,
-}) => RealtimeMediaStream._(id: id, videoTrack: videoTrack);
+}) => RealtimeMediaStream._(
+  id: id,
+  videoTrack: videoTrack,
+);

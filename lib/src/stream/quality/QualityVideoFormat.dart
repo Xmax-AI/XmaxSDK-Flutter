@@ -13,21 +13,21 @@ import 'dart:ui';
 import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
-/// 从固定媒体基准计算传输档位，不改变采集和模型生成规格。
+/// Resolves transport levels from a fixed baseline without changing capture or generation formats.
 abstract final class QualityVideoFormat {
 
-  /// 按质量档位排列的视频尺寸缩放比例。
+  /// Video dimension scale factors indexed by quality level.
   static const scales = [1.0, 0.8, 0.65, 0.5, 0.5];
 
-  /// 按质量档位排列的上行目标帧率，单位为 fps。
+  /// Target uplink frame rates indexed by quality level, in fps.
   static const frameRates = [30, 24, 24, 20, 16];
 
-  /// 解析目标档位的缩放比例，同时保留最低短边约束。
+  /// Resolves the target level's scale factor while enforcing the minimum short-edge constraint.
   ///
-  /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [level]：需要解析的质量档位，限制为 1～5。
-  ///
-  /// 返回计算得到的数值。
+  /// Parameters:
+  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
+  ///   updates.
+  /// - [level]: The quality level to resolve, constrained to 1 through 5.
   static double scale(
     RealtimeVideoFormat baseline,
     RealtimeQualityLevel level,
@@ -37,33 +37,46 @@ abstract final class QualityVideoFormat {
         math.min(baseline.width, baseline.height),
   );
 
-  /// 根据基准和档位计算回传尺寸的最大宽高。
+  /// Computes maximum result dimensions from the baseline and quality level.
   ///
-  /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [level]：需要解析的质量档位，限制为 1～5。
+  /// Parameters:
+  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
+  ///   updates.
+  /// - [level]: The quality level to resolve, constrained to 1 through 5.
   ///
-  /// 返回该档位允许的最大回传宽高，尚未进行像素对齐。
+  /// Returns maximum result dimensions for the level, before pixel alignment.
   static Size downlinkMaximumSize(
     RealtimeVideoFormat baseline,
     RealtimeQualityLevel level,
   ) => Size(
-    baseline.width * scale(baseline, level),
-    baseline.height * scale(baseline, level),
+    baseline.width * scale(
+      baseline,
+      level,
+    ),
+    baseline.height * scale(
+      baseline,
+      level,
+    ),
   );
 
-  /// 按指定方向和档位解析传输规格，不改变采集基准。
+  /// Resolves a transport format for the direction and level without changing the capture baseline.
   ///
-  /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [level]：需要解析的质量档位，限制为 1～5。
-  /// - [downlink]：是否计算下行规格；下行预算固定为 24 fps。
+  /// Parameters:
+  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
+  ///   updates.
+  /// - [level]: The quality level to resolve, constrained to 1 through 5.
+  /// - [downlink]: Whether to resolve downlink settings; the downlink budget uses a fixed 24 fps.
   ///
-  /// 返回包含有效尺寸、帧率及编码配置的视频规格。
+  /// Returns a validated video format with dimensions, frame rate, and encoding settings.
   static RealtimeVideoFormat resolve(
     RealtimeVideoFormat baseline,
     RealtimeQualityLevel level, {
     required bool downlink,
   }) {
-    final s = scale(baseline, level),
+    final s = scale(
+      baseline,
+      level,
+    ),
         divisor = baseline.width.gcd(baseline.height);
     final units = ((divisor * s + 0.0000001).floor() ~/ 2) * 2;
     final width = units >= 2

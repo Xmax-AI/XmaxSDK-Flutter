@@ -21,20 +21,21 @@ import '../../stream/StreamControlling.dart';
 import 'RealtimeModel.dart';
 import 'RealtimeTiming.dart';
 
-/// 接收指定实时会话心跳失败的异步回调。
+/// An asynchronous handler for a realtime session heartbeat failure.
 ///
-/// - [sessionID]：云端实时会话标识。
-/// - [error]：本次操作的错误。
+/// Parameters:
+/// - [sessionID]: The server session identifier.
+/// - [error]: The operation error.
 typedef RealtimeConnectionHeartbeatFailureHandler =
     Future<void> Function(
       String sessionID,
       Object error,
     );
 
-/// 协调云端会话、RTC 房间和远端视频轨道的连接与释放。
+/// Owns the server session, RTC connection, and remote track lifecycle.
 final class XmaxRealtimeConnectionManager {
 
-  /// 创建会话与 RTC 连接协调器。
+  /// Creates a realtime connection manager.
   XmaxRealtimeConnectionManager({
     required RealtimeSessionServicing sessionService,
     required InteractionControlling interactionController,
@@ -45,41 +46,44 @@ final class XmaxRealtimeConnectionManager {
        _renderController = renderController,
        _streamController = streamController;
 
-  /// 创建、维持和关闭云端实时会话的服务。
+  /// The service that creates, maintains, and closes server sessions.
   final RealtimeSessionServicing _sessionService;
 
-  /// 当前生成任务的触点采样和坐标处理组件。
+  /// The controller that samples and maps interactions for the generation task.
   final InteractionControlling _interactionController;
 
-  /// 管理远端轨道绑定及视频就绪的组件。
+  /// The controller that owns remote track bindings and readiness.
   final RenderControlling _renderController;
 
-  /// 管理 RTC 连接、发布订阅和生成信令的组件。
+  /// The controller that manages RTC publishing, subscriptions, and signaling.
   final StreamControlling _streamController;
 
-  /// 当前连接持有的远端视频轨道。
+  /// The remote video track owned by the current connection.
   RealtimeVideoTrack? _activeRemoteTrack;
 
-  /// 当前有效的云端会话；未连接时为空。
+  /// The active server session, or null when disconnected.
   RealtimeSession? _activeSession;
 
-  /// 当前云端会话标识；未连接时为空字符串。
+  /// The active session identifier, or an empty string when disconnected.
   String get currentSessionID => _activeSession?.id ?? '';
 
-  /// 等待当前结果流首帧解码就绪，不要求预先挂载远端视图。
+  /// Waits for the first decoded result frame without requiring a mounted remote view.
   Future<void> waitUntilRemoteFrameReady() =>
       _renderController.waitUntilRemoteFrameReady();
 
-  /// 等待已挂载视图隐藏远端视频，再释放对应渲染资源。
+  /// Waits for mounted views to conceal remote video before releasing its rendering resources.
   Future<void> prepareForRemoteRemoval() async {
     try {
       await _renderController.prepareForRemoteRemoval();
     } catch (error) {
-      _logCleanupFailure('隐藏远端视频失败 (Failed to Conceal Remote Video)', error);
+      _logCleanupFailure(
+        '隐藏远端视频失败 (Failed to Conceal Remote Video)',
+        error,
+      );
     }
   }
 
-  /// 当前连接的远端媒体流；没有活动会话时为空。
+  /// The connection's remote media stream, or null without an active session.
   RealtimeMediaStream? get currentRemoteStream {
     final track = _activeRemoteTrack;
 
@@ -87,18 +91,22 @@ final class XmaxRealtimeConnectionManager {
       return null;
     }
 
-    return createRealtimeMediaStream(id: 'stream-remote', videoTrack: track);
+    return createRealtimeMediaStream(
+      id: 'stream-remote',
+      videoTrack: track,
+    );
   }
 
-  /// 创建云端会话并建立 RTC 连接，随后发布本地视频。
+  /// Creates a server session, joins RTC, and publishes local video.
   ///
-  /// - [model]：实时生成模型，决定可用的媒体规格。
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
-  /// - [isCurrent]：检查操作是否仍属于当前生命周期的函数。
-  /// - [onHeartbeatFailure]：当前云端会话心跳失败时的处理函数。
-  /// - [timing]：当前生成启动的耗时记录；为空时不记录。
+  /// Parameters:
+  /// - [model]: The realtime generation model defining the supported media formats.
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
+  /// - [isCurrent]: A check that the operation still belongs to the current lifecycle.
+  /// - [onHeartbeatFailure]: The handler for heartbeat failures in the current session.
+  /// - [timing]: The startup duration recorder, or null to omit timing.
   ///
-  /// 返回本次会话关联的远端媒体流。
+  /// Returns the remote media stream associated with this session.
   Future<RealtimeMediaStream> connect({
     required RealtimeModel model,
     required RealtimeVideoFormat videoFormat,
@@ -110,7 +118,7 @@ final class XmaxRealtimeConnectionManager {
     var activated = false;
 
     try {
-      // 先创建云端会话，再使用返回的凭证加入 RTC 房间。
+      // Create the cloud session before joining RTC with its credentials.
       timing?.beginSessionCreation();
       session = await _sessionService.createSession(model: model);
       timing?.finishSessionCreation();
@@ -133,7 +141,7 @@ final class XmaxRealtimeConnectionManager {
       timing?.finishRoomJoin();
       _ensureCurrent(isCurrent);
 
-      // RTC 连接成功后再启动会话心跳。
+      // Start the session heartbeat only after RTC connects.
       _sessionService.startHeartbeat(
         sessionID: session.id,
         onFailure: onHeartbeatFailure,
@@ -155,10 +163,15 @@ final class XmaxRealtimeConnectionManager {
 
       _ensureCurrent(isCurrent);
 
-      return createRealtimeMediaStream(id: 'stream-remote', videoTrack: track);
+      return createRealtimeMediaStream(
+        id: 'stream-remote',
+        videoTrack: track,
+      );
     } catch (error) {
-      if (isCurrent()) timing?.finishFailure(error);
-      // 先清理本地 RTC 和渲染状态，再关闭云端会话。
+      if (isCurrent()) {
+        timing?.finishFailure(error);
+      }
+      // Release local RTC and rendering state before closing the cloud session.
       if (isCurrent() || activated) {
         await _rollbackConnection();
       }
@@ -178,14 +191,14 @@ final class XmaxRealtimeConnectionManager {
     }
   }
 
-  /// 结束当前生成并断开远端连接，保留本地摄像头预览。
+  /// Ends generation and disconnects realtime while retaining the local camera preview.
   ///
-  /// 返回刚关闭的会话标识；没有活动会话时为 null。
+  /// Returns the closed session identifier, or null if no session was active.
   Future<String?> disconnect() async {
     final session = _activeSession;
     final track = _activeRemoteTrack;
 
-    // 先清除当前资源归属，避免重入回调继续使用已失效的状态。
+    // Clear resource ownership before cleanup to prevent reentrant use of expired state.
     _activeSession = null;
     _activeRemoteTrack = null;
 
@@ -201,7 +214,7 @@ final class XmaxRealtimeConnectionManager {
     return session?.id;
   }
 
-  /// 撤销已建立的本地连接状态并安全释放远端绑定。
+  /// Rolls back connection state and releases remote bindings.
   Future<void> _rollbackConnection() async {
     final track = _activeRemoteTrack;
 
@@ -214,12 +227,12 @@ final class XmaxRealtimeConnectionManager {
     await _disconnectStreamSafely();
   }
 
-  /// 释放 RTC 连接；清理失败只记录日志，仍继续关闭云端会话。
+  /// Releases RTC resources and continues session cleanup even if RTC cleanup fails.
   Future<void> _disconnectStreamSafely() async {
     try {
       await _streamController.disconnect();
     } catch (error) {
-      // 即使 RTC 清理失败，也要关闭云端会话，并保留最初的连接错误。
+      // Close the cloud session even if RTC cleanup fails, preserving the original connection error.
       _logCleanupFailure(
         '清理 RTC 连接失败 (Failed to Clean Up RTC Connection)',
         error,
@@ -227,9 +240,10 @@ final class XmaxRealtimeConnectionManager {
     }
   }
 
-  /// 解除指定远端轨道的渲染和交互绑定。
+  /// Clears rendering and interaction bindings for a remote track.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   void _resetRemoteRendering(
     RealtimeVideoTrack? track,
   ) {
@@ -243,9 +257,10 @@ final class XmaxRealtimeConnectionManager {
     }
   }
 
-  /// 关闭连接失败时已创建的云端会话，保留原始连接错误。
+  /// Closes a session created by a failed connection without replacing the original error.
   ///
-  /// - [sessionID]：云端实时会话标识。
+  /// Parameters:
+  /// - [sessionID]: The server session identifier.
   Future<void> _closeSessionAfterFailedConnection(
     String sessionID,
   ) async {
@@ -260,10 +275,11 @@ final class XmaxRealtimeConnectionManager {
     }
   }
 
-  /// 记录资源释放错误，不替换当前业务错误。
+  /// Logs cleanup failures without replacing the operation error.
   ///
-  /// - [title]：日志组的标题。
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [title]: The log group's title.
+  /// - [error]: The operation error.
   static void _logCleanupFailure(
     String title,
     Object error,
@@ -274,9 +290,10 @@ final class XmaxRealtimeConnectionManager {
     );
   }
 
-  /// 校验操作仍属于当前生命周期，否则抛出取消错误。
+  /// Rejects an operation that no longer belongs to the current lifecycle.
   ///
-  /// - [isCurrent]：检查操作是否仍属于当前生命周期的函数。
+  /// Parameters:
+  /// - [isCurrent]: A check that the operation still belongs to the current lifecycle.
   static void _ensureCurrent(
     bool Function() isCurrent,
   ) {

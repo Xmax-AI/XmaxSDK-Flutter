@@ -8,16 +8,17 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// Xmax 服务环境。
+/// The Xmax service environment.
 enum XmaxEnvironment {
 
-  /// 国内环境。
+  /// The China service environment.
   china,
 
-  /// 海外环境。
+  /// The global service environment.
   global;
 
-  /// 实时会话的 API 根地址；存储等通用服务仍使用各环境的通用地址。
+  /// The base URL for realtime session requests; general services use the environment's general
+  /// API.
   Uri get realtimeApiBaseURL => Uri.parse(switch (this) {
     XmaxEnvironment.china => 'https://cloud.xmax.22duck.cn/open/api/v1',
     XmaxEnvironment.global => 'https://api.xmax.ai/open/api/v1',

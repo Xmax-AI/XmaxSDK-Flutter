@@ -12,26 +12,28 @@ import '../foundation/rtc/RtcModels.dart';
 import '../media/interaction/InteractionFrame.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
 
-/// 远端视频轨道绑定、就绪等待和移除的内部接口。
+/// The rendering interface used by Core.
 abstract interface class RenderControlling {
 
-  /// 更新当前轨道的结果流绑定。
+  /// Updates the result-stream binding for the current track.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
   void setRemoteStream(
     RemoteStream? stream,
   );
 
-  /// 等待当前结果流首帧解码就绪，不要求预先挂载远端视图。
+  /// Waits for the first decoded result frame without requiring a mounted remote view.
   Future<void> waitUntilRemoteFrameReady();
 
-  /// 等待已挂载视图隐藏远端视频，再释放对应渲染资源。
+  /// Waits for mounted views to conceal remote video before releasing its rendering resources.
   Future<void> prepareForRemoteRemoval();
 
-  /// 为远端轨道注册渲染句柄和交互采样入口。
+  /// Registers a rendering handle and interaction sample handler for the remote track.
   ///
-  /// - [track]：目标视频轨道。
-  /// - [interactionListener]：接收当前轨道触点采样的函数。
+  /// Parameters:
+  /// - [track]: The target video track.
+  /// - [interactionListener]: The handler receiving interaction samples for the current track.
   void registerRemoteTrack(
     RealtimeVideoTrack track, {
     required void Function(
@@ -40,9 +42,10 @@ abstract interface class RenderControlling {
     interactionListener,
   });
 
-  /// 解除远端轨道的渲染、交互和首帧等待。
+  /// Removes remote track rendering, interaction bindings, and first-frame waits.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   void resetRemoteTrack(
     RealtimeVideoTrack? track,
   );

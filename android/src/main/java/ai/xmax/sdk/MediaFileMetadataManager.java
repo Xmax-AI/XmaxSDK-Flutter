@@ -22,33 +22,34 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * 在后台读取图片或视频的像素尺寸，不解码完整图像或视频帧。
- * 元数据不可用时返回空结果，不阻断实际文件上传。
+ * Reads media pixel dimensions in the background without decoding full images or video frames.
+ *
+ * Unavailable metadata produces a null result without preventing file uploads.
  */
 final class MediaFileMetadataManager implements MethodChannel.MethodCallHandler {
 
     /**
-     * 按顺序执行文件元数据读取的后台线程。
+     * The background executor that reads file metadata sequentially.
      */
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
 
     /**
-     * 将方法通道结果送回主线程的调度入口。
+     * The handler delivering method channel results on the main thread.
      */
     private final Handler main = new Handler(Looper.getMainLooper());
 
     /**
-     * 当前处理器是否已解除引擎绑定；解除后不再提交结果。
+     * Whether the handler is detached from its engine and must stop delivering results.
      */
     private boolean detached;
 
     /**
-     * 处理媒体尺寸请求，并在主线程回传可用的宽高。
+     * Handles media dimension requests and delivers available dimensions on the main thread.
      *
-     * @param call 包含文件路径或图片字节及媒体类别的请求
-     * @param result 接收宽高对象、空值或方法未实现通知的回调
+     * Results are delivered asynchronously; pending read results are discarded after detachment.
      *
-     * 结果异步通过 result 交付，解除绑定后丢弃旧读取结果。
+     * @param call the request containing a file path or image bytes and a media type
+     * @param result the callback receiving dimensions, null, or an unsupported-method result
      */
     @Override
     public void onMethodCall(
@@ -82,7 +83,7 @@ final class MediaFileMetadataManager implements MethodChannel.MethodCallHandler 
     }
 
     /**
-     * 使当前处理器失效，并停止等待中的后台读取任务。
+     * Invalidates the handler and stops queued background reads.
      */
     void dispose() {
         detached = true;
@@ -90,12 +91,12 @@ final class MediaFileMetadataManager implements MethodChannel.MethodCallHandler 
     }
 
     /**
-     * 读取媒体头部尺寸，视频按旋转信息转换为显示宽高。
+     * Reads media header dimensions, applying video rotation to obtain display dimensions.
      *
-     * @param path 本地文件路径；视频必须提供，图片可省略
-     * @param data 图片原始字节；没有路径时使用，视频不使用该参数
-     * @param video 是否按视频文件解析；false 表示图片
-     * @return 包含 width 和 height 的正整数像素尺寸；不可读取时返回 null
+     * @param path the local file path, required for video and optional for images
+     * @param data the image bytes used when no path is provided; ignored for video
+     * @param video true to read video metadata, or false to read an image
+     * @return positive pixel dimensions containing width and height, or null if unavailable
      */
     private static Map<String, Integer> readResolution(
         String path,
@@ -125,9 +126,17 @@ final class MediaFileMetadataManager implements MethodChannel.MethodCallHandler 
                 BitmapFactory.Options options = new BitmapFactory.Options();
                 options.inJustDecodeBounds = true;
                 if (path != null) {
-                    BitmapFactory.decodeFile(path, options);
+                    BitmapFactory.decodeFile(
+                        path,
+                        options
+                    );
                 } else if (data != null) {
-                    BitmapFactory.decodeByteArray(data, 0, data.length, options);
+                    BitmapFactory.decodeByteArray(
+                        data,
+                        0,
+                        data.length,
+                        options
+                    );
                 } else {
                     return null;
                 }
@@ -136,11 +145,17 @@ final class MediaFileMetadataManager implements MethodChannel.MethodCallHandler 
             }
             if (width <= 0 || height <= 0) return null;
             Map<String, Integer> resolution = new HashMap<>();
-            resolution.put("width", width);
-            resolution.put("height", height);
+            resolution.put(
+                "width",
+                width
+            );
+            resolution.put(
+                "height",
+                height
+            );
             return resolution;
         } catch (Exception ignored) {
-            // 元数据读取是可选能力，格式不支持或文件损坏时不影响上传。
+            // Metadata is optional; unsupported formats or corrupt files must not prevent uploads.
             return null;
         }
     }

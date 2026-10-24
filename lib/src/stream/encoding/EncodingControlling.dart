@@ -10,12 +10,13 @@
 
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
-/// 将视频规格和码率策略应用到 RTC 编码器的接口。
+/// An interface for realtime encoder configuration.
 abstract interface class EncodingControlling {
 
-  /// 按视频规格解析码率预算，并提交 RTC 编码配置。
+  /// Resolves the format's bitrate budget and applies RTC encoding settings.
   ///
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   Future<void> configure(
     RealtimeVideoFormat videoFormat,
   );

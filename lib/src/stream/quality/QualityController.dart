@@ -17,24 +17,25 @@ import 'QualityDirection.dart';
 import 'QualityHistory.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
-/// 独立维护上下行质量档位，提供调档建议并记录成功应用的档位。
+/// Maintains independent link quality levels, proposes adjustments, and records successful updates.
 final class QualityController implements QualityControlling {
 
-  /// 当前上行链路的档位策略。
+  /// The current uplink quality policy.
   QualityDirection? _up;
 
-  /// 当前下行链路的档位策略。
+  /// The current downlink quality policy.
   QualityDirection? _down;
 
-  /// 当前模型上下行成功档位的本地历史存储。
+  /// The local store for successfully applied link levels for the current model.
   QualityHistory? _history;
 
-  /// 当前异步操作的版本号。
+  /// The asynchronous operation revision.
   int _version = 0;
 
-  /// 读取模型的有效档位历史，准备独立上下行策略并应用初始传输规格。
+  /// Loads valid model history, prepares independent link policies, and applies the initial
+  /// transport format.
   ///
-  /// 详细说明见 [QualityControlling.prepareQuality]。
+  /// See [QualityControlling.prepareQuality] for the usage contract.
   @override
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
@@ -45,20 +46,32 @@ final class QualityController implements QualityControlling {
     final up = await history.read(downlink: false);
     final down = await history.read(downlink: true);
 
-    if (version != _version) return;
+    if (version != _version) {
+      return;
+    }
 
     _history = history;
-    _up = QualityDirection(baseline: baseline, level: up, downlink: false);
-    _down = QualityDirection(baseline: baseline, level: down, downlink: true);
+    _up = QualityDirection(
+      baseline: baseline,
+      level: up,
+      downlink: false,
+    );
+    _down = QualityDirection(
+      baseline: baseline,
+      level: down,
+      downlink: true,
+    );
   }
 
-  /// 当前连接的媒体基准和成功应用的档位；未准备或已清理时为空。
+  /// The prepared media baseline and applied levels; null before preparation or after cleanup.
   @override
   QualityConfiguration? get qualityConfiguration {
     final up = _up;
     final down = _down;
 
-    if (up == null || down == null) return null;
+    if (up == null || down == null) {
+      return null;
+    }
 
     return QualityConfiguration(
       baseline: up.baseline,
@@ -67,21 +80,29 @@ final class QualityController implements QualityControlling {
     );
   }
 
-  /// 依据连续网络样本和冷却期提出独立的上行、下行候选档位。
+  /// Proposes independent link levels using consecutive network samples and cooldown windows.
   ///
-  /// 详细说明见 [QualityControlling.proposeQuality]。
+  /// See [QualityControlling.proposeQuality] for the usage contract.
   @override
   QualityChange proposeQuality(
     RealtimeNetworkQuality quality,
     double now,
   ) => QualityChange(
-    uplink: _up?.observe(quality.uplink, sampledAt: now, now: now),
-    downlink: _down?.observe(quality.downlink, sampledAt: now, now: now),
+    uplink: _up?.observe(
+      quality.uplink,
+      sampledAt: now,
+      now: now,
+    ),
+    downlink: _down?.observe(
+      quality.downlink,
+      sampledAt: now,
+      now: now,
+    ),
   );
 
-  /// 提交本次调档结果，成功时保存对应方向的模型档位历史。
+  /// Commits an adjustment result, saving the model's level history for successful updates.
   ///
-  /// 详细说明见 [QualityControlling.completeQuality]。
+  /// See [QualityControlling.completeQuality] for the usage contract.
   @override
   Future<void> completeQuality(
     RealtimeQualityLevel level, {
@@ -89,23 +110,30 @@ final class QualityController implements QualityControlling {
     required bool success,
     required double now,
   }) async {
-    (downlink ? _down : _up)?.complete(level, success: success, now: now);
+    (downlink ? _down : _up)?.complete(
+      level,
+      success: success,
+      now: now,
+    );
 
     final history = _history;
 
     if (success && history != null) {
-      await history.write(level, downlink: downlink);
+      await history.write(
+        level,
+        downlink: downlink,
+      );
     }
   }
 
-  /// 清除连续好坏网络样本，保留当前档位。
+  /// Clears consecutive network sample counters while retaining current levels.
   @override
   void resetQualitySamples() {
     _up?.resetSamples();
     _down?.resetSamples();
   }
 
-  /// 清除当前上下行策略及历史绑定，使尚未完成的准备任务失效。
+  /// Clears link policies and history bindings, invalidating pending preparation.
   @override
   void resetQuality() {
     _version++;
@@ -114,15 +142,16 @@ final class QualityController implements QualityControlling {
     _history = null;
   }
 
-  /// 网络质量事件的外部监听器。
+  /// The external listener for network quality events.
   RealtimeNetworkQualityListener? _networkQualityListener;
 
-  /// 性能受限与恢复事件的外部监听器。
+  /// The external listener for performance limitation and recovery events.
   RealtimePerformanceAlarmListener? _performanceAlarmListener;
 
-  /// 设置上下行网络质量监听器，不替换 SDK 内部自适应策略。
+  /// Sets the network quality listener without replacing the SDK's adaptation policy.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setNetworkQualityListener(
     RealtimeNetworkQualityListener? listener,
@@ -130,9 +159,10 @@ final class QualityController implements QualityControlling {
     _networkQualityListener = listener;
   }
 
-  /// 设置性能受限及恢复事件的监听器。
+  /// Sets the listener for performance limitation and recovery events.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setPerformanceAlarmListener(
     RealtimePerformanceAlarmListener? listener,
@@ -140,9 +170,10 @@ final class QualityController implements QualityControlling {
     _performanceAlarmListener = listener;
   }
 
-  /// 通知网络质量监听器，不替换内部质量策略。
+  /// Notifies the quality listener without replacing the internal policy.
   ///
-  /// - [quality]：同一次采样得到的上下行网络质量。
+  /// Parameters:
+  /// - [quality]: The uplink and downlink measurements from the same sample.
   @override
   void emitNetworkQuality(
     RealtimeNetworkQuality quality,
@@ -150,9 +181,10 @@ final class QualityController implements QualityControlling {
     _networkQualityListener?.call(quality);
   }
 
-  /// 通知性能受限或恢复事件。
+  /// Notifies the listener of performance limitation or recovery.
   ///
-  /// - [alarm]：性能受限或恢复事件。
+  /// Parameters:
+  /// - [alarm]: The performance limitation or recovery event.
   @override
   void emitPerformanceAlarm(
     RealtimePerformanceAlarm alarm,

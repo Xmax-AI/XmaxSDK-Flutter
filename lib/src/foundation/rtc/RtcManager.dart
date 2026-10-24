@@ -20,59 +20,60 @@ import 'RtcEventListener.dart';
 import 'RtcManaging.dart';
 import 'RtcModels.dart';
 
-/// 协调共享引擎租约、摄像头预览与单次房间生命周期。
+/// Coordinates a shared engine lease, camera preview, and one room lifecycle.
 final class RtcManager implements RtcManaging {
 
-  /// 创建 RTC 采集与房间管理器。
+  /// Creates an RTC capture and room manager.
   ///
-  /// - [engineManager]：引擎租约分配器；默认使用进程共享的独占分配器。
+  /// Parameters:
+  /// - [engineManager]: The engine lease allocator; defaults to the process-wide allocator.
   RtcManager({
     RtcEngineManager? engineManager,
   }) : _engineManager = engineManager ?? RtcEngineManager.shared;
 
-  /// 等待 RTC 加入房间和发送队列就绪的最长时限。
+  /// The deadline for RTC join and signaling queue readiness.
   static const joinTimeout = Duration(seconds: 15);
 
-  /// 等待原生房间释放的最长时限。
+  /// The deadline for native room release.
   static const cleanupTimeout = Duration(seconds: 2);
 
-  /// 分配独占 RTC 引擎租约的组件。
+  /// The allocator for exclusive RTC engine leases.
   final RtcEngineManager _engineManager;
 
-  /// 需要释放的独占 RTC 引擎租约。
+  /// The exclusive RTC engine lease to release.
   RtcEngineLease? _lease;
 
-  /// 正在进行的 RTC 引擎初始化任务。
+  /// The in-flight engine initialization.
   Future<void>? _initializing;
 
-  /// 正在进行的 RTC 原生资源释放任务。
+  /// The in-flight native resource release.
   Future<void>? _destroyFuture;
 
-  /// 当前 RTC 房间实例。
+  /// The current RTC room.
   AgoraRtcRoom? _room;
 
-  /// 正在执行的退房任务；后续入房必须等待该任务结束。
+  /// The in-flight leave operation that subsequent joins must await.
   Future<void>? _leavingRoom;
 
-  /// 当前 RTC 房间和媒体事件监听器。
+  /// The current room and media event listener.
   RtcEventListener? _eventListener;
 
-  /// 本地采集的原生 RTC 事件处理器。
+  /// The native event handler for local capture.
   RtcEngineEventHandler? _handler;
 
-  /// 当前本地视频首帧就绪通知。
+  /// The current local video first-frame readiness callback.
   void Function()? _cameraPreviewReadyListener;
 
-  /// 摄像头位置；创建流时默认使用前置摄像头。
+  /// The camera position, initially front-facing when a stream is created.
   CameraPosition _position = CameraPosition.front;
 
-  /// 最近一次成功应用的 RTC 编码配置。
+  /// The most recently applied RTC encoding configuration.
   VideoEncodingConfiguration? _encoding;
 
-  /// 用于原生视频渲染的当前 RTC 引擎。
+  /// The RTC engine used for native video rendering.
   RtcEngineEx get renderEngine => _lease!.engine.engine;
 
-  /// 当前使用的原生 RTC 引擎。
+  /// The native RTC engine in use.
   RtcEngineEx get _engine {
     if (_lease == null) {
       throw const XmaxError(
@@ -84,13 +85,17 @@ final class RtcManager implements RtcManaging {
     return renderEngine;
   }
 
-  /// 获取并初始化当前生命周期使用的 RTC 引擎。
+  /// Acquires and initializes the RTC engine for this lifecycle.
   @override
   Future<void> initialize() async {
     await _destroyFuture;
-    if (_lease != null) return;
+    if (_lease != null) {
+      return;
+    }
 
-    if (_initializing case final pending?) return pending;
+    if (_initializing case final pending?) {
+      return pending;
+    }
 
     final future = _initialize();
 
@@ -99,11 +104,16 @@ final class RtcManager implements RtcManaging {
     try {
       await future;
     } finally {
-      if (identical(_initializing, future)) _initializing = null;
+      if (identical(
+        _initializing,
+        future,
+      )) {
+        _initializing = null;
+      }
     }
   }
 
-  /// 获取独占引擎租约并注册本地媒体事件。
+  /// Acquires an exclusive engine lease and registers local media events.
   Future<void> _initialize() async {
     final lease = await _engineManager.acquire();
 
@@ -111,14 +121,24 @@ final class RtcManager implements RtcManaging {
 
     try {
       final handler = RtcEngineEventHandler(
-        onError: (code, message) => _eventListener?.onError?.call(
+        onError: (
+          code,
+          message,
+        ) => _eventListener?.onError?.call(
           XmaxError(
             code: XmaxErrorCode.rtcError,
             message: 'RTC ${code.name}: $message',
           ),
         ),
-        onFirstLocalVideoFrame: (_, width, height, _) {
-          if (width > 0 && height > 0) _cameraPreviewReadyListener?.call();
+        onFirstLocalVideoFrame: (
+          _,
+          width,
+          height,
+          _,
+        ) {
+          if (width > 0 && height > 0) {
+            _cameraPreviewReadyListener?.call();
+          }
         },
         onLocalVideoStateChanged: _logLocalVideoState,
       );
@@ -132,21 +152,28 @@ final class RtcManager implements RtcManaging {
     }
   }
 
-  /// 关闭当前 RTC 资源，并使后续原生回调失效。
+  /// Releases RTC resources and invalidates subsequent native callbacks.
   @override
   Future<void> destroy() {
-    if (_destroyFuture case final active?) return active;
+    if (_destroyFuture case final active?) {
+      return active;
+    }
 
     final future = _destroy();
 
     _destroyFuture = future;
 
     return future.whenComplete(() {
-      if (identical(_destroyFuture, future)) _destroyFuture = null;
+      if (identical(
+        _destroyFuture,
+        future,
+      )) {
+        _destroyFuture = null;
+      }
     });
   }
 
-  /// 等待初始化结束后释放房间、事件处理器和引擎租约。
+  /// Waits for initialization before releasing the room, event handlers, and engine lease.
   Future<void> _destroy() async {
     try {
       await _initializing;
@@ -184,9 +211,11 @@ final class RtcManager implements RtcManaging {
     }
   }
 
-  /// 将编码配置应用到当前 RTC 连接；尚未入房时配置本地预览使用的引擎。
+  /// Applies encoding to the current RTC connection, or to the preview engine before join.
   ///
-  /// - [configuration]：视频分辨率、帧率、最低与目标码率及编码偏好。
+  /// Parameters:
+  /// - [configuration]: The encoding dimensions, frame rate, minimum and target bitrate, and
+  ///   degradation preference.
   @override
   Future<void> configureVideoEncoding(
     VideoEncodingConfiguration configuration,
@@ -218,14 +247,17 @@ final class RtcManager implements RtcManaging {
       () => connection == null
           ? _engine.setVideoEncoderConfiguration(encoder)
           : room!.engine.setVideoEncoderConfigurationEx(
-              config: encoder,
-              connection: connection,
-            ),
+            config: encoder,
+            connection: connection,
+          ),
     );
     _encoding = configuration;
 
     final scope = connection == null
-        ? XmaxLogger.localized('本地预览', 'Local Preview')
+        ? XmaxLogger.localized(
+          '本地预览',
+          'Local Preview',
+        )
         : '${connection.channelId}/${connection.localUid}';
 
     XmaxLogger.debug(
@@ -242,23 +274,27 @@ final class RtcManager implements RtcManaging {
     );
   }
 
-  /// 按给定规格启动摄像头采集和本地预览，不开启麦克风。
+  /// Starts camera capture and preview with the specified format, leaving the microphone disabled.
   ///
-  /// 详细说明见 [RtcManaging.startVideoCapture]。
+  /// See [RtcManaging.startVideoCapture] for the usage contract.
   @override
   Future<void> startVideoCapture({
     required int width,
     required int height,
     required int frameRate,
   }) async {
-    await updateVideoCapture(width: width, height: height, frameRate: frameRate);
+    await updateVideoCapture(
+      width: width,
+      height: height,
+      frameRate: frameRate,
+    );
     await _checked(() => _engine.enableLocalVideo(true));
     await _checked(() => _engine.startPreview());
   }
 
-  /// 原地更新采集规格，不改变当前摄像头、采集生命周期或预览绑定。
+  /// Updates capture settings without changing the camera, capture lifecycle, or preview binding.
   ///
-  /// 详细说明见 [RtcManaging.updateVideoCapture]。
+  /// See [RtcManaging.updateVideoCapture] for the usage contract.
   @override
   Future<void> updateVideoCapture({
     required int width,
@@ -272,26 +308,33 @@ final class RtcManager implements RtcManaging {
               ? CameraDirection.cameraFront
               : CameraDirection.cameraRear,
           followEncodeDimensionRatio: false,
-          format: VideoFormat(width: width, height: height, fps: frameRate),
+          format: VideoFormat(
+            width: width,
+            height: height,
+            fps: frameRate,
+          ),
         ),
       ),
     );
   }
 
-  /// 停止本地预览和摄像头采集。
+  /// Stops local preview and camera capture.
   @override
   Future<void> stopVideoCapture() async {
-    if (_lease == null) return;
+    if (_lease == null) {
+      return;
+    }
 
     await _checked(() => _engine.stopPreview());
     await _checked(() => _engine.enableLocalVideo(false));
   }
 
-  /// 将原生采集切换到指定摄像头，并重新应用当前编码镜像设置。
+  /// Switches the native camera and reapplies the encoding mirror setting.
   ///
-  /// - [position]：需要切换到的摄像头位置。
+  /// Completes after camera switching and mirror configuration both succeed.
   ///
-  /// 摄像头切换和编码镜像配置均完成后结束。
+  /// Parameters:
+  /// - [position]: The camera position to select.
   @override
   Future<void> switchCamera({
     required CameraPosition position,
@@ -301,12 +344,15 @@ final class RtcManager implements RtcManaging {
       _position = position;
     }
 
-    if (_encoding case final encoding?) await configureVideoEncoding(encoding);
+    if (_encoding case final encoding?) {
+      await configureVideoEncoding(encoding);
+    }
   }
 
-  /// 加入指定 RTC 房间，并在失败时清理本次房间资源。
+  /// Joins an RTC room and releases its resources if joining fails.
   ///
-  /// - [configuration]：本次入房使用的房间标识、用户账号和访问令牌。
+  /// Parameters:
+  /// - [configuration]: The room identifier, local account, and access token for this join.
   @override
   Future<void> joinRoom({
     required RoomJoinConfiguration configuration,
@@ -335,14 +381,18 @@ final class RtcManager implements RtcManaging {
     }
   }
 
-  /// 退出当前 RTC 房间，取消待发信令并保留仍在使用的本地摄像头预览。
+  /// Leaves RTC and cancels pending signaling while preserving an active local camera preview.
   @override
   Future<void> leaveRoom() {
-    if (_leavingRoom case final active?) return active;
+    if (_leavingRoom case final active?) {
+      return active;
+    }
 
     final room = _room;
 
-    if (room == null) return Future<void>.value();
+    if (room == null) {
+      return Future<void>.value();
+    }
 
     _room = null;
 
@@ -351,11 +401,16 @@ final class RtcManager implements RtcManaging {
     _leavingRoom = future;
 
     return future.whenComplete(() {
-      if (identical(_leavingRoom, future)) _leavingRoom = null;
+      if (identical(
+        _leavingRoom,
+        future,
+      )) {
+        _leavingRoom = null;
+      }
     });
   }
 
-  /// 尚未关闭的当前 RTC 房间；不可用时抛出 RTC 错误。
+  /// The current open room; throws an RTC error if unavailable.
   AgoraRtcRoom get _requiredRoom {
     final room = _room;
 
@@ -369,9 +424,10 @@ final class RtcManager implements RtcManaging {
     return room;
   }
 
-  /// 设置当前房间是否发布摄像头视频；不发布麦克风音频。
+  /// Sets camera publication for the current room without publishing microphone audio.
   ///
-  /// - [publish]：是否发布本地摄像头视频。
+  /// Parameters:
+  /// - [publish]: Whether to publish local camera video.
   @override
   Future<void> publishLocalVideo({
     required bool publish,
@@ -388,12 +444,14 @@ final class RtcManager implements RtcManaging {
         connection: room.connection,
       ),
     );
-    if (publish && _encoding != null) await configureVideoEncoding(_encoding!);
+    if (publish && _encoding != null) {
+      await configureVideoEncoding(_encoding!);
+    }
   }
 
-  /// 设置是否接收指定远端用户的视频。
+  /// Sets video subscription for a remote user.
   ///
-  /// 详细说明见 [RtcManaging.subscribeRemoteVideo]。
+  /// See [RtcManaging.subscribeRemoteVideo] for the usage contract.
   @override
   Future<void> subscribeRemoteVideo({
     required String streamID,
@@ -409,9 +467,9 @@ final class RtcManager implements RtcManaging {
     );
   });
 
-  /// 设置是否接收指定远端用户的音频。
+  /// Sets audio subscription for a remote user.
   ///
-  /// 详细说明见 [RtcManaging.subscribeRemoteAudio]。
+  /// See [RtcManaging.subscribeRemoteAudio] for the usage contract.
   @override
   Future<void> subscribeRemoteAudio({
     required String streamID,
@@ -427,9 +485,9 @@ final class RtcManager implements RtcManaging {
     );
   });
 
-  /// 将指定远端用户的播放音量百分比提交给 RTC。
+  /// Applies a remote user's playback volume percentage to RTC.
   ///
-  /// 详细说明见 [RtcManaging.setRemoteAudioVolume]。
+  /// See [RtcManaging.setRemoteAudioVolume] for the usage contract.
   @override
   Future<void> setRemoteAudioVolume({
     required int volume,
@@ -445,33 +503,37 @@ final class RtcManager implements RtcManaging {
     );
   });
 
-  /// 按队列顺序发送完整房间 JSON 信令，必要时进行分片和限速。
+  /// Sends ordered room signaling with fragmentation and rate limiting when needed.
   ///
-  /// - [message]：完整消息文本。
+  /// Parameters:
+  /// - [message]: The complete message text.
   @override
   Future<void> sendRoomMessage(
     String message,
   ) => _requiredRoom.sendMessage(message);
 
-  /// 替换 RTC 内部事件监听器。
+  /// Replaces the internal RTC event listener.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setEventListener(
     RtcEventListener? listener,
   ) => _eventListener = listener;
 
-  /// 设置本地摄像头首帧就绪的内部通知。
+  /// Sets the internal local camera first-frame callback.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setCameraPreviewReadyListener(
     void Function()? listener,
   ) => _cameraPreviewReadyListener = listener;
 
-  /// 执行 RTC 调用，并将原生异常和超时转换为 SDK 错误。
+  /// Runs an RTC call and normalizes native failures and timeouts as SDK errors.
   ///
-  /// - [operation]：要执行的异步操作。
+  /// Parameters:
+  /// - [operation]: The asynchronous operation to execute.
   static Future<void> _checked(
     Future<void> Function() operation,
   ) async {
@@ -490,11 +552,12 @@ final class RtcManager implements RtcManaging {
     }
   }
 
-  /// 记录原生本地视频状态及原因，不更改采集或预览状态。
+  /// Logs native local video state without changing capture or preview state.
   ///
-  /// - [source]：本次状态变化的视频源。
-  /// - [state]：原生采集或编码状态。
-  /// - [reason]：原生上报的状态变化原因。
+  /// Parameters:
+  /// - [source]: The video source associated with this state change.
+  /// - [state]: The native capture or encoding state.
+  /// - [reason]: The native reason for the state change.
   static void _logLocalVideoState(
     VideoSourceType source,
     LocalVideoStreamState state,
@@ -510,9 +573,10 @@ final class RtcManager implements RtcManaging {
     );
   }
 
-  /// 记录原生资源释放期间的错误。
+  /// Logs native resource cleanup failures.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   static void _logCleanup(
     Object error,
   ) {

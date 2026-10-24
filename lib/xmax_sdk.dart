@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// Xmax SDK 的 Flutter 接口。
+/// The Flutter entry point for XmaxSDK.
 library;
 
 export 'XmaxSDK.dart';

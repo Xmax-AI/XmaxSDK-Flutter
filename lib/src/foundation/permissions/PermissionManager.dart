@@ -15,13 +15,14 @@ import '../errors/XmaxError.dart';
 import '../logging/XmaxLogger.dart';
 import 'PermissionManaging.dart';
 
-/// 检查并按需申请摄像头或麦克风权限，拒绝时返回明确的 SDK 错误。
+/// Checks and requests camera or microphone permission, reporting permission-specific SDK errors on
+/// denial.
 final class PermissionManager implements PermissionManaging {
 
-  /// 创建媒体权限检查入口。
+  /// Creates a media permission checker.
   const PermissionManager();
 
-  /// 检查并按需申请摄像头权限；拒绝时抛出 cameraPermissionDenied。
+  /// Checks and requests camera permission; throws cameraPermissionDenied if denied.
   @override
   Future<void> ensureCameraPermission() => _ensurePermission(
     Permission.camera,
@@ -29,7 +30,7 @@ final class PermissionManager implements PermissionManaging {
     errorMessage: 'Camera permission is unavailable or was denied',
   );
 
-  /// 检查并按需申请麦克风权限；拒绝时抛出 microphonePermissionDenied。
+  /// Checks and requests microphone permission; throws microphonePermissionDenied if denied.
   @override
   Future<void> ensureMicrophonePermission() => _ensurePermission(
     Permission.microphone,
@@ -37,11 +38,12 @@ final class PermissionManager implements PermissionManaging {
     errorMessage: 'Microphone permission is unavailable or was denied',
   );
 
-  /// 检查指定权限，未授权时发起申请，拒绝时抛出约定错误。
+  /// Checks a permission, requests it if needed, and throws the specified error on denial.
   ///
-  /// - [permission]：当前请求检查或申请的媒体权限。
-  /// - [errorCode]：权限拒绝时应抛出的 SDK 错误码。
-  /// - [errorMessage]：权限拒绝时提供的错误描述。
+  /// Parameters:
+  /// - [permission]: The media permission to check or request.
+  /// - [errorCode]: The SDK error code to throw if permission is denied.
+  /// - [errorMessage]: The error description to provide if permission is denied.
   Future<void> _ensurePermission(
     Permission permission, {
     required XmaxErrorCode errorCode,
@@ -61,11 +63,17 @@ final class PermissionManager implements PermissionManaging {
             '权限申请失败 (Permission Request Failed)\n'
             '└─ ${XmaxLogger.localized('原因：', 'Reason: ')}${ErrorNormalizer.description(error)}',
       );
-      throw XmaxError(code: errorCode, message: errorMessage);
+      throw XmaxError(
+        code: errorCode,
+        message: errorMessage,
+      );
     }
 
     if (!status.isGranted) {
-      throw XmaxError(code: errorCode, message: errorMessage);
+      throw XmaxError(
+        code: errorCode,
+        message: errorMessage,
+      );
     }
   }
 }

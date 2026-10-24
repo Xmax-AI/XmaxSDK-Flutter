@@ -8,31 +8,32 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 实时传输档位；L1 质量最高，L5 更侧重降低带宽占用。
+/// A realtime transport level, from highest quality at L1 to lower bandwidth at L5.
 ///
-/// 档位不表示当前网络质量。手动调档后，SDK 仍会根据网络情况自动调整。
+/// Levels are not network quality measurements. Automatic adaptation remains active after manual
+/// changes.
 enum RealtimeQualityLevel {
 
-  /// 使用最高传输规格。
+  /// The highest transport quality.
   l1(1),
 
-  /// 使用较高传输规格，也是首次连接的默认档位。
+  /// High transport quality and the initial level when no valid history exists.
   l2(2),
 
-  /// 兼顾画质和带宽占用。
+  /// A balance between visual quality and bandwidth.
   l3(3),
 
-  /// 降低传输尺寸和上行帧率。
+  /// Reduced transmission dimensions and uplink frame rate.
   l4(4),
 
-  /// 使用较低上行帧率，优先降低带宽占用。
+  /// A lower uplink frame rate that prioritizes bandwidth reduction.
   l5(5);
 
-  /// 定义档位的序列化数值。
+  /// Defines a level's serialized value.
   const RealtimeQualityLevel(
     this.value,
   );
 
-  /// 档位数值，范围为 1～5。
+  /// The quality level value, from 1 to 5.
   final int value;
 }

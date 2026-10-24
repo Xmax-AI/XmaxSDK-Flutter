@@ -18,34 +18,35 @@ import '../network/ApiServicing.dart';
 import 'RealtimeSession.dart';
 import 'RealtimeSessionServicing.dart';
 
-/// 创建和关闭云端实时会话，定期维持会话并隔离过期心跳结果。
+/// Creates and closes server sessions while maintaining heartbeats and rejecting stale responses.
 final class RealtimeSessionService implements RealtimeSessionServicing {
 
-  /// 创建会话服务及心跳调度配置。
+  /// Creates a session service with heartbeat scheduling.
   ///
-  /// - [apiService]：会话创建、续期和关闭的网络服务。
-  /// - [heartbeatInterval]：会话续期间隔，默认 10 秒。
+  /// Parameters:
+  /// - [apiService]: The API service for session creation, renewal, and closure.
+  /// - [heartbeatInterval]: The heartbeat interval; defaults to 10 seconds.
   RealtimeSessionService({
     required ApiServicing apiService,
     Duration heartbeatInterval = const Duration(seconds: 10),
   }) : _apiService = apiService,
        _heartbeatInterval = heartbeatInterval;
 
-  /// 云端 API 请求服务。
+  /// The service used for API requests.
   final ApiServicing _apiService;
 
-  /// 云端会话心跳的发送间隔。
+  /// The server session heartbeat interval.
   final Duration _heartbeatInterval;
 
-  /// 当前会话心跳的版本号，用于忽略旧请求的响应。
+  /// The heartbeat revision used to reject earlier responses.
   int _heartbeatVersion = 0;
 
-  /// 当前云端会话的下一次心跳计时器。
+  /// The timer for the next session heartbeat.
   Timer? _heartbeatTimer;
 
-  /// 为指定模型创建云端实时会话，并校验完整 RTC 连接凭证。
+  /// Creates a model session and validates its RTC connection credentials.
   ///
-  /// 详细说明见 [RealtimeSessionServicing.createSession]。
+  /// See [RealtimeSessionServicing.createSession] for the usage contract.
   @override
   Future<RealtimeSession> createSession({
     required RealtimeModel model,
@@ -56,12 +57,15 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
       body: <String, Object?>{'model': model.value},
     );
 
-    return _makeSession(payload, requiresConnection: true);
+    return _makeSession(
+      payload,
+      requiresConnection: true,
+    );
   }
 
-  /// 启动当前会话的心跳，替换先前心跳周期。
+  /// Starts heartbeats for a session, replacing the previous heartbeat cycle.
   ///
-  /// 详细说明见 [RealtimeSessionServicing.startHeartbeat]。
+  /// See [RealtimeSessionServicing.startHeartbeat] for the usage contract.
   @override
   void startHeartbeat({
     required String sessionID,
@@ -69,15 +73,22 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
   }) {
     stopHeartbeat();
 
-    // 用版本号使已取消的定时器和请求失效，防止旧请求完成后重新启动心跳。
+    // Invalidates cancelled timers and requests so stale completions cannot restart heartbeats.
     final version = ++_heartbeatVersion;
 
-    _heartbeatTimer = Timer(_heartbeatInterval, () {
-      unawaited(_heartbeat(sessionID, version, onFailure));
-    });
+    _heartbeatTimer = Timer(
+      _heartbeatInterval,
+      () {
+      unawaited(_heartbeat(
+        sessionID,
+        version,
+        onFailure,
+      ));
+    },
+    );
   }
 
-  /// 停止会话心跳，并使旧心跳请求的响应失效。
+  /// Stops heartbeats and invalidates responses from earlier requests.
   @override
   void stopHeartbeat() {
     _heartbeatVersion += 1;
@@ -85,21 +96,26 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     _heartbeatTimer = null;
   }
 
-  /// 关闭指定云端实时会话。
+  /// Closes the specified server session.
   ///
-  /// - [sessionID]：云端实时会话标识。
+  /// Parameters:
+  /// - [sessionID]: The server session identifier.
   @override
   Future<void> closeSession({
     required String sessionID,
   }) async {
-    await _apiService.delete<Map<String, dynamic>>('/session/$sessionID', _map);
+    await _apiService.delete<Map<String, dynamic>>(
+      '/session/$sessionID',
+      _map,
+    );
   }
 
-  /// 维持指定会话，发现会话失效时通知当前周期的失败处理器。
+  /// Renews the session and notifies the current cycle's failure handler if it becomes invalid.
   ///
-  /// - [sessionID]：云端实时会话标识。
-  /// - [version]：当前异步操作的版本号。
-  /// - [onFailure]：操作失败时的处理回调。
+  /// Parameters:
+  /// - [sessionID]: The server session identifier.
+  /// - [version]: The asynchronous operation revision.
+  /// - [onFailure]: The operation failure handler.
   Future<void> _heartbeat(
     String sessionID,
     int version,
@@ -119,7 +135,10 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
         return;
       }
 
-      final session = _makeSession(payload, requiresConnection: false);
+      final session = _makeSession(
+        payload,
+        requiresConnection: false,
+      );
 
       if (session.status != null && session.status != 'ACTIVE') {
         throw XmaxError(
@@ -130,9 +149,16 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
         );
       }
 
-      _heartbeatTimer = Timer(_heartbeatInterval, () {
-        unawaited(_heartbeat(sessionID, version, onFailure));
-      });
+      _heartbeatTimer = Timer(
+        _heartbeatInterval,
+        () {
+        unawaited(_heartbeat(
+          sessionID,
+          version,
+          onFailure,
+        ));
+      },
+      );
     } catch (error) {
       if (version != _heartbeatVersion) {
         return;
@@ -140,16 +166,20 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
 
       _heartbeatVersion += 1;
       _heartbeatTimer = null;
-      await onFailure(sessionID, error);
+      await onFailure(
+        sessionID,
+        error,
+      );
     }
   }
 
-  /// 解析云端会话响应，并按调用要求校验连接信息。
+  /// Decodes a session response and validates connection information when required.
   ///
-  /// - [payload]：待解析的业务响应对象。
-  /// - [requiresConnection]：是否要求响应包含完整 RTC 连接凭证。
+  /// Parameters:
+  /// - [payload]: The API response payload to decode.
+  /// - [requiresConnection]: Whether complete RTC credentials are required in the response.
   ///
-  /// 返回解析后的云端实时会话。
+  /// Returns the decoded server session.
   RealtimeSession _makeSession(
     Map<String, dynamic> payload, {
     required bool requiresConnection,
@@ -182,11 +212,13 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     );
   }
 
-  /// 解析 RTC 凭证对象或 JSON 字符串，校验必需字段及应用标识。
+  /// Decodes RTC credentials from an object or JSON string and validates required fields and app
+  /// identity.
   ///
-  /// - [modelExtra]：服务端返回的 RTC 凭证对象或 JSON 字符串。
+  /// Parameters:
+  /// - [modelExtra]: The server's RTC credentials as an object or JSON string.
   ///
-  /// 返回完整 RTC 连接凭证；字段缺失或应用标识不匹配时返回 null。
+  /// Returns complete RTC credentials, or null for missing fields or an app identifier mismatch.
   RealtimeSessionConnection? _makeConnection(
     Object? modelExtra,
   ) {
@@ -226,18 +258,20 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     );
   }
 
-  /// 将响应校验为字符串键的 JSON 对象。
+  /// Validates a response as a JSON object with string keys.
   ///
-  /// - [json]：待解析的 JSON 数据。
+  /// Parameters:
+  /// - [json]: The JSON value to decode.
   ///
-  /// 返回经过校验的 JSON 对象。
+  /// Returns the validated JSON object.
   static Map<String, dynamic> _map(
     Object? json,
   ) => Map<String, dynamic>.from(json! as Map);
 
-  /// 读取非空字符串，去除首尾空白。
+  /// Reads a nonempty string with surrounding whitespace removed.
   ///
-  /// - [value]：响应字段；不是字符串或内容为空白时返回 null。
+  /// Parameters:
+  /// - [value]: The response field; nonstrings and whitespace-only strings resolve to null.
   static String? _nonEmpty(
     Object? value,
   ) {

@@ -10,25 +10,28 @@
 
 import 'RtcModels.dart';
 
-/// 单次房间连接及其发布、订阅和信令资源。
+/// One RTC room connection and its publication, subscription, and signaling resources.
 abstract interface class RtcRoom {
 
-  /// 当前房间是否已关闭。
+  /// Whether the room has been closed.
   bool get isClosed;
 
-  /// 加入 RTC 房间并创建信令发送队列，不自动发布或订阅媒体。
+  /// Joins RTC and prepares signaling without automatically publishing or subscribing to media.
   ///
-  /// - [configuration]：本次入房使用的房间标识、用户账号和访问令牌。
+  /// Parameters:
+  /// - [configuration]: The room identifier, local account, and access token for this join.
   Future<void> join(
     RoomJoinConfiguration configuration,
   );
 
-  /// 关闭房间并等待原生离房，期间仅保留离房通知，不改变本地摄像头采集。
+  /// Closes the room and waits for native leave without changing local camera capture.
   Future<void> destroy();
 
-  /// 提交房间 JSON 信令；条件变更清理待发轨迹，自动调档失败不关闭连接。
+  /// Submits room signaling, discarding pending trajectories on condition changes; adaptive
+  /// configuration failures retain the connection.
   ///
-  /// - [message]：完整消息文本。
+  /// Parameters:
+  /// - [message]: The complete message text.
   Future<void> sendMessage(
     String message,
   );

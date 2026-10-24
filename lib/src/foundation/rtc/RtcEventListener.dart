@@ -13,10 +13,10 @@ import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import 'RtcModels.dart';
 import 'VideoStatistics.dart';
 
-/// RTC 媒体发布、首帧、网络质量、统计和错误的内部事件集合。
+/// The internal RTC publication, first-frame, quality, statistics, and failure callbacks.
 final class RtcEventListener {
 
-  /// 创建 RTC 事件回调集合。
+  /// Creates RTC event callbacks.
   const RtcEventListener({
     this.onRemoteVideoPublished,
     this.onFirstRemoteVideoFrameRendered,
@@ -29,53 +29,55 @@ final class RtcEventListener {
     this.onDownlinkVideoStatistics,
   });
 
-  /// 远端用户视频发布状态的变化通知。
+  /// The remote video publication callback.
   final void Function(
     RemoteStream stream,
     bool published,
   )?
   onRemoteVideoPublished;
 
-  /// 远端有效首帧完成渲染时的通知。
+  /// The callback for a rendered first remote video frame.
   final void Function(
     RemoteStream stream,
   )?
   onFirstRemoteVideoFrameRendered;
 
-  /// 远端有效首帧完成解码时的通知。
+  /// The callback for a decoded first remote video frame.
   final void Function(
     RemoteStream stream,
   )?
   onFirstRemoteVideoFrameDecoded;
 
-  /// 远端用户音频发布状态的变化通知。
+  /// The remote audio publication callback.
   final void Function(
     RemoteStream stream,
     bool published,
   )?
   onRemoteAudioPublished;
 
-  /// RTC 运行错误通知。
+  /// The RTC runtime failure callback.
   final void Function(
     Object error,
   )?
   onError;
 
-  /// 当前本地用户上下行网络质量通知。
+  /// The local user's uplink and downlink quality callback.
   final void Function(
     RealtimeNetworkQuality quality,
   )?
   onNetworkQuality;
 
-  /// 性能受限或恢复通知。
+  /// The performance limitation or recovery callback.
   final void Function(
     RealtimePerformanceAlarm alarm,
   )?
   onPerformanceAlarm;
 
-  /// 本地视频上行统计通知；样本及清理语义见 [UplinkVideoStatisticsListener]。
+  /// The uplink statistics callback; see [UplinkVideoStatisticsListener] for sample and cleanup
+  /// semantics.
   final UplinkVideoStatisticsListener? onUplinkVideoStatistics;
 
-  /// 下行视频统计通知；样本及清理语义见 [DownlinkVideoStatisticsListener]。
+  /// The downlink statistics callback; see [DownlinkVideoStatisticsListener] for sample and cleanup
+  /// semantics.
   final DownlinkVideoStatisticsListener? onDownlinkVideoStatistics;
 }

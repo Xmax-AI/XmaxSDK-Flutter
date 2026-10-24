@@ -25,10 +25,10 @@ import 'RtcRoom.dart';
 import 'RtcStatsLogger.dart';
 import 'VideoStatistics.dart';
 
-/// 过滤离房后的回调，维护数字 UID 与用户账号的映射。
+/// Filters callbacks after leave and maps numeric UIDs to RTC user accounts.
 final class AgoraRtcRoom implements RtcRoom {
 
-  /// 创建指定引擎和房间的操作入口。
+  /// Creates a room adapter for an RTC engine.
   AgoraRtcRoom({
     required this.engine,
     required this.roomID,
@@ -36,34 +36,34 @@ final class AgoraRtcRoom implements RtcRoom {
     this.leaveTimeout = const Duration(seconds: 2),
   });
 
-  /// 当前使用的原生 RTC 引擎。
+  /// The native RTC engine in use.
   final RtcEngineEx engine;
 
-  /// 云端分配的 RTC 房间标识。
+  /// The server-assigned RTC room identifier.
   final String roomID;
 
-  /// 读取当前 RTC 事件接收器的函数；返回 null 时停止向上分发事件。
+  /// The current RTC event listener provider; null suppresses event delivery.
   final RtcEventListener? Function() listener;
 
-  /// 等待原生退房请求和离房回调的最长时限，默认 2 秒。
+  /// The deadline for native leave and its callback; defaults to 2 seconds.
   final Duration leaveTimeout;
 
-  /// 用于通知加入房间和发送队列初始化完成的完成器。
+  /// The completer for room join and signaling queue initialization.
   final _joined = Completer<void>();
 
-  /// 对应房间已收到原生离房通知的完成器。
+  /// The completer for the room's native leave callback.
   final _left = Completer<void>();
 
-  /// 当前房间的关闭任务，供重复清理及入房失败回滚共同等待。
+  /// The shared room shutdown operation used by cleanup and join rollback.
   Future<void>? _destroying;
 
-  /// 入房使用的 RTC 用户账号，供已加入或正在加入的房间定向退房。
+  /// The local account used for targeted leave during or after joining.
   String? _userAccount;
 
-  /// 入房成功回调确认的连接，包含原生分配的本地数字 UID。
+  /// The confirmed connection containing the native-assigned local UID.
   RtcConnection? _connection;
 
-  /// 当前房间的原生连接；房间已关闭或尚未确认本地 UID 时抛出 RTC 错误。
+  /// The room's native connection; throws if closed or the local UID is not yet confirmed.
   RtcConnection get connection {
     final current = _connection;
 
@@ -77,48 +77,49 @@ final class AgoraRtcRoom implements RtcRoom {
     return current;
   }
 
-  /// 数字 UID 到 RTC 用户账号的映射。
+  /// The mapping from numeric UIDs to RTC user accounts.
   final _accounts = <int, String>{};
 
-  /// 当前仍在房间中的远端数字 UID 集合。
+  /// The remote UIDs currently present in the room.
   final _online = <int>{};
 
-  /// 已经通知媒体发布的远端用户 UID 集合。
+  /// The remote UIDs whose media publication has been reported.
   final _announced = <int>{};
 
-  /// 已收到首帧解码通知的远端 UID 集合。
+  /// The remote UIDs with a decoded first frame.
   final _decoded = <int>{};
 
-  /// 已收到首帧渲染通知的远端 UID 集合。
+  /// The remote UIDs with a rendered first frame.
   final _rendered = <int>{};
 
-  /// 当前是否正在创建房间 DataStream，避免重复创建。
+  /// Whether room DataStream creation is in progress.
   bool _preparingSender = false;
 
-  /// 按数字 UID 合并的账号查询任务。
+  /// The account lookup operations coalesced by numeric UID.
   final _pendingAccounts = <int, Future<String?>>{};
 
-  /// 当前房间的原生 RTC 事件处理器。
+  /// The room's native RTC event handler.
   late final RtcEngineEventHandler _handler;
 
-  /// 当前房间的有序、限速信令发送队列。
+  /// The room's ordered, rate-limited signaling queue.
   RtcMessageQueue? _sender;
 
-  /// 当前房间是否已关闭。
+  /// Whether the room has been closed.
   bool _isClosed = false;
 
-  /// 当前房间是否已关闭。
+  /// Whether the room has been closed.
   @override
   bool get isClosed => _isClosed;
 
-  /// 是否已收到原生入房成功回调，且当前房间尚未关闭。
+  /// Whether native join has completed and the room remains open.
   bool get isJoined => !_isClosed && _connection != null;
 
-  /// 检查回调是否来自尚未关闭的当前房间。
+  /// Checks whether a callback belongs to the current open room.
   ///
-  /// - [connection]：当前会话的 RTC 房间参数。
+  /// Parameters:
+  /// - [connection]: The RTC connection parameters for this session.
   ///
-  /// 返回回调是否来自尚未关闭的当前房间。
+  /// Returns whether the callback belongs to the current open room.
   bool _isCurrent(
     RtcConnection connection,
   ) =>
@@ -128,9 +129,10 @@ final class AgoraRtcRoom implements RtcRoom {
           connection.localUid == null ||
           connection.localUid == _connection!.localUid);
 
-  /// 加入 RTC 房间并创建信令发送队列，不自动发布或订阅媒体。
+  /// Joins RTC and prepares signaling without automatically publishing or subscribing to media.
   ///
-  /// - [configuration]：本次入房使用的房间标识、用户账号和访问令牌。
+  /// Parameters:
+  /// - [configuration]: The room identifier, local account, and access token for this join.
   @override
   Future<void> join(
     RoomJoinConfiguration configuration,
@@ -138,7 +140,10 @@ final class AgoraRtcRoom implements RtcRoom {
     _joined.future.ignore();
     _userAccount = configuration.userID;
     _handler = RtcEngineEventHandler(
-      onLeaveChannel: (connection, _) {
+      onLeaveChannel: (
+        connection,
+        _,
+      ) {
         if (!_isClosed ||
             connection.channelId != roomID ||
             (_connection != null &&
@@ -154,7 +159,10 @@ final class AgoraRtcRoom implements RtcRoom {
           message: 'RTC 房间已退出 (RTC Room Left)',
         );
       },
-      onJoinChannelSuccess: (connection, _) {
+      onJoinChannelSuccess: (
+        connection,
+        _,
+      ) {
         if (!_isCurrent(connection) ||
             _joined.isCompleted ||
             _preparingSender) {
@@ -169,27 +177,51 @@ final class AgoraRtcRoom implements RtcRoom {
           return;
         }
 
-        _connection = RtcConnection(channelId: roomID, localUid: uid);
+        _connection = RtcConnection(
+          channelId: roomID,
+          localUid: uid,
+        );
         _preparingSender = true;
         unawaited(_prepareSender());
       },
-      onUserJoined: (connection, uid, _) {
-        if (!_isCurrent(connection)) return;
+      onUserJoined: (
+        connection,
+        uid,
+        _,
+      ) {
+        if (!_isCurrent(connection)) {
+          return;
+        }
 
         _online.add(uid);
         unawaited(_publish(uid));
       },
-      onUserInfoUpdated: (uid, info) {
-        if (_isClosed) return;
+      onUserInfoUpdated: (
+        uid,
+        info,
+      ) {
+        if (_isClosed) {
+          return;
+        }
 
         final account = info.userAccount;
 
-        if (account != null && account.isNotEmpty) _accounts[uid] = account;
+        if (account != null && account.isNotEmpty) {
+          _accounts[uid] = account;
+        }
 
-        if (_online.contains(uid)) unawaited(_publish(uid));
+        if (_online.contains(uid)) {
+          unawaited(_publish(uid));
+        }
       },
-      onUserOffline: (connection, uid, _) {
-        if (!_isCurrent(connection)) return;
+      onUserOffline: (
+        connection,
+        uid,
+        _,
+      ) {
+        if (!_isCurrent(connection)) {
+          return;
+        }
 
         final account = _accounts.remove(uid);
 
@@ -198,14 +230,31 @@ final class AgoraRtcRoom implements RtcRoom {
         _decoded.remove(uid);
         _rendered.remove(uid);
         if (account != null && _connection != null) {
-          final stream = _stream(uid, account);
+          final stream = _stream(
+            uid,
+            account,
+          );
 
-          listener()?.onRemoteVideoPublished?.call(stream, false);
-          listener()?.onRemoteAudioPublished?.call(stream, false);
+          listener()?.onRemoteVideoPublished?.call(
+            stream,
+            false,
+          );
+          listener()?.onRemoteAudioPublished?.call(
+            stream,
+            false,
+          );
         }
       },
-      onRemoteVideoStateChanged: (connection, uid, state, reason, _) {
-        if (!_isCurrent(connection)) return;
+      onRemoteVideoStateChanged: (
+        connection,
+        uid,
+        state,
+        reason,
+        _,
+      ) {
+        if (!_isCurrent(connection)) {
+          return;
+        }
 
         if (reason ==
             RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted) {
@@ -215,8 +264,13 @@ final class AgoraRtcRoom implements RtcRoom {
           unawaited(
             _withStream(
               uid,
-              (stream) =>
-                  listener()?.onRemoteVideoPublished?.call(stream, false),
+              (
+                stream,
+              ) =>
+                  listener()?.onRemoteVideoPublished?.call(
+                    stream,
+                    false,
+                  ),
             ),
           );
         } else if (state == RemoteVideoState.remoteVideoStateStarting ||
@@ -224,32 +278,59 @@ final class AgoraRtcRoom implements RtcRoom {
           unawaited(_publish(uid));
         }
       },
-      onFirstRemoteVideoDecoded: (connection, uid, width, height, _) {
-        if (!_isCurrent(connection) || width <= 0 || height <= 0) return;
+      onFirstRemoteVideoDecoded: (
+        connection,
+        uid,
+        width,
+        height,
+        _,
+      ) {
+        if (!_isCurrent(connection) || width <= 0 || height <= 0) {
+          return;
+        }
 
         _decoded.add(uid);
         unawaited(
           _withStream(
             uid,
-            (stream) =>
+            (
+              stream,
+            ) =>
                 listener()?.onFirstRemoteVideoFrameDecoded?.call(stream),
           ),
         );
       },
-      onFirstRemoteVideoFrame: (connection, uid, width, height, _) {
-        if (!_isCurrent(connection) || width <= 0 || height <= 0) return;
+      onFirstRemoteVideoFrame: (
+        connection,
+        uid,
+        width,
+        height,
+        _,
+      ) {
+        if (!_isCurrent(connection) || width <= 0 || height <= 0) {
+          return;
+        }
 
         _rendered.add(uid);
         unawaited(
           _withStream(
             uid,
-            (stream) =>
+            (
+              stream,
+            ) =>
                 listener()?.onFirstRemoteVideoFrameRendered?.call(stream),
           ),
         );
       },
-      onNetworkQuality: (connection, uid, up, down) {
-        if (!_isCurrent(connection) || uid != 0) return;
+      onNetworkQuality: (
+        connection,
+        uid,
+        up,
+        down,
+      ) {
+        if (!_isCurrent(connection) || uid != 0) {
+          return;
+        }
 
         final quality = RealtimeNetworkQuality(
           uplink: _quality(up),
@@ -259,8 +340,14 @@ final class AgoraRtcRoom implements RtcRoom {
         RtcStatsLogger.logNetworkQuality(quality);
         listener()?.onNetworkQuality?.call(quality);
       },
-      onLocalVideoStats: (connection, _, stats) {
-        if (!_isCurrent(connection)) return;
+      onLocalVideoStats: (
+        connection,
+        _,
+        stats,
+      ) {
+        if (!_isCurrent(connection)) {
+          return;
+        }
 
         final value = UplinkVideoStatistics(
           width: _positive(stats.encodedFrameWidth),
@@ -289,22 +376,31 @@ final class AgoraRtcRoom implements RtcRoom {
                       value.height != null &&
                       (value.encodeFrameRate ?? 0) > 0
                   ? RealtimeVideoFormat(
-                      width: value.width!,
-                      height: value.height!,
-                      fps: value.encodeFrameRate!,
-                    )
+                    width: value.width!,
+                    height: value.height!,
+                    fps: value.encodeFrameRate!,
+                  )
                   : null,
             ),
           );
         }
       },
-      onRemoteVideoStats: (connection, stats) {
+      onRemoteVideoStats: (
+        connection,
+        stats,
+      ) {
         final uid = stats.uid;
 
-        if (!_isCurrent(connection) || uid == null) return;
+        if (!_isCurrent(connection) || uid == null) {
+          return;
+        }
 
         unawaited(
-          _withStream(uid, (stream) {
+          _withStream(
+            uid,
+            (
+              stream,
+            ) {
             final value = DownlinkVideoStatistics(
               userID: stream.userID,
               width: _positive(stats.width),
@@ -318,16 +414,28 @@ final class AgoraRtcRoom implements RtcRoom {
 
             RtcStatsLogger.logDownlinkVideoStatistics(value);
             listener()?.onDownlinkVideoStatistics?.call(value);
-          }),
+          },
+          ),
         );
       },
-      onConnectionStateChanged: (connection, state, reason) {
+      onConnectionStateChanged: (
+        connection,
+        state,
+        reason,
+      ) {
         if (_isCurrent(connection) &&
             state == ConnectionStateType.connectionStateFailed) {
           _failure(StateError('RTC connection failed: ${reason.name}'));
         }
       },
-      onStreamMessageError: (connection, _, _, code, _, _) {
+      onStreamMessageError: (
+        connection,
+        _,
+        _,
+        code,
+        _,
+        _,
+      ) {
         if (_isCurrent(connection)) {
           _failure(StateError('RTC DataStream failed: ${code.name}'));
         }
@@ -366,18 +474,25 @@ final class AgoraRtcRoom implements RtcRoom {
     }
   }
 
-  /// 创建有序信令队列，然后通知加入房间的操作已完成。
+  /// Creates the ordered signaling queue and completes room join.
   Future<void> _prepareSender() async {
     try {
       final id = await engine.createDataStreamEx(
-        config: const DataStreamConfig(ordered: true, syncWithAudio: false),
+        config: const DataStreamConfig(
+          ordered: true,
+          syncWithAudio: false,
+        ),
         connection: connection,
       );
 
-      if (_isClosed) return;
+      if (_isClosed) {
+        return;
+      }
 
       _sender = RtcMessageQueue(
-        send: (packet) async {
+        send: (
+          packet,
+        ) async {
           try {
             await engine.sendStreamMessageEx(
               streamId: id,
@@ -389,16 +504,18 @@ final class AgoraRtcRoom implements RtcRoom {
             throw error is XmaxError
                 ? error
                 : XmaxError(
-                    code: XmaxErrorCode.rtcError,
-                    message: 'RTC sendStreamMessageEx failed: $error',
-                  );
+                  code: XmaxErrorCode.rtcError,
+                  message: 'RTC sendStreamMessageEx failed: $error',
+                );
           }
         },
         onFailure: _failure,
       );
-      if (!_joined.isCompleted) _joined.complete();
+      if (!_joined.isCompleted) {
+        _joined.complete();
+      }
 
-      // 远端发布可能早于本地入房确认，连接就绪后补查尚未解析的用户账号。
+      // Resolves pending remote accounts after join because publication can precede local join confirmation.
       for (final uid in _online.toList()) {
         unawaited(_publish(uid));
       }
@@ -407,17 +524,23 @@ final class AgoraRtcRoom implements RtcRoom {
     }
   }
 
-  /// 通知当前错误：尚未加入房间时使加入操作失败，否则触发运行错误回调。
+  /// Rejects an unfinished join or forwards a failure after the room is joined.
   ///
-  /// - [error]：房间或信令发送错误。
+  /// Parameters:
+  /// - [error]: The room or signaling failure.
   void _failure(
     Object error,
   ) {
-    if (_isClosed) return;
+    if (_isClosed) {
+      return;
+    }
 
     final failure = error is XmaxError
         ? error
-        : XmaxError(code: XmaxErrorCode.rtcError, message: '$error');
+        : XmaxError(
+          code: XmaxErrorCode.rtcError,
+          message: '$error',
+        );
 
     if (!_joined.isCompleted) {
       _joined.completeError(failure);
@@ -426,17 +549,22 @@ final class AgoraRtcRoom implements RtcRoom {
     }
   }
 
-  /// 解析数字 UID 对应的用户账号，并合并同时进行的查询。
+  /// Resolves an account for a numeric UID, coalescing concurrent lookups.
   ///
-  /// - [uid]：RTC 分配的数字用户标识（UID）。
+  /// Parameters:
+  /// - [uid]: The numeric UID assigned by RTC.
   ///
-  /// 返回 RTC 用户账号；无法获取时返回 null。
+  /// Returns the RTC account, or null if unavailable.
   Future<String?> _account(
     int uid,
   ) async {
-    if (_accounts[uid] case final account?) return account;
+    if (_accounts[uid] case final account?) {
+      return account;
+    }
 
-    if (_pendingAccounts[uid] case final pending?) return pending;
+    if (_pendingAccounts[uid] case final pending?) {
+      return pending;
+    }
 
     final future = () async {
       try {
@@ -453,7 +581,7 @@ final class AgoraRtcRoom implements RtcRoom {
           return _accounts[uid] = account;
         }
       } catch (_) {
-        // 查询暂不可用时，等待用户信息更新事件提供账号映射。
+        // Waits for user information updates when account lookup is temporarily unavailable.
       }
 
       return null;
@@ -468,10 +596,11 @@ final class AgoraRtcRoom implements RtcRoom {
     }
   }
 
-  /// 仅在用户账号可解析且用户仍在线时执行远端流操作。
+  /// Runs a remote stream operation only after resolving an account that remains online.
   ///
-  /// - [uid]：RTC 分配的数字用户标识（UID）。
-  /// - [action]：在用户映射成功且房间有效时执行的操作。
+  /// Parameters:
+  /// - [uid]: The numeric UID assigned by RTC.
+  /// - [action]: The operation to run with a resolved user and valid room.
   Future<void> _withStream(
     int uid,
     void Function(
@@ -479,25 +608,43 @@ final class AgoraRtcRoom implements RtcRoom {
     )
     action,
   ) async {
-    if (_isClosed || _connection == null) return;
+    if (_isClosed || _connection == null) {
+      return;
+    }
 
     final account = await _account(uid);
 
     if (!_isClosed && _online.contains(uid) && account != null) {
-      action(_stream(uid, account));
+      action(_stream(
+        uid,
+        account,
+      ));
     }
   }
 
-  /// 通知远端用户媒体可用，并补发已到达的首帧就绪事件。
+  /// Reports remote media availability and replays any earlier first-frame events.
   ///
-  /// - [uid]：RTC 分配的数字用户标识（UID）。
+  /// Parameters:
+  /// - [uid]: The numeric UID assigned by RTC.
   Future<void> _publish(
     int uid,
-  ) => _withStream(uid, (stream) {
-    if (!_announced.add(uid)) return;
+  ) => _withStream(
+    uid,
+    (
+      stream,
+    ) {
+    if (!_announced.add(uid)) {
+      return;
+    }
 
-    listener()?.onRemoteVideoPublished?.call(stream, true);
-    listener()?.onRemoteAudioPublished?.call(stream, true);
+    listener()?.onRemoteVideoPublished?.call(
+      stream,
+      true,
+    );
+    listener()?.onRemoteAudioPublished?.call(
+      stream,
+      true,
+    );
     if (_decoded.contains(uid)) {
       listener()?.onFirstRemoteVideoFrameDecoded?.call(stream);
     }
@@ -505,14 +652,16 @@ final class AgoraRtcRoom implements RtcRoom {
     if (_rendered.contains(uid)) {
       listener()?.onFirstRemoteVideoFrameRendered?.call(stream);
     }
-  });
+  },
+  );
 
-  /// 创建包含房间、用户账号、数字 UID 和引擎的远端流描述。
+  /// Creates a remote stream binding with room, account, UID, and engine identity.
   ///
-  /// - [uid]：RTC 分配的数字用户标识（UID）。
-  /// - [account]：RTC 用户账号。
+  /// Parameters:
+  /// - [uid]: The numeric UID assigned by RTC.
+  /// - [account]: The RTC user account.
   ///
-  /// 返回包含房间和用户绑定的远端流描述。
+  /// Returns the remote stream's room and user binding.
   RemoteStream _stream(
     int uid,
     String account,
@@ -525,16 +674,19 @@ final class AgoraRtcRoom implements RtcRoom {
     engine: engine,
   );
 
-  /// 解析用户账号对应的数字 UID，供订阅和音量控制使用。
+  /// Resolves an account to a numeric UID for subscription and volume control.
   ///
-  /// - [account]：RTC 用户账号。
+  /// Parameters:
+  /// - [account]: The RTC user account.
   ///
-  /// 返回账号对应的 RTC 数字 UID。
+  /// Returns the numeric RTC UID for the account.
   Future<int> resolveUID(
     String account,
   ) async {
     for (final entry in _accounts.entries) {
-      if (entry.value == account) return entry.key;
+      if (entry.value == account) {
+        return entry.key;
+      }
     }
 
     final info = await engine.getUserInfoByUserAccountEx(
@@ -552,9 +704,11 @@ final class AgoraRtcRoom implements RtcRoom {
     return info.uid!;
   }
 
-  /// 提交房间 JSON 信令；条件变更清理待发轨迹，自动调档失败不关闭连接。
+  /// Submits room signaling, discarding pending trajectories on condition changes; adaptive
+  /// configuration failures retain the connection.
   ///
-  /// - [message]：包含 event 及对应业务字段的房间 JSON 信令。
+  /// Parameters:
+  /// - [message]: The room JSON message containing its event and payload.
   @override
   Future<void> sendMessage(
     String message,
@@ -584,10 +738,12 @@ final class AgoraRtcRoom implements RtcRoom {
     );
   }
 
-  /// 关闭房间并等待原生离房，期间仅保留离房通知，不改变本地摄像头采集。
+  /// Closes the room and waits for native leave without changing local camera capture.
   @override
   Future<void> destroy() {
-    if (_destroying case final active?) return active;
+    if (_destroying case final active?) {
+      return active;
+    }
 
     _isClosed = true;
     _sender?.close();
@@ -613,10 +769,11 @@ final class AgoraRtcRoom implements RtcRoom {
     return future;
   }
 
-  /// 定向退出当前账号所在房间，在离房确认或等待超时后解除房间事件监听。
+  /// Leaves the local account's room and removes event listeners after leave confirmation or
+  /// timeout.
   Future<void> _leave() async {
     try {
-      // 原生退房接口返回后，仍需等待对应连接的离房通知。
+      // A native leave request returning does not replace the matching connection's leave callback.
       await (() async {
         final account = _userAccount;
 
@@ -633,30 +790,34 @@ final class AgoraRtcRoom implements RtcRoom {
     }
   }
 
-  /// 保留正数统计值。
+  /// Retains positive statistics values.
   ///
-  /// - [value]：RTC 返回的统计值；缺失或不大于 0 时返回 null。
+  /// Parameters:
+  /// - [value]: The RTC statistic; missing or nonpositive values resolve to null.
   static int? _positive(
     int? value,
   ) => value != null && value > 0 ? value : null;
 
-  /// 保留非负统计值，包含有效的零值。
+  /// Retains nonnegative statistics values, including valid zeros.
   ///
-  /// - [value]：RTC 返回的统计值；缺失或小于 0 时返回 null。
+  /// Parameters:
+  /// - [value]: The RTC statistic; missing or negative values resolve to null.
   static int? _nonnegative(
     int? value,
   ) => value != null && value >= 0 ? value : null;
 
-  /// 保留有效的丢包率。
+  /// Retains valid packet loss percentages.
   ///
-  /// - [value]：RTC 返回的丢包率百分比；缺失或超出 0～100 时返回 null。
+  /// Parameters:
+  /// - [value]: The loss percentage; missing values or values outside 0 to 100 resolve to null.
   static int? _loss(
     int? value,
   ) => value != null && value >= 0 && value <= 100 ? value : null;
 
-  /// 将 RTC 网络质量等级转换为 SDK 定义的等级。
+  /// Converts native RTC network quality to SDK quality.
   ///
-  /// - [value]：RTC 返回的网络质量等级。
+  /// Parameters:
+  /// - [value]: The native RTC network quality level.
   static RealtimeNetworkQualityLevel _quality(
     QualityType value,
   ) => switch (value) {

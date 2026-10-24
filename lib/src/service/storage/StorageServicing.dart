@@ -12,17 +12,18 @@ import 'dart:typed_data';
 
 import '../../foundation/storage/StorageModels.dart';
 
-/// 图片和视频的内存或文件上传、安全检查及下载接口。
+/// An interface for image and video uploads, image safety checks, and downloads.
 abstract interface class StorageServicing {
 
-  /// 上传内存图片到对象存储。
+  /// Uploads an in-memory image to object storage.
   ///
-  /// - [data]：待上传的原始文件字节。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [data]: The encoded file bytes to upload.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImage({
     required Uint8List data,
     required String fileName,
@@ -30,27 +31,29 @@ abstract interface class StorageServicing {
     StorageProgressListener? progress,
   });
 
-  /// 上传本地图片文件；未指定 MIME 类型时按扩展名推断。
+  /// Uploads a local image, inferring its MIME type from the extension if unspecified.
   ///
-  /// - [fileURL]：本地文件的 file URI。
-  /// - [contentType]：图片 MIME 类型；未指定时按文件扩展名推断。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [fileURL]: The local file URI.
+  /// - [contentType]: The image MIME type; inferred from the file extension if unspecified.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImageFile({
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
   });
 
-  /// 上传图片并执行内容安全检查；未通过时抛出 unsafeImage。
+  /// Uploads an image and checks content safety; throws unsafeImage if rejected.
   ///
-  /// - [data]：待上传的原始文件字节。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [data]: The encoded file bytes to upload.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImageWithSafetyCheck({
     required Uint8List data,
     required String fileName,
@@ -58,27 +61,29 @@ abstract interface class StorageServicing {
     StorageProgressListener? progress,
   });
 
-  /// 上传本地图片并执行内容安全检查；未通过时抛出 unsafeImage。
+  /// Uploads a local image and checks content safety; throws unsafeImage if rejected.
   ///
-  /// - [fileURL]：本地文件的 file URI。
-  /// - [contentType]：图片 MIME 类型；未指定时按文件扩展名推断。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [fileURL]: The local file URI.
+  /// - [contentType]: The image MIME type; inferred from the file extension if unspecified.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImageFileWithSafetyCheck({
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
   });
 
-  /// 上传视频并返回对象存储结果；不创建实时视频输入流。
+  /// Uploads a video file without creating a realtime video input stream.
   ///
-  /// - [data]：待上传的原始文件字节。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [data]: The encoded file bytes to upload.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadVideo({
     required Uint8List data,
     required String fileName,
@@ -86,39 +91,42 @@ abstract interface class StorageServicing {
     StorageProgressListener? progress,
   });
 
-  /// 上传本地视频文件；未指定 MIME 类型时按扩展名推断。
+  /// Uploads a local video, inferring its MIME type from the extension if unspecified.
   ///
-  /// - [fileURL]：本地文件的 file URI。
-  /// - [contentType]：视频 MIME 类型；未指定时按文件扩展名推断。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [fileURL]: The local file URI.
+  /// - [contentType]: The video MIME type; inferred from the file extension if unspecified.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadVideoFile({
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
   });
 
-  /// 将远程图片下载到指定本地文件位置。
+  /// Downloads an image to a local file.
   ///
-  /// - [remoteURL]：待下载文件的 HTTP 或 HTTPS URL。
-  /// - [destinationURL]：下载目标的本地 file URI。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
+  /// - [destinationURL]: The destination file URI.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回已下载文件的本地 URI 和实际字节数。
+  /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> downloadImage({
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
   });
 
-  /// 将远程视频下载到指定本地文件位置。
+  /// Downloads a video to a local file.
   ///
-  /// - [remoteURL]：待下载文件的 HTTP 或 HTTPS URL。
-  /// - [destinationURL]：下载目标的本地 file URI。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
+  /// - [destinationURL]: The destination file URI.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回已下载文件的本地 URI 和实际字节数。
+  /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> downloadVideo({
     required Uri remoteURL,
     required Uri destinationURL,

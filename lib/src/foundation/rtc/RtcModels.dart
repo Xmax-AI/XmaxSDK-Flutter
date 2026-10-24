@@ -11,30 +11,30 @@
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
-/// 加入 RTC 房间所需的房间标识、用户账号和令牌。
+/// The room identifier, user account, and token required to join RTC.
 final class RoomJoinConfiguration {
 
-  /// 创建 RTC 入房凭证。
+  /// Creates RTC room credentials.
   const RoomJoinConfiguration({
     required this.roomID,
     required this.userID,
     required this.token,
   });
 
-  /// 云端分配的 RTC 房间标识。
+  /// The server-assigned RTC room identifier.
   final String roomID;
 
-  /// RTC 用户账号，不是数字 UID。
+  /// The RTC user account, not a numeric UID.
   final String userID;
 
-  /// 加入房间使用的 RTC 访问令牌。
+  /// The RTC access token used to join the room.
   final String token;
 }
 
-/// 提交给 RTC 编码器的分辨率、帧率、码率及降级偏好。
+/// The dimensions, frame rate, bitrate, and degradation preference submitted to RTC encoding.
 final class VideoEncodingConfiguration {
 
-  /// 创建 RTC 视频编码配置。
+  /// Creates a video encoder configuration.
   const VideoEncodingConfiguration({
     required this.width,
     required this.height,
@@ -44,29 +44,29 @@ final class VideoEncodingConfiguration {
     this.encoderPreference = RealtimeVideoEncoderPreference.maintainFramerate,
   });
 
-  /// 编码视频宽度，单位为像素。
+  /// The encoded width, in pixels.
   final int width;
 
-  /// 编码视频高度，单位为像素。
+  /// The encoded height, in pixels.
   final int height;
 
-  /// 视频帧率，单位为 fps。
+  /// The video frame rate, in fps.
   final int frameRate;
 
-  /// 最低编码码率，单位为 kbps；默认 0，使用 RTC 的最低码率策略。
+  /// The minimum encoding bitrate, in kbps; 0 uses RTC's minimum bitrate policy.
   final int minimumBitrate;
 
-  /// 编码目标码率，单位为 kbps，传给 RTC 的 bitrate；默认 -1，使用 RTC 兼容码率模式。
+  /// The encoding target bitrate, in kbps; -1 uses RTC's compatibility bitrate mode.
   final int maximumBitrate;
 
-  /// 带宽变化时的帧率与画质取舍策略，默认优先保障帧率。
+  /// The bandwidth degradation preference; defaults to frame-rate priority.
   final RealtimeVideoEncoderPreference encoderPreference;
 }
 
-/// 远端用户的视频流标识及原生渲染所需的绑定信息。
+/// A remote stream identity and the native bindings required for rendering.
 final class RemoteStream {
 
-  /// 创建远端媒体流绑定信息。
+  /// Creates a remote media stream binding.
   const RemoteStream({
     required this.roomID,
     required this.userID,
@@ -76,24 +76,24 @@ final class RemoteStream {
     this.engine,
   });
 
-  /// 云端分配的 RTC 房间标识。
+  /// The server-assigned RTC room identifier.
   final String roomID;
 
-  /// RTC 用户账号，不是数字 UID。
+  /// The RTC user account, not a numeric UID.
   final String userID;
 
-  /// 远端视频流标识。
+  /// The remote video stream identifier.
   final String streamID;
 
-  /// 原生 RTC 分配的数字用户标识；未解析出 UID 时不能创建远端视频纹理。
+  /// The native-assigned remote UID; rendering requires it to be resolved.
   final int? uid;
 
-  /// 当前房间中本地用户的数字 UID，供远端渲染定位对应的 RTC 连接。
+  /// The local numeric UID identifying the RTC connection for remote rendering.
   final int? localUid;
 
-  /// 远端视频渲染使用的 RTC 引擎；未指定时不能创建视频纹理。
+  /// The RTC engine required to create a remote video texture.
   final RtcEngine? engine;
 
-  /// 房间与远端账号的组合标识，用于匹配同一用户的媒体事件。
+  /// The room and account identity used to match a user's media events.
   String get key => '$roomID:$userID';
 }

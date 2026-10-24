@@ -8,9 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// XmaxSDK 的构建版本信息。
+/// Build information for XmaxSDK.
 abstract final class XmaxSDKInfo {
 
-  /// 当前 XmaxSDK 的发布版本号。
+  /// The current XmaxSDK release version.
   static const String version = '1.0.2';
 }

@@ -10,38 +10,56 @@
 
 import 'dart:ui';
 
-/// 摄像头采集分辨率预设；实际可用范围由当前模型决定。
+/// A camera resolution preset whose availability depends on the selected model.
 ///
-/// 使用预设更新规格时保留当前帧率、码率设置和编码偏好。
+/// Updating with a preset preserves the current frame rate, bitrate, and encoding preference.
 enum RealtimeCameraPreset {
 
-  /// 1920 × 1080 横屏。
-  resolution1920x1080(1920, 1080),
+  /// A landscape 1920 × 1080 frame.
+  resolution1920x1080(
+    1920,
+    1080,
+  ),
 
-  /// 1080 × 1920 竖屏。
-  resolution1080x1920(1080, 1920),
+  /// A portrait 1080 × 1920 frame.
+  resolution1080x1920(
+    1080,
+    1920,
+  ),
 
-  /// 1408 × 1408 方形。
-  resolution1408x1408(1408, 1408),
+  /// A square 1408 × 1408 frame.
+  resolution1408x1408(
+    1408,
+    1408,
+  ),
 
-  /// 1152 × 1536 竖屏。
-  resolution1152x1536(1152, 1536),
+  /// A portrait 1152 × 1536 frame.
+  resolution1152x1536(
+    1152,
+    1536,
+  ),
 
-  /// 1536 × 1152 横屏。
-  resolution1536x1152(1536, 1152);
+  /// A landscape 1536 × 1152 frame.
+  resolution1536x1152(
+    1536,
+    1152,
+  );
 
-  /// 定义采集分辨率。
+  /// Defines a capture resolution preset.
   const RealtimeCameraPreset(
     this._width,
     this._height,
   );
 
-  /// 预设采集宽度，单位为像素。
+  /// The preset width, in pixels.
   final int _width;
 
-  /// 预设采集高度，单位为像素。
+  /// The preset height, in pixels.
   final int _height;
 
-  /// 预设采集尺寸，单位为像素。
-  Size get size => Size(_width.toDouble(), _height.toDouble());
+  /// The frame dimensions, in pixels.
+  Size get size => Size(
+    _width.toDouble(),
+    _height.toDouble(),
+  );
 }

@@ -14,30 +14,31 @@ import '../../foundation/logging/XmaxLogger.dart';
 import '../../foundation/rtc/RtcManaging.dart';
 import 'RoomEvent.dart';
 
-/// 按固定间隔提交房间心跳，并隔离已停止的心跳周期。
+/// Sends room heartbeats at a fixed interval, isolating stopped heartbeat cycles.
 final class RoomHeartbeat {
 
-  /// 创建房间心跳调度器。
+  /// Creates a room heartbeat scheduler.
   RoomHeartbeat({
     required RtcManaging rtcManager,
     this.interval = const Duration(seconds: 10),
   }) : _rtcManager = rtcManager;
 
-  /// RTC 采集、房间及传输操作入口。
+  /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// 房间心跳的固定发送间隔，默认 10 秒。
+  /// The fixed heartbeat interval; defaults to 10 seconds.
   final Duration interval;
 
-  /// 当前房间的周期心跳计时器。
+  /// The periodic heartbeat timer for the current room.
   Timer? _timer;
 
-  /// 当前异步操作的版本号。
+  /// The asynchronous operation revision.
   int _version = 0;
 
-  /// 替换旧心跳周期，按固定间隔为指定用户提交房间心跳。
+  /// Replaces the previous heartbeat cycle and sends periodic heartbeats for the specified user.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
   void start({
     required String userID,
   }) {
@@ -45,10 +46,14 @@ final class RoomHeartbeat {
 
     final version = ++_version;
 
-    _timer = Timer.periodic(interval, (_) {
+    _timer = Timer.periodic(
+      interval,
+      (
+        _,
+      ) {
       if (version == _version) {
-        // 房间心跳在后台定时发送，此处的传输错误不再单独上报。
-        // 连接和生成操作各自通过 SDK 回调报告需要接入方处理的错误。
+        // Heartbeats run periodically in the background; transport failures are not reported separately here.
+        // Connection and generation callbacks report errors that require application handling.
         unawaited(() async {
           try {
             await _rtcManager.sendRoomMessage(
@@ -66,10 +71,11 @@ final class RoomHeartbeat {
           }
         }());
       }
-    });
+    },
+    );
   }
 
-  /// 停止房间心跳，并使旧心跳回调失效。
+  /// Stops room heartbeats and invalidates callbacks from the previous cycle.
   void stop() {
     _version += 1;
     _timer?.cancel();

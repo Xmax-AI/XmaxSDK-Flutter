@@ -12,22 +12,22 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/media/video/VideoContentMode.dart';
 
-/// 一次交互采样的触点集合、视图尺寸和视频缩放模式。
+/// The interaction points, viewport dimensions, and video scaling mode for one sample.
 final class InteractionFrame {
 
-  /// 创建视图交互采样快照。
+  /// Creates a view interaction sample snapshot.
   const InteractionFrame({
     required this.points,
     required this.viewportSize,
     required this.contentMode,
   });
 
-  /// 本次采样的触点集合，顺序保持不变。
+  /// The sampled interaction points, preserving their order.
   final List<Offset> points;
 
-  /// 视频视图的逻辑像素尺寸。
+  /// The video view dimensions, in logical pixels.
   final Size viewportSize;
 
-  /// 视频的缩放和裁剪方式。
+  /// The video scaling and cropping mode.
   final VideoContentMode contentMode;
 }

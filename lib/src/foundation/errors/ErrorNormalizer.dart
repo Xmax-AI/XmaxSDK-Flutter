@@ -11,14 +11,15 @@
 import 'dart:async';
 import 'dart:io';
 
-/// 将 Dart 和平台异常转换为 SDK 对外提供的统一错误信息。
+/// Normalizes Dart and platform exceptions for SDK error reporting.
 abstract final class ErrorNormalizer {
 
-  /// 提取适合对外展示的错误描述。
+  /// Extracts an error description suitable for display.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   ///
-  /// 返回异常消息；消息为空时使用异常类型名称。
+  /// Returns the error message, falling back to the exception type when empty.
   static String description(
     Object error,
   ) {
@@ -34,11 +35,12 @@ abstract final class ErrorNormalizer {
     return description.isEmpty ? error.runtimeType.toString() : description;
   }
 
-  /// 提取平台错误码；无法识别时返回 null。
+  /// Extracts a platform error code, or null when unrecognized.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   ///
-  /// 返回可识别的操作系统错误码；不可识别时为 null。
+  /// Returns the operating system error code when recognizable, or null otherwise.
   static int? platformErrorCode(
     Object error,
   ) => switch (error) {
@@ -48,11 +50,12 @@ abstract final class ErrorNormalizer {
     _ => null,
   };
 
-  /// 识别主动取消或请求终止对应的异常。
+  /// Identifies exceptions caused by deliberate cancellation or request termination.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   ///
-  /// 返回错误是否表示 HTTP 请求被主动终止。
+  /// Returns whether the error represents deliberate HTTP request termination.
   static bool isCancellation(
     Object error,
   ) =>

@@ -15,16 +15,18 @@ import 'package:flutter/widgets.dart';
 import '../../foundation/media/video/VideoContentMode.dart';
 import '../../service/realtime/RealtimePoint.dart';
 
-/// 依据视频缩放和裁剪区域，将视图坐标转换为归一化媒体坐标。
+/// Converts view coordinates into normalized media coordinates using the video scaling and crop
+/// region.
 abstract final class InteractionCoordinateMapper {
 
-  /// 计算视频按给定缩放模式显示在视图中的实际区域。
+  /// Calculates the video's display region for the specified scaling mode.
   ///
-  /// - [viewportSize]：视频视图的逻辑像素尺寸。
-  /// - [videoSize]：视频宽高，单位为像素。
-  /// - [contentMode]：视频的缩放和裁剪方式。
+  /// Parameters:
+  /// - [viewportSize]: The video view dimensions, in logical pixels.
+  /// - [videoSize]: The video width and height, in pixels.
+  /// - [contentMode]: The video scaling and cropping mode.
   ///
-  /// 返回视频在视图中的显示区域；尺寸无效时返回 null。
+  /// Returns the video display region, or null if the dimensions are invalid.
   static Rect? displayedFrame({
     required Size viewportSize,
     required Size videoSize,
@@ -40,7 +42,7 @@ abstract final class InteractionCoordinateMapper {
     final widthScale = viewportSize.width / videoSize.width;
     final heightScale = viewportSize.height / videoSize.height;
 
-    // 填满模式按较大的缩放比例裁剪，完整显示模式按较小的比例保留留白。
+    // Fill uses the larger scale and crops; fit uses the smaller scale and leaves unused space.
     final scale = contentMode == VideoContentMode.fill
         ? math.max(widthScale, heightScale)
         : math.min(widthScale, heightScale);
@@ -57,14 +59,16 @@ abstract final class InteractionCoordinateMapper {
     );
   }
 
-  /// 将视图触点转换为归一化媒体坐标；黑边或无效尺寸不产生采样。
+  /// Converts a view point into normalized media coordinates, excluding letterboxing and invalid
+  /// dimensions.
   ///
-  /// - [point]：视图内的单个触点位置。
-  /// - [viewportSize]：视频视图的逻辑像素尺寸。
-  /// - [videoSize]：视频宽高，单位为像素。
-  /// - [contentMode]：视频的缩放和裁剪方式。
+  /// Parameters:
+  /// - [point]: A single interaction point within the view.
+  /// - [viewportSize]: The video view dimensions, in logical pixels.
+  /// - [videoSize]: The video width and height, in pixels.
+  /// - [contentMode]: The video scaling and cropping mode.
   ///
-  /// 返回 0～1 范围的媒体坐标；位于黑边或尺寸无效时返回 null。
+  /// Returns media coordinates from 0 to 1, or null for letterboxing or invalid dimensions.
   static RealtimePoint? map({
     required Offset point,
     required Size viewportSize,
@@ -85,10 +89,19 @@ abstract final class InteractionCoordinateMapper {
       return null;
     }
 
-    // 按实际显示的媒体区域归一化，同时扣除裁剪或留白产生的偏移。
-    final x = ((point.dx - frame.left) / frame.width).clamp(0.0, 1.0);
-    final y = ((point.dy - frame.top) / frame.height).clamp(0.0, 1.0);
+    // Normalize against the displayed media region, accounting for crop or letterbox offsets.
+    final x = ((point.dx - frame.left) / frame.width).clamp(
+      0.0,
+      1.0,
+    );
+    final y = ((point.dy - frame.top) / frame.height).clamp(
+      0.0,
+      1.0,
+    );
 
-    return RealtimePoint(x: x.toDouble(), y: y.toDouble());
+    return RealtimePoint(
+      x: x.toDouble(),
+      y: y.toDouble(),
+    );
   }
 }

@@ -19,45 +19,46 @@ import 'InteractionControlling.dart';
 import 'InteractionCoordinateMapper.dart';
 import 'InteractionFrame.dart';
 
-/// 将指定生成任务的触点发送给服务端。
+/// Sends interaction points for the specified generation task to the server.
 ///
-/// - [taskID]：当前生成任务标识。
-/// - [points]：归一化后的媒体坐标，顺序与采样一致。
+/// Parameters:
+/// - [taskID]: The current generation task identifier.
+/// - [points]: Normalized media coordinates in sampling order.
 typedef InteractionListener =
     Future<void> Function(
       String taskID,
       List<RealtimePoint> points,
     );
 
-/// 将触点映射到媒体坐标，合并待发采样并隔离不同生成任务。
+/// Maps input to media coordinates, coalesces pending samples, and isolates generation tasks.
 final class InteractionController implements InteractionControlling {
 
-  /// 创建触点映射与任务采样控制器。
+  /// Creates an interaction mapping and task sampling controller.
   InteractionController({
     required InteractionListener listener,
   }) : _listener = listener;
 
-  /// 提交当前任务归一化触点的处理函数。
+  /// The handler that submits normalized points for the current task.
   final InteractionListener _listener;
 
-  /// 当前生成任务标识。
+  /// The current generation task identifier.
   String? _taskID;
 
-  /// 视频尺寸、帧率和编码配置。
+  /// The video dimensions, frame rate, and encoding settings.
   RealtimeVideoFormat? _videoFormat;
 
-  /// 当前任务最新一组尚未提交的归一化触点。
+  /// The latest pending normalized points for the current task.
   List<RealtimePoint>? _pendingPoints;
 
-  /// 是否正在发送触点采样。
+  /// Whether interaction samples are being sent.
   bool _draining = false;
 
-  /// 触点发送循环的版本号，用于忽略旧任务的发送结果。
+  /// The send-loop version used to discard results from older tasks.
   int _drainGeneration = 0;
 
-  /// 为当前生成任务启用交互输入，并清除旧任务的待发采样。
+  /// Enables interaction for the current task and clears pending samples from the previous task.
   ///
-  /// 详细说明见 [InteractionControlling.startInteraction]。
+  /// See [InteractionControlling.startInteraction] for the usage contract.
   @override
   void startInteraction({
     required String taskID,
@@ -68,7 +69,7 @@ final class InteractionController implements InteractionControlling {
     _videoFormat = videoFormat;
   }
 
-  /// 停止交互输入，并使尚未提交的采样失效。
+  /// Stops interaction input and invalidates pending samples.
   @override
   void stopInteraction() {
     _taskID = null;
@@ -76,9 +77,10 @@ final class InteractionController implements InteractionControlling {
     _cancelPendingFrames();
   }
 
-  /// 提交当前视图触点采样；没有有效生成任务时忽略。
+  /// Submits view interaction samples; ignored when no generation task is active.
   ///
-  /// - [frame]：一次视图触点采样。
+  /// Parameters:
+  /// - [frame]: A view interaction sample.
   @override
   void submitInteraction(
     InteractionFrame frame,
@@ -90,10 +92,15 @@ final class InteractionController implements InteractionControlling {
       return;
     }
 
-    final videoSize = Size(format.width.toDouble(), format.height.toDouble());
+    final videoSize = Size(
+      format.width.toDouble(),
+      format.height.toDouble(),
+    );
     final points = frame.points
         .map(
-          (point) => InteractionCoordinateMapper.map(
+          (
+            point,
+          ) => InteractionCoordinateMapper.map(
             point: point,
             viewportSize: frame.viewportSize,
             videoSize: videoSize,
@@ -107,7 +114,7 @@ final class InteractionController implements InteractionControlling {
       return;
     }
 
-    // 只保留最新一组待发触点，避免采样不断堆积。
+    // Keep only the latest pending sample to prevent an unbounded input backlog.
     _pendingPoints = points;
 
     if (!_draining) {
@@ -115,18 +122,20 @@ final class InteractionController implements InteractionControlling {
     }
   }
 
-  /// 清除待发交互采样，并使旧任务的发送完成回调失效。
+  /// Clears pending interaction samples and invalidates send completions from older tasks.
   void _cancelPendingFrames() {
-    // 已提交的 RTC 消息无法撤回，因此用版本号使旧发送循环失效。
-    // 新任务可立即发送，旧回调不能取走新触点或清除新任务的发送标记，任务标识相同也不例外。
+    // Submitted RTC messages cannot be recalled; invalidate old send loops by version instead.
+    // New tasks can send immediately; stale callbacks cannot consume their points or clear their sending state.
     _drainGeneration += 1;
     _pendingPoints = null;
     _draining = false;
   }
 
-  /// 发送最新一组待发触点，等待期间收到的新采样仅保留最后一组。
+  /// Sends the latest pending points, retaining only the newest sample received while awaiting
+  /// delivery.
   ///
-  /// - [generation]：本次发送循环的版本号；版本变化后停止发送。
+  /// Parameters:
+  /// - [generation]: The send-loop version; stop sending if the version changes.
   Future<void> _drain(
     int generation,
   ) async {
@@ -142,9 +151,14 @@ final class InteractionController implements InteractionControlling {
         _pendingPoints = null;
 
         try {
-          await _listener(taskID, points);
+          await _listener(
+            taskID,
+            points,
+          );
         } catch (error) {
-          if (generation != _drainGeneration) return;
+          if (generation != _drainGeneration) {
+            return;
+          }
 
           XmaxLogger.warn(
             category: XmaxLoggerCategory.interaction,

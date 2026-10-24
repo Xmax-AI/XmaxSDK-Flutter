@@ -11,24 +11,26 @@
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'InteractionFrame.dart';
 
-/// 生成任务的交互输入启停及采样提交接口。
+/// An interface for enabling task interaction and submitting input samples.
 abstract interface class InteractionControlling {
 
-  /// 为当前生成任务启用交互输入，并清除旧任务的待发采样。
+  /// Enables interaction for the current task and clears pending samples from the previous task.
   ///
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   void startInteraction({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
   });
 
-  /// 停止交互输入，并使尚未提交的采样失效。
+  /// Stops interaction input and invalidates pending samples.
   void stopInteraction();
 
-  /// 提交当前视图触点采样；没有有效生成任务时忽略。
+  /// Submits view interaction samples; ignored when no generation task is active.
   ///
-  /// - [frame]：一次视图触点采样。
+  /// Parameters:
+  /// - [frame]: A view interaction sample.
   void submitInteraction(
     InteractionFrame frame,
   );

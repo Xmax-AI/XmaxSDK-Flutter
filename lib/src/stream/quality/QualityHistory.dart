@@ -12,42 +12,45 @@ import '../../core/realtime/RealtimeQualityLevel.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 按模型及传输方向保存一小时内成功应用的档位。
+/// Stores successful quality levels for one hour, isolated by model and transport direction.
 final class QualityHistory {
 
-  /// 创建模型质量档位存储入口。
+  /// Creates a model quality-level history store.
   ///
-  /// - [model]：用于隔离历史档位的模型。
-  /// - [preferences]：偏好存储；默认使用设备本地存储。
+  /// Parameters:
+  /// - [model]: The model used to isolate saved levels.
+  /// - [preferences]: The preferences store; defaults to device-local preferences.
   QualityHistory(
     this.model, {
     SharedPreferencesAsync? preferences,
   }) : _preferences = preferences;
 
-  /// 用于隔离档位历史的模型标识。
+  /// The model identifier used to isolate quality-level history.
   final String model;
 
-  /// 档位历史的存储入口；为空时使用设备本地偏好存储。
+  /// The history preferences store; null uses device-local preferences.
   final SharedPreferencesAsync? _preferences;
 
-  /// 用于档位历史的设备本地偏好存储。
+  /// The device-local preferences used for quality history.
   SharedPreferencesAsync get _store => _preferences ?? SharedPreferencesAsync();
 
-  /// 构造按模型和上下行方向隔离的偏好存储键。
+  /// Builds a preferences key isolated by model and transport direction.
   ///
-  /// - [downlink]：是否读写下行档位历史；false 表示上行。
+  /// Parameters:
+  /// - [downlink]: Whether to access downlink history; false means uplink.
   ///
-  /// 返回包含模型及传输方向的偏好存储键。
+  /// Returns a preferences key containing the model and transport direction.
   String _key(
     bool downlink,
   ) => 'xmax.quality.agora.$model.${downlink ? 'downlink' : 'uplink'}';
 
-  /// 读取一小时内成功使用的质量档位。
+  /// Reads a successfully applied quality level from the last hour.
   ///
-  /// - [downlink]：是否读取下行档位；false 表示上行。
-  /// - [now]：判断记录是否过期的时间，默认使用系统时间。
+  /// Parameters:
+  /// - [downlink]: Whether to read the downlink level; false means uplink.
+  /// - [now]: The time used to check expiry; defaults to the system time.
   ///
-  /// 记录不存在、已过期或读取失败时，返回默认档位 2。
+  /// Returns level 2 if the record is missing, expired, or unreadable.
   Future<RealtimeQualityLevel> read({
     required bool downlink,
     DateTime? now,
@@ -72,17 +75,18 @@ final class QualityHistory {
         return RealtimeQualityLevel.values[level - 1];
       }
     } catch (_) {
-      // 历史不可用时使用默认档位，不阻断连接。
+      // Unavailable history must not block connection; use the default level.
     }
 
     return RealtimeQualityLevel.l2;
   }
 
-  /// 保存当前方向成功应用的档位和时间，存储失败不影响媒体传输。
+  /// Saves the applied level and timestamp without interrupting media transport on storage failure.
   ///
-  /// - [level]：已成功应用的质量档位，范围为 1～5。
-  /// - [downlink]：是否保存下行档位；false 表示上行。
-  /// - [now]：记录保存时间，默认使用系统时间。
+  /// Parameters:
+  /// - [level]: The successfully applied quality level, from 1 to 5.
+  /// - [downlink]: Whether to save the downlink level; false means uplink.
+  /// - [now]: The record timestamp; defaults to the system time.
   Future<void> write(
     RealtimeQualityLevel level, {
     required bool downlink,
@@ -91,7 +95,10 @@ final class QualityHistory {
     try {
       final key = _key(downlink);
 
-      await _store.setInt(key, level.value).timeout(const Duration(seconds: 1));
+      await _store.setInt(
+        key,
+        level.value,
+      ).timeout(const Duration(seconds: 1));
       await _store
           .setDouble(
             '$key.time',
@@ -99,7 +106,7 @@ final class QualityHistory {
           )
           .timeout(const Duration(seconds: 1));
     } catch (_) {
-      // 档位历史属于可选优化，保存失败不影响当前传输。
+      // History is an optional optimization; persistence failures must not affect transport.
     }
   }
 }

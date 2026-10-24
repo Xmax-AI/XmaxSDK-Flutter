@@ -14,10 +14,10 @@ import 'package:device_info_plus/device_info_plus.dart';
 
 import '../../XmaxSDKInfo.dart';
 
-/// 用于请求和房间信令的运行环境快照，包含系统、设备和 SDK 版本。
+/// A runtime snapshot for requests and room signaling, including OS, device, and SDK versions.
 final class RuntimeInfo {
 
-  /// 创建运行环境信息快照。
+  /// Creates a runtime information snapshot.
   const RuntimeInfo({
     required this.platform,
     required this.osVersion,
@@ -25,19 +25,19 @@ final class RuntimeInfo {
     required this.deviceModel,
   });
 
-  /// 当前操作系统的标识。
+  /// The current operating system identifier.
   final String platform;
 
-  /// 操作系统版本。
+  /// The operating system version.
   final String osVersion;
 
-  /// 当前 XmaxSDK 版本。
+  /// The current XmaxSDK version.
   final String sdkVersion;
 
-  /// 设备型号；无法获取时为 unknown。
+  /// The device model; unknown if unavailable.
   final String deviceModel;
 
-  /// 已缓存的运行环境快照。
+  /// The cached runtime snapshot.
   static RuntimeInfo current = RuntimeInfo(
     platform: Platform.operatingSystem,
     osVersion: Platform.isIOS || Platform.isAndroid
@@ -47,17 +47,19 @@ final class RuntimeInfo {
     deviceModel: 'unknown',
   );
 
-  /// 共享的运行环境读取任务。
+  /// The shared runtime information read operation.
   static Future<RuntimeInfo>? _resolution;
 
-  /// 首次读取并缓存运行环境信息；读取失败使用回退值，不影响业务请求。
+  /// Reads and caches runtime information, using fallback values on failure without disrupting
+  /// requests.
   ///
-  /// 返回当前可用的运行环境快照。
+  /// Returns the available runtime snapshot.
   static Future<RuntimeInfo> resolve() => _resolution ??= _resolve();
 
-  /// 读取设备信息并缓存运行环境；读取失败保留回退值。
+  /// Reads device information and caches the runtime snapshot, retaining fallback values on
+  /// failure.
   ///
-  /// 返回当前可用的运行环境快照。
+  /// Returns the available runtime snapshot.
   static Future<RuntimeInfo> _resolve() async {
     try {
       final deviceInfo = DeviceInfoPlugin();
@@ -86,22 +88,23 @@ final class RuntimeInfo {
         );
       }
     } catch (_) {
-      // 设备信息插件缺失或响应过慢时使用回退值，不能阻塞 API 请求和 RTC 信令。
+      // Use fallback values if device information is unavailable or slow; do not block API or RTC signaling.
     }
 
     return current;
   }
 
-  /// 去除设备信息首尾空白，空白内容改为 unknown。
+  /// Trims device information and replaces blank values with unknown.
   ///
-  /// - [value]：设备信息原始文本。
+  /// Parameters:
+  /// - [value]: The raw device information text.
   static String _nonEmpty(
     String value,
   ) => value.trim().isEmpty ? 'unknown' : value.trim();
 
-  /// 编码可提交给云端的运行环境字段。
+  /// Encodes runtime fields for cloud requests.
   ///
-  /// 返回可序列化的运行环境字段。
+  /// Returns serializable runtime fields.
   Map<String, String> toJson() => <String, String>{
     'platform': platform,
     'os_version': osVersion,
@@ -109,9 +112,9 @@ final class RuntimeInfo {
     'device_model': deviceModel,
   };
 
-  /// 从系统版本文本提取可提交的版本信息。
+  /// Extracts a reportable version from the operating system version text.
   ///
-  /// 返回提取出的系统版本号；无法提取时使用系统版本文本。
+  /// Returns the extracted OS version, falling back to the original system version text.
   static String _currentOSVersion() {
     final version = Platform.operatingSystemVersion;
     final match = RegExp(r'\d+(?:\.\d+){1,2}').firstMatch(version);

@@ -11,6 +11,7 @@ import 'package:xmax_sdk/src/core/realtime/RealtimeCameraPreset.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeConnectionManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeGenerationManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeManager.dart';
+import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeManaging.dart';
 import 'package:xmax_sdk/src/core/XmaxClient.dart';
 import 'package:xmax_sdk/src/core/XmaxConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
@@ -33,6 +34,141 @@ import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 import 'package:xmax_sdk/src/stream/StreamControlling.dart';
 
 void main() {
+  for (final position in CameraPosition.values) {
+    test(
+      'default camera creation uses model settings (position=$position)',
+      () async {
+        final deps = _Dependencies();
+        final XmaxRealtimeManaging manager = deps.manager;
+        addTearDown(manager.close);
+
+        final local = position == CameraPosition.front
+            ? await manager.createLocalCameraStream()
+            : await manager.createLocalCameraStream(position: position);
+
+        expect(
+          local.videoTrack!.videoFormat,
+          manager.options.model.defaultCameraVideoFormat,
+        );
+        expect(local.videoTrack!.position, position);
+        expect(deps.media.createCount, 1);
+        expect(
+          (await manager.currentState).connectionState,
+          RealtimeConnectionState.preparing,
+        );
+        deps.media.notifyPreviewReady();
+        expect(
+          (await manager.currentState).connectionState,
+          RealtimeConnectionState.ready,
+        );
+        expect(await manager.remoteAudioVolume, 0);
+      },
+    );
+  }
+
+  for (final preset in RealtimeCameraPreset.values) {
+    test(
+      'preset creation selects the matching model format (preset=$preset)',
+      () async {
+        final deps = _Dependencies();
+        final XmaxRealtimeManaging manager = deps.manager;
+        addTearDown(manager.close);
+        final expected = manager.options.model.supportedVideoFormats.firstWhere(
+          (format) =>
+              format.width == preset.size.width &&
+              format.height == preset.size.height,
+        );
+
+        final local = await manager.createLocalCameraStream(
+          preset: preset,
+          position: CameraPosition.back,
+        );
+
+        expect(local.videoTrack!.videoFormat, expected);
+        expect(local.videoTrack!.position, CameraPosition.back);
+        expect(deps.media.createCount, 1);
+      },
+    );
+  }
+
+  test(
+    'explicit camera format preserves all settings with the convenience API',
+    () async {
+      final deps = _Dependencies();
+      final XmaxRealtimeManaging manager = deps.manager;
+      addTearDown(manager.close);
+      const format = RealtimeVideoFormat(
+        width: 1080,
+        height: 1920,
+        fps: 24,
+        minimumBitrate: 900,
+        maximumBitrate: 2000,
+        encoderPreference: RealtimeVideoEncoderPreference.maintainQuality,
+      );
+      final local = await manager.createLocalCameraStream(videoFormat: format);
+      expect(local.videoTrack!.videoFormat, same(format));
+      expect(local.videoTrack!.position, CameraPosition.front);
+    },
+  );
+
+  test(
+    'conflicting camera inputs fail before preparing media and allow retry',
+    () async {
+      final deps = _Dependencies();
+      final XmaxRealtimeManaging manager = deps.manager;
+      addTearDown(manager.close);
+      final states = <RealtimeConnectionState>[];
+      await manager.setStateListener(
+        (state) => states.add(state.connectionState),
+      );
+
+      await expectLater(
+        manager.createLocalCameraStream(
+          videoFormat: manager.options.model.defaultCameraVideoFormat,
+          preset: RealtimeCameraPreset.resolution1408x1408,
+        ),
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.invalidConfiguration,
+          ),
+        ),
+      );
+
+      expect(deps.media.createCount, 0);
+      expect(states, [RealtimeConnectionState.idle]);
+      await manager.createLocalCameraStream();
+      expect(deps.media.createCount, 1);
+    },
+  );
+
+  test('default and preset creation share lifecycle admission', () async {
+    final deps = _Dependencies();
+    final XmaxRealtimeManaging manager = deps.manager;
+    addTearDown(manager.close);
+    deps.media.createGate = Completer<void>();
+    final creation = manager.createLocalCameraStream();
+    await Future<void>.delayed(Duration.zero);
+
+    await expectLater(
+      manager.createLocalCameraStream(
+        preset: RealtimeCameraPreset.resolution1408x1408,
+      ),
+      throwsA(
+        isA<XmaxError>().having(
+          (error) => error.code,
+          'code',
+          XmaxErrorCode.invalidConfiguration,
+        ),
+      ),
+    );
+
+    deps.media.createGate!.complete();
+    await creation;
+    expect(deps.media.createCount, 1);
+  });
+
   test(
     'camera presets update ready preview in place and reject connected changes',
     () async {
@@ -1087,6 +1223,7 @@ final class _FakeMedia implements MediaControlling {
   bool _active = false;
   RealtimeCameraPreviewReadyListener? _previewReadyListener;
   Object? createError;
+  int createCount = 0;
   Completer<void>? createGate;
   int stopCount = 0;
   int switchCount = 0;
@@ -1106,8 +1243,14 @@ final class _FakeMedia implements MediaControlling {
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
   }) async {
+    createCount++;
     await createGate?.future;
     if (createError case final error?) throw error;
+    updateRealtimeVideoTrack(
+      track: track,
+      videoFormat: videoFormat,
+      position: position,
+    );
     _active = true;
     return stream;
   }

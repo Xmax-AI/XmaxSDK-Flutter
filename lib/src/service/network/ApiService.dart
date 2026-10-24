@@ -20,34 +20,36 @@ import '../../core/XmaxEnvironment.dart';
 import 'ApiLogger.dart';
 import 'ApiServicing.dart';
 
-/// HTTP 传输的状态码和响应体。
+/// The status code and body of an HTTP response.
 final class ApiTransportResponse {
 
-  /// 创建 HTTP 响应结果。
+  /// Creates an HTTP response result.
   const ApiTransportResponse({
     required this.statusCode,
     required this.body,
   });
 
-  /// HTTP 响应状态码。
+  /// The HTTP response status.
   final int statusCode;
 
-  /// HTTP 响应正文的原始字节。
+  /// The raw HTTP response body bytes.
   final List<int> body;
 }
 
-/// 可替换的 HTTP 请求传输接口。
+/// A replaceable HTTP request transport interface.
 abstract interface class ApiTransport {
 
-  /// 执行一次 HTTP 请求，并收集状态码和完整响应正文。
+  /// Executes an HTTP request and collects its status code and complete response body.
   ///
-  /// - [method]：请求使用的 HTTP 方法。
-  /// - [url]：完整请求地址。
-  /// - [headers]：HTTP 请求头。
-  /// - [body]：请求正文的编码字节；null 表示不发送正文。
-  /// - [timeout]：建立请求和等待响应头各自的超时时限；默认实现不限制响应体读取时长。
+  /// Parameters:
+  /// - [method]: The request's HTTP method.
+  /// - [url]: The complete request URL.
+  /// - [headers]: The HTTP request headers.
+  /// - [body]: The encoded request body bytes; null sends no body.
+  /// - [timeout]: The separate timeouts for opening the request and awaiting headers; body reads
+  ///   have no default timeout.
   ///
-  /// 返回 HTTP 状态码及完整响应正文。
+  /// Returns the HTTP status code and complete response body.
   Future<ApiTransportResponse> send({
     required ApiMethod method,
     required Uri url,
@@ -57,22 +59,23 @@ abstract interface class ApiTransport {
   });
 }
 
-/// 通过 HttpClient 执行带超时限制的 HTTP 请求。
+/// Executes HTTP requests with timeouts through HttpClient.
 final class HttpApiTransport implements ApiTransport {
 
-  /// 创建 HTTP 传输入口。
+  /// Creates an HTTP transport.
   ///
-  /// - [client]：底层客户端；默认创建独立的 HttpClient。
+  /// Parameters:
+  /// - [client]: The underlying client; defaults to a dedicated HttpClient.
   HttpApiTransport({
     HttpClient? client,
   }) : _client = client ?? HttpClient();
 
-  /// 发送请求和读取响应使用的 HTTP 客户端。
+  /// The HTTP client used to send requests and read responses.
   final HttpClient _client;
 
-  /// 执行一次 HTTP 请求，并收集状态码和完整响应正文。
+  /// Executes an HTTP request and collects its status code and complete response body.
   ///
-  /// 详细说明见 [ApiTransport.send]。
+  /// See [ApiTransport.send] for the usage contract.
   @override
   Future<ApiTransportResponse> send({
     required ApiMethod method,
@@ -81,7 +84,10 @@ final class HttpApiTransport implements ApiTransport {
     required List<int>? body,
     required Duration timeout,
   }) async {
-    final request = await _client.openUrl(method.value, url).timeout(timeout);
+    final request = await _client.openUrl(
+      method.value,
+      url,
+    ).timeout(timeout);
 
     headers.forEach(request.headers.set);
 
@@ -92,23 +98,30 @@ final class HttpApiTransport implements ApiTransport {
     final response = await request.close().timeout(timeout);
     final bytes = await response.fold<List<int>>(
       <int>[],
-      (buffer, chunk) => buffer..addAll(chunk),
+      (
+        buffer,
+        chunk,
+      ) => buffer..addAll(chunk),
     );
 
-    return ApiTransportResponse(statusCode: response.statusCode, body: bytes);
+    return ApiTransportResponse(
+      statusCode: response.statusCode,
+      body: bytes,
+    );
   }
 }
 
-/// 负责发送 Xmax API 请求并统一处理响应、日志和错误。
+/// Sends Xmax API requests and handles responses, logging, and errors.
 final class ApiService implements ApiServicing {
 
-  /// 创建 API 服务，规范化密钥并解析请求地址。
+  /// Creates an API service.
   ///
-  /// - [apiKey]：访问密钥，创建时去除首尾空白。
-  /// - [environment]：用于选择默认服务地址的环境。
-  /// - [baseURL]：覆盖环境默认地址的 API 根地址。
-  /// - [timeout]：请求等待时限，默认 15 秒。
-  /// - [transport]：HTTP 传输实现；默认创建 [HttpApiTransport]。
+  /// Parameters:
+  /// - [apiKey]: The API key used to authenticate requests.
+  /// - [environment]: The environment selecting the default service endpoint.
+  /// - [baseURL]: The API base URL overriding the environment default.
+  /// - [timeout]: The request timeout; defaults to 15 seconds.
+  /// - [transport]: The HTTP transport; defaults to [HttpApiTransport].
   ApiService({
     required String apiKey,
     XmaxEnvironment environment = XmaxEnvironment.china,
@@ -120,17 +133,19 @@ final class ApiService implements ApiServicing {
        _timeout = timeout,
        _transport = transport ?? HttpApiTransport();
 
-  /// 未显式指定环境或路由时使用的默认 API 地址。
+  /// The default API endpoint when no environment or endpoint is specified.
   static final Uri defaultBaseURL = _baseURLFor(XmaxEnvironment.china);
 
-  /// API 请求的默认超时时限。
+  /// The default API request timeout.
   static const Duration defaultTimeoutInterval = Duration(seconds: 15);
 
-  /// 解析指定存储环境对应的 API 基础地址。
+  /// Resolves the API base URL for the specified storage environment.
   ///
-  /// - [environment]：存储服务区域及 SDK 日志语言配置。
+  /// Parameters:
+  /// - [environment]: The service environment and log detail language: Chinese for China, English
+  ///   for global.
   ///
-  /// 返回指定存储环境的基础 API 地址。
+  /// Returns the API base URL for the specified storage environment.
   static Uri _baseURLFor(
     XmaxEnvironment environment,
   ) => switch (environment) {
@@ -140,21 +155,22 @@ final class ApiService implements ApiServicing {
     XmaxEnvironment.global => Uri.parse('https://api.xmax.cloud/open/api/v1'),
   };
 
-  /// 开放平台签发的 API key，不应写入公开仓库或日志。
+  /// The API key used to access Xmax services. Do not include it in public source or logs.
   final String _apiKey;
 
-  /// 创建时根据覆盖地址或环境解析的 API 根地址。
+  /// The API base URL resolved from an override or environment at creation.
   final Uri _baseURL;
 
-  /// 请求允许使用的最长等待时限。
+  /// The request timeout limit.
   final Duration _timeout;
 
-  /// 可替换的 HTTP 请求传输实现。
+  /// The replaceable HTTP request transport.
   final ApiTransport _transport;
 
-  /// 执行带鉴权和超时限制的请求，并将业务响应解码为目标类型。
+  /// Executes an authenticated request with a timeout and decodes its response into the target
+  /// type.
   ///
-  /// 详细说明见 [ApiServicing.request]。
+  /// See [ApiServicing.request] for the usage contract.
   @override
   Future<T> request<T>(
     ApiMethod method, {
@@ -172,7 +188,7 @@ final class ApiService implements ApiServicing {
     final encodedBody = body == null ? null : utf8.encode(jsonEncode(body));
     final stopwatch = Stopwatch()..start();
 
-    // 传输异常转换为网络错误；服务端响应中的错误由后续解析处理。
+    // Convert transport exceptions to network errors; response decoding handles server-reported errors.
     final ApiTransportResponse response;
 
     try {
@@ -220,7 +236,10 @@ final class ApiService implements ApiServicing {
     }
 
     try {
-      final value = _parseResponse(response, decode);
+      final value = _parseResponse(
+        response,
+        decode,
+      );
 
       ApiLogger.logResponse(
         method: method,
@@ -259,7 +278,7 @@ final class ApiService implements ApiServicing {
     }
   }
 
-  /// 校验 API key 和服务地址是否满足请求要求。
+  /// Validates the API key and service endpoint before a request.
   void _validateConfiguration() {
     if (_apiKey.isEmpty) {
       throw const XmaxError(
@@ -278,11 +297,12 @@ final class ApiService implements ApiServicing {
     }
   }
 
-  /// 将基础地址与相对 API 路径合并为请求 URL。
+  /// Combines the base URL and relative API path into a request URL.
   ///
-  /// - [path]：API 相对路径。
+  /// Parameters:
+  /// - [path]: The relative API path.
   ///
-  /// 返回基础 API 地址与业务路径合并后的完整 URL。
+  /// Returns the complete URL combining the API base URL and request path.
   Uri _makeURL(
     String path,
   ) {
@@ -298,7 +318,10 @@ final class ApiService implements ApiServicing {
     }
 
     final basePath = _baseURL.path.endsWith('/')
-        ? _baseURL.path.substring(0, _baseURL.path.length - 1)
+        ? _baseURL.path.substring(
+          0,
+          _baseURL.path.length - 1,
+        )
         : _baseURL.path;
     final relativePath = normalizedPath.startsWith('/')
         ? normalizedPath
@@ -307,12 +330,13 @@ final class ApiService implements ApiServicing {
     return _baseURL.replace(path: '$basePath$relativePath');
   }
 
-  /// 校验 HTTP 和业务响应状态，并解码成功响应。
+  /// Validates HTTP and application response status, then decodes a successful response.
   ///
-  /// - [response]：待解析的 HTTP 响应。
-  /// - [decode]：将业务响应转换为目标类型的函数。
+  /// Parameters:
+  /// - [response]: The HTTP response to decode.
+  /// - [decode]: The function converting the application response into the target type.
   ///
-  /// 返回由 [decode] 转换后的业务响应。
+  /// Returns the application response converted by [decode].
   T _parseResponse<T>(
     ApiTransportResponse response,
     T Function(

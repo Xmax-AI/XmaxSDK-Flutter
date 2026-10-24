@@ -11,18 +11,31 @@
 
 import PackageDescription
 
-/// SDK 原生桥接模块的构建平台、产品和 Flutter 框架依赖配置。
+/// The build platforms, products, and Flutter dependencies for the native SDK bridge.
 let package = Package(
     name: "xmax_sdk",
     platforms: [.iOS("15.0")],
-    products: [.library(name: "xmax-sdk", targets: ["xmax_sdk"])],
+    products: [
+        .library(
+            name: "xmax-sdk",
+            targets: ["xmax_sdk"]
+        )
+    ],
     dependencies: [
-        .package(name: "FlutterFramework", path: "../FlutterFramework")
+        .package(
+            name: "FlutterFramework",
+            path: "../FlutterFramework"
+        )
     ],
     targets: [
         .target(
             name: "xmax_sdk",
-            dependencies: [.product(name: "FlutterFramework", package: "FlutterFramework")]
+            dependencies: [
+                .product(
+                    name: "FlutterFramework",
+                    package: "FlutterFramework"
+                )
+            ]
         )
     ]
 )

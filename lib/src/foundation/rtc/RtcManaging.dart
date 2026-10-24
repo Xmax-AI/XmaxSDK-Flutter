@@ -12,115 +12,128 @@ import '../../foundation/media/camera/CameraPosition.dart';
 import 'RtcEventListener.dart';
 import 'RtcModels.dart';
 
-/// RTC 采集、编码、房间、发布订阅和音量控制的内部接口。
+/// An interface for RTC capture, encoding, rooms, publication, subscriptions, and volume.
 abstract interface class RtcManaging {
 
-  /// 获取并初始化当前生命周期使用的 RTC 引擎。
+  /// Acquires and initializes the RTC engine for this lifecycle.
   Future<void> initialize();
 
-  /// 关闭当前 RTC 资源，并使后续原生回调失效。
+  /// Releases RTC resources and invalidates subsequent native callbacks.
   Future<void> destroy();
 
-  /// 将视频分辨率、帧率、码率及编码偏好应用到 RTC。
+  /// Applies video dimensions, frame rate, bitrate, and encoding preference to RTC.
   ///
-  /// - [configuration]：视频分辨率、帧率、最低与目标码率及编码偏好。
+  /// Parameters:
+  /// - [configuration]: The encoding dimensions, frame rate, minimum and target bitrate, and
+  ///   degradation preference.
   Future<void> configureVideoEncoding(
     VideoEncodingConfiguration configuration,
   );
 
-  /// 按给定规格启动摄像头采集和本地预览，不开启麦克风。
+  /// Starts camera capture and preview with the specified format, leaving the microphone disabled.
   ///
-  /// - [width]：视频宽度，单位为像素。
-  /// - [height]：视频高度，单位为像素。
-  /// - [frameRate]：视频帧率，单位为 fps。
+  /// Parameters:
+  /// - [width]: The video width, in pixels.
+  /// - [height]: The video height, in pixels.
+  /// - [frameRate]: The video frame rate, in fps.
   Future<void> startVideoCapture({
     required int width,
     required int height,
     required int frameRate,
   });
 
-  /// 停止本地预览和摄像头采集。
+  /// Stops local preview and camera capture.
   Future<void> stopVideoCapture();
 
-  /// 原地更新摄像头采集规格，不停止采集或重新挂载预览。
+  /// Updates camera capture settings without stopping capture or remounting preview.
   ///
-  /// - [width]：采集宽度，单位为像素。
-  /// - [height]：采集高度，单位为像素。
-  /// - [frameRate]：采集帧率，单位为 fps。
+  /// Parameters:
+  /// - [width]: The capture width, in pixels.
+  /// - [height]: The capture height, in pixels.
+  /// - [frameRate]: The capture frame rate, in fps.
   Future<void> updateVideoCapture({
     required int width,
     required int height,
     required int frameRate,
   });
 
-  /// 将原生采集切换到指定摄像头。
+  /// Switches native capture to the specified camera.
   ///
-  /// - [position]：需要切换到的摄像头位置。
+  /// Parameters:
+  /// - [position]: The camera position to select.
   Future<void> switchCamera({
     required CameraPosition position,
   });
 
-  /// 加入指定 RTC 房间，并在失败时清理本次房间资源。
+  /// Joins an RTC room and releases its resources if joining fails.
   ///
-  /// - [configuration]：本次入房使用的房间标识、用户账号和访问令牌。
+  /// Parameters:
+  /// - [configuration]: The room identifier, local account, and access token for this join.
   Future<void> joinRoom({
     required RoomJoinConfiguration configuration,
   });
 
-  /// 退出当前 RTC 房间，取消待发信令并保留仍在使用的本地摄像头预览。
+  /// Leaves RTC and cancels pending signaling while preserving an active local camera preview.
   Future<void> leaveRoom();
 
-  /// 设置当前房间是否发布摄像头视频；不发布麦克风音频。
+  /// Sets camera publication for the current room without publishing microphone audio.
   ///
-  /// - [publish]：是否发布本地摄像头视频。
+  /// Parameters:
+  /// - [publish]: Whether to publish local camera video.
   Future<void> publishLocalVideo({
     required bool publish,
   });
 
-  /// 设置是否接收指定远端用户的视频。
+  /// Sets video subscription for a remote user.
   ///
-  /// - [streamID]：远端视频流标识，用于查找对应的数字 UID。
-  /// - [subscribe]：是否订阅指定用户的远端媒体。
+  /// Parameters:
+  /// - [streamID]: The remote video stream identifier used to resolve its numeric UID.
+  /// - [subscribe]: Whether to subscribe to the remote user's media.
   Future<void> subscribeRemoteVideo({
     required String streamID,
     required bool subscribe,
   });
 
-  /// 设置是否接收指定远端用户的音频。
+  /// Sets audio subscription for a remote user.
   ///
-  /// - [streamID]：远端音频流标识，用于查找对应的数字 UID。
-  /// - [subscribe]：是否订阅指定用户的远端媒体。
+  /// Parameters:
+  /// - [streamID]: The remote audio stream identifier used to resolve its numeric UID.
+  /// - [subscribe]: Whether to subscribe to the remote user's media.
   Future<void> subscribeRemoteAudio({
     required String streamID,
     required bool subscribe,
   });
 
-  /// 将指定远端用户的播放音量百分比提交给 RTC。
+  /// Applies a remote user's playback volume percentage to RTC.
   ///
-  /// - [volume]：0～100 范围内的远端播放音量百分比。
-  /// - [streamID]：需要调整播放音量的远端音频流标识。
+  /// Parameters:
+  /// - [volume]: The remote playback volume percentage, from 0 to 100.
+  /// - [streamID]: The remote audio stream whose volume is updated.
   Future<void> setRemoteAudioVolume({
     required int volume,
     required String streamID,
   });
 
-  /// 按队列顺序发送完整房间 JSON 信令，必要时进行分片和限速。
+  /// Sends ordered room signaling with fragmentation and rate limiting when needed.
   ///
-  /// - [message]：完整消息文本。
+  /// Parameters:
+  /// - [message]: The complete message text.
   Future<void> sendRoomMessage(
     String message,
   );
 
-  /// 替换 RTC 内部事件监听器。
+  /// Replaces the internal RTC event listener.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setEventListener(
     RtcEventListener? listener,
   );
 
-  /// 设置本地摄像头首帧就绪的内部通知。
+  /// Sets the internal local camera first-frame callback.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setCameraPreviewReadyListener(
     void Function()? listener,
   );

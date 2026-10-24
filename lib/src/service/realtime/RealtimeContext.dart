@@ -8,30 +8,33 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 一次实时生成使用的提示词和可选参考图路径。
+/// The prompt and optional reference image path for realtime generation.
 final class RealtimeContext {
 
-  /// 创建生成条件，并去除提示词及参考图路径的首尾空白。
+  /// Creates generation conditions.
   ///
-  /// - [prompt]：描述目标生成效果的提示词。
-  /// - [referencePath]：已上传参考图地址或路径；null 或空白统一保存为 null。
+  /// Parameters:
+  /// - [prompt]: The prompt describing the requested generation effect.
+  /// - [referencePath]: The uploaded reference image URL or path; null or whitespace clears the
+  ///   reference.
   RealtimeContext({
     required String prompt,
     String? referencePath,
   }) : prompt = prompt.trim(),
        referencePath = _normalizedReferencePath(referencePath);
 
-  /// 描述目标生成效果的提示词。
+  /// The prompt describing the requested generation effect.
   final String prompt;
 
-  /// 参考图地址或路径；为空时不使用参考图。
+  /// The reference image URL or path, or null to omit a reference image.
   final String? referencePath;
 
-  /// 清理参考图路径两端空白；空白路径转为 null。
+  /// Trims a reference path and converts whitespace-only input to null.
   ///
-  /// - [value]：待清理首尾空白的参考图路径。
+  /// Parameters:
+  /// - [value]: The reference image path to normalize.
   ///
-  /// 返回去除两端空白的参考图路径；空内容为 null。
+  /// Returns the trimmed reference path, or null for empty content.
   static String? _normalizedReferencePath(
     String? value,
   ) {
@@ -40,17 +43,23 @@ final class RealtimeContext {
     return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
-  /// 与 [other] 比较类型及 [prompt]、[referencePath] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimeContext &&
           prompt == other.prompt &&
           referencePath == other.referencePath;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(prompt, referencePath);
+  int get hashCode => Object.hash(
+    prompt,
+    referencePath,
+  );
 }

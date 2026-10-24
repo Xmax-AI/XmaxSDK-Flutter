@@ -15,10 +15,11 @@ import '../../foundation/media/video/VideoContentMode.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
 import 'VideoRenderBinding.dart';
 
-/// 保存原生纹理挂载位置，绑定和画面可见性由上层视图独立管理。
+/// Retains the native texture mount point while the parent view manages binding and visibility
+/// separately.
 final class VideoRenderSurface extends StatelessWidget {
 
-  /// 创建原生视频渲染组件。
+  /// Creates a native video rendering component.
   const VideoRenderSurface({
     super.key,
     required this.binding,
@@ -26,20 +27,21 @@ final class VideoRenderSurface extends StatelessWidget {
     required this.contentMode,
   });
 
-  /// 当前轨道的渲染或交互配置。
+  /// The local preview or remote stream rendering configuration.
   final VideoRenderBinding binding;
 
-  /// 目标视频轨道。
+  /// The target video track.
   final RealtimeVideoTrack? track;
 
-  /// 视频的缩放和裁剪方式。
+  /// The video scaling and cropping mode.
   final VideoContentMode contentMode;
 
-  /// 根据当前绑定和显示配置构建视频或轨迹视图。
+  /// Builds the native video surface for the current track binding and display configuration.
   ///
-  /// - [context]：组件构建上下文。
+  /// Parameters:
+  /// - [context]: The widget build context.
   ///
-  /// 返回当前视频或轨迹效果的组件树。
+  /// Returns the video texture, or a black background when the binding cannot be rendered.
   @override
   Widget build(
     BuildContext context,
@@ -56,7 +58,8 @@ final class VideoRenderSurface extends StatelessWidget {
         (remote != null && (remote.uid == null || remote.localUid == null))) {
       return const ColoredBox(color: Colors.black);
     }
-    // 使用 Flutter 纹理，保留透明度和多层视频的叠加效果。
+
+    // Use Flutter textures to preserve opacity and stacked video compositing.
     final canvas = VideoCanvas(
       uid: remote?.uid ?? 0,
       renderMode: contentMode == VideoContentMode.fit
@@ -68,23 +71,25 @@ final class VideoRenderSurface extends StatelessWidget {
     );
     final controller = remote == null
         ? VideoViewController(
-            rtcEngine: engine,
-            canvas: canvas,
-            useFlutterTexture: true,
-          )
+          rtcEngine: engine,
+          canvas: canvas,
+          useFlutterTexture: true,
+        )
         : VideoViewController.remote(
-            rtcEngine: engine,
-            canvas: canvas,
-            connection: RtcConnection(
-              channelId: remote.roomID,
-              localUid: remote.localUid,
-            ),
-            useFlutterTexture: true,
-          );
+          rtcEngine: engine,
+          canvas: canvas,
+          connection: RtcConnection(
+            channelId: remote.roomID,
+            localUid: remote.localUid,
+          ),
+          useFlutterTexture: true,
+        );
 
     return AgoraVideoView(
       controller: controller,
-      onAgoraVideoViewCreated: (_) => local?.onPreviewAttached?.call(),
+      onAgoraVideoViewCreated: (
+        _,
+      ) => local?.onPreviewAttached?.call(),
     );
   }
 }

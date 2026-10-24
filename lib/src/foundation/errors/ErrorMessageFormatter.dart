@@ -11,14 +11,15 @@
 import 'ErrorNormalizer.dart';
 import 'XmaxError.dart';
 
-/// 将 SDK、系统和第三方错误转换为适合日志及调试界面展示的文本。
+/// Formats errors for logs and diagnostic displays.
 abstract final class ErrorMessageFormatter {
 
-  /// 将 SDK、平台或第三方错误格式化为便于阅读的错误文本。
+  /// Formats SDK, platform, and third-party errors as readable descriptions.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   ///
-  /// 返回适合展示的错误说明。
+  /// Returns a readable error description.
   static String format(
     Object error,
   ) {

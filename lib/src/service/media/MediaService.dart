@@ -17,34 +17,43 @@ import '../../core/realtime/RealtimeMediaSource.dart';
 import '../../foundation/errors/XmaxError.dart';
 import 'MediaServicing.dart';
 
-/// 依据模型约束解析本地媒体、生成画布和回传视频的尺寸。
+/// The sizing and capability rules for local media, generation canvases, and returned media.
 final class MediaService implements MediaServicing {
 
-  /// 创建模型媒体尺寸解析服务。
+  /// Creates a model-aware media dimension resolver.
   MediaService({
     this.model = RealtimeModel.x2_1,
   });
 
-  /// 尺寸约束所属模型，默认使用 X2.1。
+  /// The model defining dimension constraints; defaults to X2.1.
   @override
   final RealtimeModel model;
 
-  /// 选择宽高比最接近本地媒体的模型生成画布，不修改本地采集规格。
+  /// Selects the model canvas closest to the local media aspect ratio without changing capture
+  /// settings.
   ///
-  /// 详细说明见 [MediaServicing.resolveGenerationSize]。
+  /// See [MediaServicing.resolveGenerationSize] for the usage contract.
   @override
   Size resolveGenerationSize(
     Size size,
   ) {
     final buckets = model.supportedVideoFormats.map(
-      (format) => Size(format.width.toDouble(), format.height.toDouble()),
+      (
+        format,
+      ) => Size(
+        format.width.toDouble(),
+        format.height.toDouble(),
+      ),
     ).toList();
 
     if (buckets.isNotEmpty) {
       _validatedSize(size);
 
       return buckets.reduce(
-        (a, b) =>
+        (
+          a,
+          b,
+        ) =>
             (math.log(
                   (size.width / size.height) / (a.width / a.height),
                 )).abs() <=
@@ -64,16 +73,22 @@ final class MediaService implements MediaServicing {
     )
     rounding;
 
-    // 先缩放到模型允许的像素数量范围，再调整宽高以满足对齐要求。
+    // Scale into the model's pixel-count range before aligning width and height.
     if (pixels < model.minimumInputPixels) {
       scale = math.sqrt(model.minimumInputPixels / pixels);
-      rounding = (value) => value.ceilToDouble();
+      rounding = (
+        value,
+      ) => value.ceilToDouble();
     } else if (pixels > model.maximumInputPixels) {
       scale = math.sqrt(model.maximumInputPixels / pixels);
-      rounding = (value) => value.floorToDouble();
+      rounding = (
+        value,
+      ) => value.floorToDouble();
     } else {
       scale = 1;
-      rounding = (value) => value.roundToDouble();
+      rounding = (
+        value,
+      ) => value.roundToDouble();
     }
 
     final alignment = model.inputSizeAlignment;
@@ -90,19 +105,22 @@ final class MediaService implements MediaServicing {
 
     if (alignedPixels >= model.minimumInputPixels &&
         alignedPixels <= model.maximumInputPixels) {
-      return Size(width.toDouble(), height.toDouble());
+      return Size(
+        width.toDouble(),
+        height.toDouble(),
+      );
     }
 
-    // 宽高对齐可能使总像素数越界，此时选择最接近目标的合法尺寸。
+    // If alignment exceeds pixel limits, choose the nearest valid dimensions.
     return _boundedAlignedSize(
       width: validated.width * scale,
       height: validated.height * scale,
     );
   }
 
-  /// 校验摄像头预设分辨率，计算不放大且宽高按 4 像素对齐的本地媒体尺寸。
+  /// Validates camera preset dimensions and resolves a non-upscaled local size aligned to 4 pixels.
   ///
-  /// 详细说明见 [MediaServicing.resolveMediaSize]。
+  /// See [MediaServicing.resolveMediaSize] for the usage contract.
   @override
   Size resolveMediaSize(
     Size sourceMediaSize, {
@@ -111,7 +129,12 @@ final class MediaService implements MediaServicing {
     _validateIntegral(sourceMediaSize);
 
     final buckets = model.supportedVideoFormats.map(
-      (format) => Size(format.width.toDouble(), format.height.toDouble()),
+      (
+        format,
+      ) => Size(
+        format.width.toDouble(),
+        format.height.toDouble(),
+      ),
     ).toList();
 
     if (source == RealtimeMediaSource.camera &&
@@ -132,12 +155,16 @@ final class MediaService implements MediaServicing {
       ),
     );
 
-    return _alignedSize(sourceMediaSize, scale);
+    return _alignedSize(
+      sourceMediaSize,
+      scale,
+    );
   }
 
-  /// 在最大宽高限制内缩小回传视频，优先保留精确比例并按 4 像素对齐。
+  /// Downscales results within maximum dimensions, preferring exact aspect ratio and 4-pixel
+  /// alignment.
   ///
-  /// 详细说明见 [MediaServicing.resolveTargetSize]。
+  /// See [MediaServicing.resolveTargetSize] for the usage contract.
   @override
   Size resolveTargetSize(
     Size resolvedMediaSize, {
@@ -154,15 +181,20 @@ final class MediaService implements MediaServicing {
       ),
     );
 
-    return _alignedSize(resolvedMediaSize, scale);
+    return _alignedSize(
+      resolvedMediaSize,
+      scale,
+    );
   }
 
-  /// 在缩放限制内计算按 4 像素对齐的尺寸，优先保留精确宽高比。
+  /// Resolves 4-pixel-aligned dimensions within the scale limit, preferring the exact aspect ratio.
   ///
-  /// - [size]：用于尺寸解析的媒体像素宽高。
-  /// - [scale]：目标尺寸相对于基准尺寸的缩放比例。
+  /// Parameters:
+  /// - [size]: The media pixel dimensions to resolve.
+  /// - [scale]: The target scale relative to the baseline dimensions.
   ///
-  /// 返回不超过缩放上限的对齐像素宽高；无法对齐时抛出配置错误。
+  /// Returns aligned pixel dimensions within the scale limit; throws a configuration error if
+  /// impossible.
   static Size _alignedSize(
     Size size,
     double scale,
@@ -188,12 +220,16 @@ final class MediaService implements MediaServicing {
       );
     }
 
-    return Size(w.toDouble(), h.toDouble());
+    return Size(
+      w.toDouble(),
+      h.toDouble(),
+    );
   }
 
-  /// 校验媒体尺寸是可表示的正整数像素值。
+  /// Validates that media dimensions are representable positive integer pixel values.
   ///
-  /// - [size]：用于尺寸解析的媒体像素宽高。
+  /// Parameters:
+  /// - [size]: The media pixel dimensions to resolve.
   static void _validateIntegral(
     Size size,
   ) {
@@ -212,12 +248,13 @@ final class MediaService implements MediaServicing {
     }
   }
 
-  /// 在模型像素范围内选择接近目标尺寸的有效对齐规格。
+  /// Selects valid aligned dimensions near the target within the model's pixel-count range.
   ///
-  /// - [width]：视频宽度，单位为像素。
-  /// - [height]：视频高度，单位为像素。
+  /// Parameters:
+  /// - [width]: The video width, in pixels.
+  /// - [height]: The video height, in pixels.
   ///
-  /// 返回满足模型对齐和像素数量限制的最近有效尺寸。
+  /// Returns the nearest valid dimensions satisfying model alignment and pixel-count limits.
   Size _boundedAlignedSize({
     required double width,
     required double height,
@@ -234,7 +271,9 @@ final class MediaService implements MediaServicing {
       final minimumHeight = (minimumUnits + widthUnits - 1) ~/ widthUnits;
       final maximumHeight = maximumUnits ~/ widthUnits;
 
-      if (minimumHeight > maximumHeight) continue;
+      if (minimumHeight > maximumHeight) {
+        continue;
+      }
 
       final heightUnits = (height / alignment).round().clamp(
         minimumHeight,
@@ -243,23 +282,34 @@ final class MediaService implements MediaServicing {
       final candidateWidth = (widthUnits * alignment).toDouble();
       final candidateHeight = (heightUnits * alignment).toDouble();
       final distance =
-          math.pow((candidateWidth - width) / width, 2) +
-          math.pow((candidateHeight - height) / height, 2);
+          math.pow(
+            (candidateWidth - width) / width,
+            2,
+          ) +
+          math.pow(
+            (candidateHeight - height) / height,
+            2,
+          );
 
       if (distance < bestDistance) {
         bestDistance = distance.toDouble();
-        bestSize = Size(candidateWidth, candidateHeight);
+        bestSize = Size(
+          candidateWidth,
+          candidateHeight,
+        );
       }
     }
 
     return bestSize;
   }
 
-  /// 校验尺寸为有限正数，并返回可继续计算的尺寸。
+  /// Validates finite positive dimensions and returns dimensions suitable for further calculations.
   ///
-  /// - [size]：用于尺寸解析的媒体像素宽高。
+  /// Parameters:
+  /// - [size]: The media pixel dimensions to resolve.
   ///
-  /// 返回按整数像素取整的有效尺寸；非有限数或非正数抛出配置错误。
+  /// Returns valid dimensions rounded to integer pixels; throws a configuration error for
+  /// non-finite or nonpositive values.
   Size _validatedSize(
     Size size,
   ) {

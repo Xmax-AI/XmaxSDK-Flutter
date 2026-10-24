@@ -8,12 +8,12 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 媒体采集权限的检查与申请接口。
+/// An interface for checking and requesting media capture permissions.
 abstract interface class PermissionManaging {
 
-  /// 检查并按需申请摄像头权限；拒绝时抛出 cameraPermissionDenied。
+  /// Checks and requests camera permission; throws cameraPermissionDenied if denied.
   Future<void> ensureCameraPermission();
 
-  /// 检查并按需申请麦克风权限；拒绝时抛出 microphonePermissionDenied。
+  /// Checks and requests microphone permission; throws microphonePermissionDenied if denied.
   Future<void> ensureMicrophonePermission();
 }

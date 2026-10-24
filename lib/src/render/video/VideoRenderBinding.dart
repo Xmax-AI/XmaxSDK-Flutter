@@ -11,41 +11,41 @@
 import '../../foundation/rtc/RtcModels.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
-/// 本地预览或远端结果视频的内部渲染绑定。
+/// An internal rendering binding for local preview or remote result video.
 sealed class VideoRenderBinding {
 
-  /// 创建视频渲染绑定。
+  /// Creates a video rendering binding.
   const VideoRenderBinding();
 }
 
-/// 本地摄像头的 RTC 引擎和预览挂载通知。
+/// The local camera RTC engine and preview mount callback.
 final class LocalVideoRenderBinding extends VideoRenderBinding {
 
-  /// 创建本地预览绑定。
+  /// Creates a local preview binding.
   const LocalVideoRenderBinding({
     this.onPreviewAttached,
     this.engine,
   });
 
-  /// 本地预览使用的 RTC 引擎；未指定时渲染组件显示黑色背景。
+  /// The RTC engine for local preview; without an engine, rendering displays a black background.
   final RtcEngine? engine;
 
-  /// 原生预览视图完成挂载时的通知。
+  /// The callback invoked after the native preview view mounts.
   final void Function()? onPreviewAttached;
 }
 
-/// 远端流及其首帧渲染状态。
+/// A remote stream and its first-frame rendering state.
 final class RemoteVideoRenderBinding extends VideoRenderBinding {
 
-  /// 创建远端结果流绑定。
+  /// Creates a remote result-stream binding.
   const RemoteVideoRenderBinding(
     this.stream, {
     this.firstFrameRendered = false,
   });
 
-  /// 当前绑定的远端结果流。
+  /// The currently bound remote result stream.
   final RemoteStream stream;
 
-  /// 当前远端流是否已渲染首帧，初始为 false。
+  /// Whether the remote stream has rendered its first frame; initially false.
   final bool firstFrameRendered;
 }

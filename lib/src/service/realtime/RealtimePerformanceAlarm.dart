@@ -10,57 +10,64 @@
 
 import 'RealtimeVideoFormat.dart';
 
-/// 实时媒体传输的性能受限或恢复状态。
+/// A performance limitation or recovery state for realtime media transport.
 enum RealtimePerformanceStatus {
 
-  /// 设备或链路性能受限。
+  /// Device or transport performance is limited.
   limited('Limited'),
 
-  /// 设备或链路性能已恢复。
+  /// Device or transport performance has recovered.
   recovered('Recovered');
 
-  /// 定义性能状态标识。
+  /// Defines a performance status identifier.
   const RealtimePerformanceStatus(
     this.value,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 }
 
-/// 性能状态和可用的视频规格建议；建议值不代表已应用的采集配置。
+/// A performance status and optional suggested format, not an applied capture configuration.
 final class RealtimePerformanceAlarm {
 
-  /// 创建性能状态与视频规格建议。
+  /// Creates a performance alarm and suggested video format.
   const RealtimePerformanceAlarm({
     required this.status,
     this.suggestedVideoFormat,
   });
 
-  /// 本次事件的性能受限或恢复状态。
+  /// The performance limitation or recovery state for this event.
   final RealtimePerformanceStatus status;
 
-  /// 性能事件建议的视频规格；不可用时为空。
+  /// The suggested video format, when provided by the performance event.
   final RealtimeVideoFormat? suggestedVideoFormat;
 
-  /// 与 [other] 比较类型及 [status]、[suggestedVideoFormat] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimePerformanceAlarm &&
           status == other.status &&
           suggestedVideoFormat == other.suggestedVideoFormat;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(status, suggestedVideoFormat);
+  int get hashCode => Object.hash(
+    status,
+    suggestedVideoFormat,
+  );
 }
 
-/// 接收性能受限或恢复状态及可用规格建议的回调。
+/// A listener receiving performance status and any suggested format.
 ///
-/// - [alarm]：性能受限或恢复事件。
+/// Parameters:
+/// - [alarm]: The performance limitation or recovery event.
 typedef RealtimePerformanceAlarmListener =
     void Function(
       RealtimePerformanceAlarm alarm,

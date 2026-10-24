@@ -8,9 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 当前支持的本地实时媒体来源。
+/// A local media source supported by XmaxSDK.
 enum RealtimeMediaSource {
 
-  /// 设备摄像头采集的视频输入。
+  /// Video captured by the device camera.
   camera,
 }

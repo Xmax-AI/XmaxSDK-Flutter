@@ -21,10 +21,10 @@ import 'VideoRenderBinding.dart';
 import 'VideoRenderRegistry.dart';
 import 'VideoRenderSurface.dart';
 
-/// 显示 Xmax 本地或远端实时视频轨道的 Flutter 视图。
+/// A Flutter view displaying a local or remote Xmax realtime video track.
 final class XmaxVideoView extends StatefulWidget {
 
-  /// 创建单轨道视频视图。
+  /// Creates a single-track video view.
   const XmaxVideoView({
     super.key,
     this.track,
@@ -33,62 +33,62 @@ final class XmaxVideoView extends StatefulWidget {
     this.trajectoryRenderer,
   });
 
-  /// 要显示的视频轨道；未指定时显示黑色背景，不创建视频纹理。
+  /// The video track to display; null shows a black background without creating a video texture.
   final RealtimeVideoTrack? track;
 
-  /// 视频缩放方式，默认等比填满并裁剪超出部分。
+  /// The video scaling mode; defaults to aspect fill with cropping.
   final VideoContentMode videoContentMode;
 
-  /// 是否启用触点采样和轨迹渲染，默认启用。
+  /// Whether to enable interaction sampling and trail rendering; enabled by default.
   final bool isInteractionEnabled;
 
-  /// 自定义轨迹渲染器；为空时使用 SDK 默认效果。
+  /// The custom trail renderer; null uses the SDK renderer.
   ///
-  /// 由接入方提供时，接入方负责渲染器生命周期；默认渲染器由视图释放。
+  /// The caller owns a supplied renderer's lifecycle; the view disposes of its default renderer.
   final TrajectoryEffectRendering? trajectoryRenderer;
 
-  /// 创建管理单轨道视频与交互资源的组件状态。
+  /// Creates the state managing single-track video and interaction resources.
   @override
   State<XmaxVideoView> createState() => _XmaxVideoViewState();
 }
 
-/// 维护视频渲染、触点采样和轨迹效果资源。
+/// Manages video rendering, interaction sampling, and trail effect resources.
 final class _XmaxVideoViewState extends State<XmaxVideoView>
     with SingleTickerProviderStateMixin {
 
-  /// 触点采样间隔，对应每秒最多 30 次周期采样。
+  /// The sampling interval, allowing at most 30 periodic interaction samples per second.
   static const _samplingInterval = Duration(
     microseconds: Duration.microsecondsPerSecond ~/ 30,
   );
 
-  /// 提供当前轨迹状态和重绘通知的渲染器。
+  /// The renderer providing current trail state and repaint notifications.
   late TrajectoryEffectRendering _renderer;
 
-  /// 当前视图是否负责释放轨迹渲染器。
+  /// Whether this view owns disposal of the trail renderer.
   late bool _ownsRenderer;
 
-  /// 按显示时钟驱动触点采样的计时器。
+  /// The display-synchronized ticker driving interaction sampling.
   late final Ticker _samplingTicker;
 
-  /// 按指针标识保存的所有活动触点。
+  /// The active pointers indexed by pointer identifier.
   final Map<int, _ActivePointer> _activePointers = <int, _ActivePointer>{};
 
-  /// 当前触点采样周期经过的时间。
+  /// The elapsed time in the current interaction sampling cycle.
   Duration _currentSamplingTime = Duration.zero;
 
-  /// 当前周期最近一次提交触点采样的时间。
+  /// The time of the last submitted sample in the current cycle.
   Duration? _lastSampleTime;
 
-  /// 最近一次触点采样的视图尺寸，单位为逻辑像素。
+  /// The viewport dimensions of the latest sample, in logical pixels.
   Size? _samplingViewportSize;
 
-  /// 当前视图触点采样的提交入口。
+  /// The handler for submitting view interaction samples.
   void Function(
     InteractionFrame frame,
   )?
   _samplingListener;
 
-  /// 初始化视图监听、触点采样和本地绘制资源。
+  /// Initializes view listeners, input sampling, and local drawing resources.
   @override
   void initState() {
     super.initState();
@@ -97,9 +97,10 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _samplingTicker = createTicker(_sampleActivePointers);
   }
 
-  /// 根据新的组件配置更新轨道绑定、交互和渲染器所有权。
+  /// Updates track bindings, interaction, and renderer ownership for the new widget configuration.
   ///
-  /// - [oldWidget]：更新前的组件配置。
+  /// Parameters:
+  /// - [oldWidget]: The previous widget configuration.
   @override
   void didUpdateWidget(
     covariant XmaxVideoView oldWidget,
@@ -123,7 +124,7 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
   }
 
-  /// 释放组件拥有的监听、动画和绘制资源。
+  /// Releases listeners, animation resources, and drawing resources owned by the component.
   @override
   void dispose() {
     _resetPointers();
@@ -132,11 +133,12 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     super.dispose();
   }
 
-  /// 根据当前绑定和显示配置构建视频或轨迹视图。
+  /// Builds a video or trail view from the current binding and display configuration.
   ///
-  /// - [context]：组件构建上下文。
+  /// Parameters:
+  /// - [context]: The widget build context.
   ///
-  /// 返回当前视频或轨迹效果的组件树。
+  /// Returns the widget tree for the current video or trail effects.
   @override
   Widget build(
     BuildContext context,
@@ -151,9 +153,13 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     final video = handle == null
         ? const ColoredBox(color: Colors.black)
         : ValueListenableBuilder<VideoRenderBinding?>(
-            valueListenable: handle,
-            builder: (context, binding, _) => _buildVideo(binding),
-          );
+          valueListenable: handle,
+          builder: (
+            context,
+            binding,
+            _,
+          ) => _buildVideo(binding),
+        );
 
     final interaction = TrajectoryRegistry.bindingFor(track);
 
@@ -165,14 +171,21 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
           video,
           if (widget.isInteractionEnabled && interaction != null)
             LayoutBuilder(
-              builder: (context, constraints) => Listener(
+              builder: (
+                context,
+                constraints,
+              ) => Listener(
                 behavior: HitTestBehavior.opaque,
-                onPointerDown: (event) => _pointerDown(
+                onPointerDown: (
+                  event,
+                ) => _pointerDown(
                   event,
                   constraints.biggest,
                   interaction.interactionListener,
                 ),
-                onPointerMove: (event) => _pointerMove(
+                onPointerMove: (
+                  event,
+                ) => _pointerMove(
                   event,
                   constraints.biggest,
                   interaction.interactionListener,
@@ -187,15 +200,18 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     );
   }
 
-  /// 根据当前轨道绑定构建原生视频纹理。
+  /// Builds the native video texture using the current track binding.
   ///
-  /// - [binding]：当前轨道的渲染或交互配置。
+  /// Parameters:
+  /// - [binding]: The rendering or interaction configuration for the current track.
   ///
-  /// 返回当前视频或轨迹效果的组件树。
+  /// Returns the widget tree for the current video or trail effects.
   Widget _buildVideo(
     VideoRenderBinding? binding,
   ) {
-    if (binding == null) return const ColoredBox(color: Colors.black);
+    if (binding == null) {
+      return const ColoredBox(color: Colors.black);
+    }
 
     return VideoRenderSurface(
       binding: binding,
@@ -204,11 +220,12 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     );
   }
 
-  /// 开始触点轨迹并立即提交首个交互采样。
+  /// Starts a pointer trail and immediately submits its first interaction sample.
   ///
-  /// - [event]：本次按下、移动或释放的指针事件。
-  /// - [size]：当前视频视图的逻辑像素尺寸。
-  /// - [listener]：接收本次通知的回调。
+  /// Parameters:
+  /// - [event]: The pointer-down, move, or release event being processed.
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
   void _pointerDown(
     PointerDownEvent event,
     Size size,
@@ -223,11 +240,20 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     );
 
     _activePointers[event.pointer] = pointer;
-    _updateSamplingContext(size, listener);
-    _renderer.renderBegan(<TrajectoryPoint>[_point(pointer, size)]);
+    _updateSamplingContext(
+      size,
+      listener,
+    );
+    _renderer.renderBegan(<TrajectoryPoint>[_point(
+      pointer,
+      size,
+    )]);
 
-    // 首个触点立即提交，随后由屏幕刷新计时器以 30 Hz 采样所有活动触点。
-    _submit(size, listener);
+    // Submit the first point immediately, then sample all active pointers at 30 Hz using the display ticker.
+    _submit(
+      size,
+      listener,
+    );
     if (!_samplingTicker.isActive) {
       _currentSamplingTime = Duration.zero;
       _lastSampleTime = Duration.zero;
@@ -237,11 +263,12 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
   }
 
-  /// 更新按下触点的位置并同步轨迹显示。
+  /// Updates an active pointer's position and trail display.
   ///
-  /// - [event]：本次按下、移动或释放的指针事件。
-  /// - [size]：当前视频视图的逻辑像素尺寸。
-  /// - [listener]：接收本次通知的回调。
+  /// Parameters:
+  /// - [event]: The pointer-down, move, or release event being processed.
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
   void _pointerMove(
     PointerMoveEvent event,
     Size size,
@@ -257,13 +284,20 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
 
     pointer.location = event.localPosition;
-    _updateSamplingContext(size, listener);
-    _renderer.renderMoved(<TrajectoryPoint>[_point(pointer, size)]);
+    _updateSamplingContext(
+      size,
+      listener,
+    );
+    _renderer.renderMoved(<TrajectoryPoint>[_point(
+      pointer,
+      size,
+    )]);
   }
 
-  /// 结束触点轨迹；没有活动触点时停止采样。
+  /// Ends a pointer trail and stops sampling when no active pointers remain.
   ///
-  /// - [event]：本次按下、移动或释放的指针事件。
+  /// Parameters:
+  /// - [event]: The pointer-down, move, or release event being processed.
   void _pointerUp(
     PointerEvent event,
   ) {
@@ -278,9 +312,10 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     }
   }
 
-  /// 按固定采样间隔提交所有活动触点。
+  /// Submits all active pointers at the fixed sampling interval.
   ///
-  /// - [elapsed]：当前动画或采样周期内已过去的时间。
+  /// Parameters:
+  /// - [elapsed]: The time elapsed in the current animation or sampling cycle.
   void _sampleActivePointers(
     Duration elapsed,
   ) {
@@ -306,14 +341,18 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
       return;
     }
 
-    _submit(size, listener);
+    _submit(
+      size,
+      listener,
+    );
     _lastSampleTime = elapsed;
   }
 
-  /// 保存本次触点采样所需的视图尺寸和提交函数。
+  /// Saves the viewport dimensions and submission handler for interaction sampling.
   ///
-  /// - [size]：当前视频视图的逻辑像素尺寸。
-  /// - [listener]：接收本次通知的回调。
+  /// Parameters:
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
   void _updateSamplingContext(
     Size size,
     void Function(
@@ -325,7 +364,7 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _samplingListener = listener;
   }
 
-  /// 停止采样时钟并清除采样上下文。
+  /// Stops the sampling ticker and clears the sampling context.
   void _stopSampling() {
     if (_samplingTicker.isActive) {
       _samplingTicker.stop();
@@ -337,12 +376,13 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     _samplingListener = null;
   }
 
-  /// 将当前触点转换为包含位置和时间的轨迹渲染输入。
+  /// Converts an active pointer into trail rendering input containing position and elapsed time.
   ///
-  /// - [pointer]：当前按下的触点状态。
-  /// - [size]：当前视频视图的逻辑像素尺寸。
+  /// Parameters:
+  /// - [pointer]: The state of the active pointer.
+  /// - [size]: The current video viewport dimensions, in logical pixels.
   ///
-  /// 返回用于本地轨迹渲染的位置和时间样本。
+  /// Returns a position and time sample for local trail rendering.
   TrajectoryPoint _point(
     _ActivePointer pointer,
     Size size,
@@ -356,10 +396,12 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     timestamp: Duration(microseconds: DateTime.now().microsecondsSinceEpoch),
   );
 
-  /// 将所有活动触点按当前视图配置提交给交互处理组件。
+  /// Submits all active pointers to the interaction controller using the current view
+  /// configuration.
   ///
-  /// - [size]：当前视频视图的逻辑像素尺寸。
-  /// - [listener]：接收本次通知的回调。
+  /// Parameters:
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
   void _submit(
     Size size,
     void Function(
@@ -370,7 +412,9 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     listener(
       InteractionFrame(
         points: _activePointers.values
-            .map((pointer) => pointer.location)
+            .map((
+              pointer,
+            ) => pointer.location)
             .toList(growable: false),
         viewportSize: size,
         contentMode: widget.videoContentMode,
@@ -378,14 +422,14 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
     );
   }
 
-  /// 清除活动触点、采样时钟和轨迹显示。
+  /// Clears active pointers, the sampling ticker, and visible trails.
   void _resetPointers() {
     _activePointers.clear();
     _stopSampling();
     _renderer.reset();
   }
 
-  /// 仅释放由当前视图创建的默认轨迹渲染器。
+  /// Disposes only the default trail renderer created by this view.
   void _disposeOwnedRenderer() {
     if (_ownsRenderer && _renderer is DefaultTrajectoryEffectRenderer) {
       (_renderer as DefaultTrajectoryEffectRenderer).dispose();
@@ -393,18 +437,18 @@ final class _XmaxVideoViewState extends State<XmaxVideoView>
   }
 }
 
-/// 当前按下触点的轨迹标识和最新视图位置。
+/// The trail identifier and latest view position of an active pointer.
 final class _ActivePointer {
 
-  /// 记录活动触点的轨迹标识与当前位置。
+  /// Records an active pointer's trail identifier and current position.
   _ActivePointer({
     required this.id,
     required this.location,
   });
 
-  /// 当前按下触点对应的轨迹标识。
+  /// The trail identifier of the active pointer.
   final TrajectoryID id;
 
-  /// 触点在视图内的逻辑像素坐标。
+  /// The pointer position within the view, in logical pixels.
   Offset location;
 }

@@ -10,25 +10,25 @@
 
 import '../../foundation/errors/XmaxError.dart';
 
-/// 实时视频的编码策略偏好。
+/// The encoding preference for realtime video.
 enum RealtimeVideoEncoderPreference {
 
-  /// 平衡帧率和分辨率。
+  /// Balances frame rate and resolution.
   auto,
 
-  /// 优先保障帧率。
+  /// Prioritizes frame rate.
   maintainFramerate,
 
-  /// 优先保障分辨率。
+  /// Prioritizes resolution.
   maintainQuality,
 }
 
-/// 实时视频的尺寸、帧率和上传编码配置。
+/// The dimensions, frame rate, and uplink encoding settings for realtime video.
 ///
-/// 构造时只保存配置；需要提前检查参数时可调用 [validate]。
+/// Construction stores the settings; use [validate] to check them before use.
 final class RealtimeVideoFormat {
 
-  /// 创建实时视频规格。
+  /// Creates a realtime video format.
   const RealtimeVideoFormat({
     required this.width,
     required this.height,
@@ -38,28 +38,31 @@ final class RealtimeVideoFormat {
     this.encoderPreference = RealtimeVideoEncoderPreference.maintainFramerate,
   });
 
-  /// 视频宽度，单位为像素，必须为正偶数。
+  /// The video width, in pixels; must be a positive even number.
   final int width;
 
-  /// 视频高度，单位为像素，必须为正偶数。
+  /// The video height, in pixels; must be a positive even number.
   final int height;
 
-  /// 目标视频帧率，单位为 fps，必须大于 0。
+  /// The target frame rate, in fps; must be greater than zero.
   final int fps;
 
-  /// 最低上传码率，单位为 kbps；省略时使用 500，且不超过最高码率。
-  /// 0 表示不设最低码率。
+  /// The minimum uplink bitrate, in kbps; defaults to 500, capped at the maximum bitrate.
+  /// Zero disables the minimum bitrate floor.
   final int? minimumBitrate;
 
-  /// 最高上传码率，单位为 kbps；`null` 使用 SDK 默认值，指定时必须大于 0。
+  /// The maximum uplink bitrate, in kbps; null uses SDK defaults and explicit values must be
+  /// positive.
   final int? maximumBitrate;
 
-  /// 上传编码策略偏好，默认优先保障帧率。
+  /// The uplink encoding preference; defaults to frame-rate priority.
   final RealtimeVideoEncoderPreference encoderPreference;
 
-  /// 校验尺寸、帧率及码率区间，不满足约束时抛出 invalidConfiguration。
+  /// Validates dimensions, frame rate, and bitrates, throwing invalidConfiguration for invalid
+  /// values.
   ///
-  /// 宽高须为正偶数，帧率须为正数；指定码率时最低值不得超过最高值。
+  /// Dimensions must be positive and even, frame rate positive, and minimum bitrate no greater than
+  /// maximum.
   void validate() {
     if (width <= 0 || height <= 0 || fps <= 0 || width.isOdd || height.isOdd) {
       throw const XmaxError(
@@ -95,12 +98,13 @@ final class RealtimeVideoFormat {
     }
   }
 
-  /// 创建新尺寸的视频规格，保留原帧率、码率和编码偏好。
+  /// Creates a resized format retaining frame rate, bitrates, and encoding preference.
   ///
-  /// - [width]：视频宽度，单位为像素。
-  /// - [height]：视频高度，单位为像素。
+  /// Parameters:
+  /// - [width]: The video width, in pixels.
+  /// - [height]: The video height, in pixels.
   ///
-  /// 返回包含新尺寸的独立视频规格；不修改原对象，也不在此方法中执行校验。
+  /// Returns a separate format with updated dimensions without mutating or validating the original.
   RealtimeVideoFormat resized({
     required int width,
     required int height,
@@ -113,12 +117,15 @@ final class RealtimeVideoFormat {
     encoderPreference: encoderPreference,
   );
 
-  /// 与 [other] 比较类型及 [width]、[height]、[fps]、[minimumBitrate]、[maximumBitrate]、[encoderPreference] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimeVideoFormat &&
           width == other.width &&
           height == other.height &&
@@ -127,7 +134,7 @@ final class RealtimeVideoFormat {
           maximumBitrate == other.maximumBitrate &&
           encoderPreference == other.encoderPreference;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
   int get hashCode => Object.hash(
     width,

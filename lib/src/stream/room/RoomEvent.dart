@@ -18,19 +18,22 @@ import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../encoding/EncodingBitratePolicy.dart';
 import '../../foundation/errors/XmaxError.dart';
 
-/// 编码包含用户、任务和运行环境信息的房间 JSON 信令。
+/// Encodes room JSON messages containing user, task, and runtime information.
 abstract final class RoomEvent {
 
-  /// 编码生成启动信令，包含模型画布、回传规格和本次生成条件。
+  /// Encodes a start message with the generation canvas, result format, and generation conditions.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：服务端生成画布的尺寸和帧率配置。
-  /// - [context]：本次生成条件。
-  /// - [targetSize]：生成结果的回传宽高，单位为像素。省略时不提交 target_size 字段，使用生成画布尺寸作为回传默认规格。
-  /// - [faceRestoration]：是否回贴原始人脸，默认关闭；每次调用提交本次值。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The server generation canvas dimensions and frame rate.
+  /// - [context]: The generation conditions for this request.
+  /// - [targetSize]: The result dimensions in pixels. Omit to exclude target_size and use
+  ///   generation canvas dimensions.
+  /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
+  ///   on every call.
   ///
-  /// 返回包含启动参数、任务关联字段和运行环境的 JSON 文本。
+  /// Returns JSON containing start parameters, task correlation fields, and runtime information.
   static String start({
     required String userID,
     required String taskID,
@@ -49,16 +52,19 @@ abstract final class RoomEvent {
     includeBitrates: true,
   );
 
-  /// 编码生成条件变更信令，包含本次人脸回贴设置。
+  /// Encodes a condition update including the current face restoration setting.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：服务端生成画布的尺寸和帧率配置。
-  /// - [context]：本次生成条件。
-  /// - [targetSize]：生成结果的回传宽高，单位为像素。省略时不提交 target_size 字段，使用生成画布尺寸作为回传默认规格。
-  /// - [faceRestoration]：是否回贴原始人脸，默认关闭；每次调用提交本次值。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The server generation canvas dimensions and frame rate.
+  /// - [context]: The generation conditions for this request.
+  /// - [targetSize]: The result dimensions in pixels. Omit to exclude target_size and use
+  ///   generation canvas dimensions.
+  /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
+  ///   on every call.
   ///
-  /// 返回本次提示词、可选参考图和人脸回贴配置的 JSON 文本。
+  /// Returns JSON containing the prompt, optional reference image, and face restoration setting.
   static String changeCondition({
     required String userID,
     required String taskID,
@@ -76,13 +82,14 @@ abstract final class RoomEvent {
     faceRestoration: faceRestoration,
   );
 
-  /// 编码回传尺寸及相应下行码率预算的变更信令。
+  /// Encodes an update to result dimensions and the corresponding downlink bitrate budget.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
-  /// - [taskID]：当前生成任务标识。
-  /// - [targetSize]：生成结果的回传宽高，单位为像素。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
+  /// - [taskID]: The current generation task identifier.
+  /// - [targetSize]: The result-stream width and height, in pixels.
   ///
-  /// 返回回传尺寸和下行码率预算事件的 JSON 文本。
+  /// Returns JSON containing result dimensions and the downlink bitrate budget.
   static String changeTargetSize({
     required String userID,
     required String taskID,
@@ -97,12 +104,13 @@ abstract final class RoomEvent {
     'uid': taskID,
   });
 
-  /// 编码指定生成任务的停止信令。
+  /// Encodes a stop message for the specified generation task.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
-  /// - [taskID]：当前生成任务标识。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
+  /// - [taskID]: The current generation task identifier.
   ///
-  /// 返回包含用户、任务关联字段和运行环境的停止事件 JSON。
+  /// Returns stop-event JSON containing user, task correlation, and runtime fields.
   static String stop({
     required String userID,
     required String taskID,
@@ -112,45 +120,53 @@ abstract final class RoomEvent {
     'uid': taskID,
   });
 
-  /// 编码当前任务的归一化交互轨迹信令。
+  /// Encodes normalized interaction points for the current task.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
-  /// - [taskID]：当前生成任务标识。
-  /// - [points]：0～1 范围的媒体坐标点序列，不是视图像素坐标。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
+  /// - [taskID]: The current generation task identifier.
+  /// - [points]: Media coordinates from 0 to 1, not view pixel coordinates.
   ///
-  /// 返回包含归一化点序列的交互轨迹 JSON 文本。
+  /// Returns interaction JSON containing the normalized point sequence.
   static String tracks({
     required String userID,
     required String taskID,
     required List<RealtimePoint> points,
   }) => _encode(<String, Object?>{
     'event': 'tracks',
-    'tracks': points.map((point) => <double>[point.x, point.y]).toList(),
+    'tracks': points.map((
+      point,
+    ) => <double>[point.x, point.y]).toList(),
     'user_id': userID,
     'uid': taskID,
   });
 
-  /// 编码当前用户的房间心跳信令。
+  /// Encodes a room heartbeat for the current user.
   ///
-  /// - [userID]：RTC 用户账号，不是数字 UID。
+  /// Parameters:
+  /// - [userID]: The RTC user account, not a numeric UID.
   ///
-  /// 返回包含当前房间用户和运行环境的心跳 JSON 文本。
+  /// Returns heartbeat JSON containing the current room user and runtime information.
   static String heartbeat({
     required String userID,
   }) => _encode(<String, Object?>{'event': 'heartbeat', 'user_id': userID});
 
-  /// 编码生成启动或条件变更信令，并按需加入回传尺寸和码率预算。
+  /// Encodes start or condition messages with optional result dimensions and bitrate bounds.
   ///
-  /// - [event]：待编码的房间事件。
-  /// - [userID]：RTC 用户账号，不是数字 UID。
-  /// - [taskID]：当前生成任务标识。
-  /// - [videoFormat]：服务端生成画布的尺寸和帧率配置。
-  /// - [context]：本次生成条件。
-  /// - [targetSize]：生成结果的回传宽高，单位为像素。省略时不提交 target_size 字段，使用生成画布尺寸作为回传默认规格。
-  /// - [faceRestoration]：是否回贴原始人脸，默认关闭；每次调用提交本次值。
-  /// - [includeBitrates]：是否在生成信令中加入下行码率预算。省略时不附带码率预算。
+  /// Parameters:
+  /// - [event]: The room event to encode.
+  /// - [userID]: The RTC user account, not a numeric UID.
+  /// - [taskID]: The current generation task identifier.
+  /// - [videoFormat]: The server generation canvas dimensions and frame rate.
+  /// - [context]: The generation conditions for this request.
+  /// - [targetSize]: The result dimensions in pixels. Omit to exclude target_size and use
+  ///   generation canvas dimensions.
+  /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
+  ///   on every call.
+  /// - [includeBitrates]: Whether to include downlink bitrate bounds in generation messages;
+  ///   omitted by default.
   ///
-  /// 返回包含本次生成条件和可选传输参数的 JSON 文本。
+  /// Returns JSON containing generation conditions and optional transport parameters.
   static String _generation({
     required String event,
     required String userID,
@@ -170,7 +186,10 @@ abstract final class RoomEvent {
       if (includeBitrates)
         ..._downlinkBitrates(
           targetSize ??
-              Size(videoFormat.width.toDouble(), videoFormat.height.toDouble()),
+              Size(
+                videoFormat.width.toDouble(),
+                videoFormat.height.toDouble(),
+              ),
         ),
     };
     final referencePath = context.referencePath;
@@ -183,7 +202,7 @@ abstract final class RoomEvent {
       params['ref_image_path'] = referencePath;
     }
 
-    // 不发送参考图字段时，服务端会清除之前的参考图条件。
+    // Omitting the reference image field clears the server's previous reference condition.
     return _encode(<String, Object?>{
       'event': event,
       'params': params,
@@ -192,11 +211,12 @@ abstract final class RoomEvent {
     });
   }
 
-  /// 将像素尺寸转换为按宽、高排列的整数数组。
+  /// Converts pixel dimensions into an integer array ordered as width, height.
   ///
-  /// - [value]：待编码的像素尺寸。
+  /// Parameters:
+  /// - [value]: The pixel dimensions to encode.
   ///
-  /// 返回按宽、高排列的像素整数数组。
+  /// Returns pixel dimensions as an integer array ordered as width, height.
   static List<int> _size(
     Size value,
   ) => <int>[
@@ -204,11 +224,12 @@ abstract final class RoomEvent {
     value.height.toInt(),
   ];
 
-  /// 编码房间 JSON 信令，附带运行环境和可用的任务关联标识。
+  /// Encodes room JSON with runtime information and any available task correlation identifier.
   ///
-  /// - [event]：待编码的房间事件。
+  /// Parameters:
+  /// - [event]: The room event to encode.
   ///
-  /// 返回附带 runtime 及可用 session_uid 的 JSON 文本。
+  /// Returns JSON containing runtime and session_uid when available.
   static String _encode(
     Map<String, Object?> event,
   ) => jsonEncode(<String, Object?>{
@@ -217,11 +238,12 @@ abstract final class RoomEvent {
     'runtime': RuntimeInfo.current.toJson(),
   });
 
-  /// 按回传尺寸和 24 fps 计算下行码率预算，最高不超过 10000 kbps。
+  /// Calculates downlink bitrate bounds at 24 fps for the result size, capped at 10000 kbps.
   ///
-  /// - [size]：目标视频宽高，单位为像素。
+  /// Parameters:
+  /// - [size]: The target video width and height, in pixels.
   ///
-  /// 返回 min_bitrate 和 max_bitrate，单位为 kbps。
+  /// Returns min_bitrate and max_bitrate, in kbps.
   static Map<String, int> _downlinkBitrates(
     Size size,
   ) {
@@ -245,6 +267,9 @@ abstract final class RoomEvent {
       ),
     );
 
-    return {'min_bitrate': 100, 'max_bitrate': budget.$2.clamp(100, 10000)};
+    return {'min_bitrate': 100, 'max_bitrate': budget.$2.clamp(
+      100,
+      10000,
+    )};
   }
 }

@@ -11,33 +11,36 @@
 import '../../core/realtime/RealtimeModel.dart';
 import 'RealtimeSession.dart';
 
-/// 云端会话创建、心跳和关闭的内部接口。
+/// An interface for server session creation, heartbeats, and closure.
 abstract interface class RealtimeSessionServicing {
 
-  /// 为指定模型创建云端实时会话，并校验完整 RTC 连接凭证。
+  /// Creates a model session and validates its RTC connection credentials.
   ///
-  /// - [model]：实时生成模型，决定可用的媒体规格。
+  /// Parameters:
+  /// - [model]: The realtime generation model defining the supported media formats.
   ///
-  /// 返回解析后的云端实时会话。
+  /// Returns the decoded server session.
   Future<RealtimeSession> createSession({
     required RealtimeModel model,
   });
 
-  /// 启动当前会话的心跳，替换先前心跳周期。
+  /// Starts heartbeats for a session, replacing the previous heartbeat cycle.
   ///
-  /// - [sessionID]：云端实时会话标识。
-  /// - [onFailure]：操作失败时的处理回调。
+  /// Parameters:
+  /// - [sessionID]: The server session identifier.
+  /// - [onFailure]: The operation failure handler.
   void startHeartbeat({
     required String sessionID,
     required RealtimeSessionHeartbeatFailureHandler onFailure,
   });
 
-  /// 停止会话心跳，并使旧心跳请求的响应失效。
+  /// Stops heartbeats and invalidates responses from earlier requests.
   void stopHeartbeat();
 
-  /// 关闭指定云端实时会话。
+  /// Closes the specified server session.
   ///
-  /// - [sessionID]：云端实时会话标识。
+  /// Parameters:
+  /// - [sessionID]: The server session identifier.
   Future<void> closeSession({
     required String sessionID,
   });

@@ -8,20 +8,20 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 视频在视图中的缩放和裁剪方式。
+/// The scaling and cropping mode for video in a view.
 enum VideoContentMode {
 
-  /// 等比缩放并完整显示视频，多余区域保留黑边。
+  /// Fits the entire video while preserving its aspect ratio, leaving unused areas black.
   fit('fit'),
 
-  /// 等比填满视图，超出边界的视频区域会裁剪。
+  /// Fills the view while preserving the aspect ratio, cropping video outside its bounds.
   fill('fill');
 
-  /// 定义视频缩放模式标识。
+  /// Defines a video scaling mode identifier.
   const VideoContentMode(
     this.value,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 }

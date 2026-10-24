@@ -10,26 +10,29 @@
 
 import 'RealtimeModel.dart';
 
-/// 实时管理器使用的模型配置。
+/// The model configuration for a realtime manager.
 final class RealtimeConfiguration {
 
-  /// 创建实时模型配置。
+  /// Creates a realtime configuration.
   const RealtimeConfiguration({
     required this.model,
   });
 
-  /// 实时生成模型，决定可用的媒体规格。
+  /// The realtime generation model defining the supported media formats.
   final RealtimeModel model;
 
-  /// 与 [other] 比较类型及 [model] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimeConfiguration && model == other.model;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
   int get hashCode => model.hashCode;
 }

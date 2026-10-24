@@ -10,87 +10,100 @@
 
 import '../../foundation/errors/XmaxError.dart';
 
-/// 进入当前实时状态的原因。
+/// The reason for entering a realtime state.
 final class RealtimeReason {
 
-  /// 创建内部状态原因记录。
+  /// Creates an internal state reason.
   const RealtimeReason._(
     this._kind,
     this.error,
   );
 
-  /// 主动停止或正常释放资源。
-  static const normal = RealtimeReason._('normal', null);
+  /// An explicit stop or normal resource release.
+  static const normal = RealtimeReason._(
+    'normal',
+    null,
+  );
 
-  /// 显示方向发生变化，需要重新配置生成任务。
+  /// A display orientation change requiring generation reconfiguration.
   static const orientationChanged = RealtimeReason._(
     'orientationChanged',
     null,
   );
 
-  /// 创建失败原因。
+  /// Creates a failure reason.
   ///
-  /// - [error]：导致状态结束的 SDK 错误，保存在 [RealtimeReason.error]。
+  /// Parameters:
+  /// - [error]: The SDK error terminating the state, exposed through [RealtimeReason.error].
   factory RealtimeReason.failure(
     XmaxError error,
-  ) => RealtimeReason._('failure', error);
+  ) => RealtimeReason._(
+    'failure',
+    error,
+  );
 
-  /// 状态结束原因的内部分类标识。
+  /// The internal reason category.
   final String _kind;
 
-  /// 失败原因对应的 SDK 错误；其他原因时为 `null`。
+  /// The SDK error for a failure reason, or null for other reasons.
   final XmaxError? error;
 
-  /// 与 [other] 比较类型及 [_kind]、[error] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimeReason && _kind == other._kind && error == other.error;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(_kind, error);
+  int get hashCode => Object.hash(
+    _kind,
+    error,
+  );
 }
 
-/// 实时业务连接状态。
+/// A realtime connection lifecycle state.
 enum RealtimeConnectionState {
 
-  /// 没有可用的本地媒体流。
+  /// No local media stream is available.
   idle('Idle'),
 
-  /// 正在准备本地媒体流；摄像头需等待首帧和预览视图绑定。
+  /// Local media is preparing; cameras wait for a captured frame and a mounted preview.
   preparing('Preparing'),
 
-  /// 本地媒体流已就绪，可预览、连接和生成。
+  /// Local media is ready for preview, connection, and generation.
   ready('Ready'),
 
-  /// 正在创建云端会话、加入 RTC 房间并发布本地视频。
+  /// A server session is being created and local video joined and published to RTC.
   connecting('Connecting'),
 
-  /// 实时连接已建立，当前没有生成任务。
+  /// Realtime is connected without an active generation task.
   connected('Connected'),
 
-  /// 实时连接已建立且生成任务正在运行。
+  /// The realtime connection is generating.
   generating('Generating'),
 
-  /// 正在停止生成、退出 RTC 房间并关闭云端会话。
+  /// Generation, the RTC room, and the server session are being closed.
   disconnecting('Disconnecting');
 
-  /// 定义实时连接状态标识。
+  /// Defines a realtime connection state identifier.
   const RealtimeConnectionState(
     this.value,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 }
 
-/// 实时业务当前状态快照。
+/// A snapshot of the realtime lifecycle state.
 final class RealtimeState {
 
-  /// 创建实时状态快照。
+  /// Creates a realtime state snapshot.
   const RealtimeState({
     required this.connectionState,
     this.sessionID,
@@ -98,38 +111,47 @@ final class RealtimeState {
     this.reason,
   });
 
-  /// 当前连接生命周期状态。
+  /// The current connection state.
   final RealtimeConnectionState connectionState;
 
-  /// 当前或最近一次云端实时会话的标识。
+  /// The current or most recent server session identifier.
   final String? sessionID;
 
-  /// 当前生成任务标识。
+  /// The current generation task identifier.
   final String? taskID;
 
-  /// 进入当前状态的原因；正常开始新的操作时清空。
+  /// The reason for this state, cleared when a new operation begins.
   final RealtimeReason? reason;
 
-  /// 与 [other] 比较类型及 [connectionState]、[sessionID]、[taskID]、[reason] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimeState &&
           connectionState == other.connectionState &&
           sessionID == other.sessionID &&
           taskID == other.taskID &&
           reason == other.reason;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(connectionState, sessionID, taskID, reason);
+  int get hashCode => Object.hash(
+    connectionState,
+    sessionID,
+    taskID,
+    reason,
+  );
 }
 
-/// 接收实时生命周期状态快照的回调。
+/// A listener receiving realtime lifecycle snapshots.
 ///
-/// - [state]：当前实时生命周期状态。
+/// Parameters:
+/// - [state]: The current realtime lifecycle state.
 typedef RealtimeStateListener =
     void Function(
       RealtimeState state,

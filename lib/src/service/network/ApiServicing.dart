@@ -8,41 +8,43 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// SDK 请求使用的 HTTP 方法。
+/// An HTTP method used by SDK requests.
 enum ApiMethod {
 
-  /// HTTP GET 请求。
+  /// An HTTP GET request.
   get('GET'),
 
-  /// HTTP POST 请求。
+  /// An HTTP POST request.
   post('POST'),
 
-  /// HTTP PUT 请求。
+  /// An HTTP PUT request.
   put('PUT'),
 
-  /// HTTP DELETE 请求。
+  /// An HTTP DELETE request.
   delete('DELETE');
 
-  /// 定义 HTTP 方法名称。
+  /// Defines an HTTP method name.
   const ApiMethod(
     this.value,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 }
 
-/// Xmax API 请求与业务响应解码的内部接口。
+/// An internal interface for Xmax API requests and response decoding.
 abstract interface class ApiServicing {
 
-  /// 执行带鉴权和超时限制的请求，并将业务响应解码为目标类型。
+  /// Executes an authenticated request with a timeout and decodes its response into the target
+  /// type.
   ///
-  /// - [method]：请求使用的 HTTP 方法。
-  /// - [path]：API 相对路径。
-  /// - [body]：可编码为 JSON 的请求正文；null 表示不发送正文。
-  /// - [decode]：将业务响应转换为目标类型的函数。
+  /// Parameters:
+  /// - [method]: The request's HTTP method.
+  /// - [path]: The relative API path.
+  /// - [body]: The JSON-encodable request body; null sends no body.
+  /// - [decode]: The function converting the application response into the target type.
   ///
-  /// 返回由 [decode] 转换后的业务响应。
+  /// Returns the application response converted by [decode].
   Future<T> request<T>(
     ApiMethod method, {
     required String path,
@@ -54,30 +56,36 @@ abstract interface class ApiServicing {
   });
 }
 
-/// 提供 GET、POST、PUT 和 DELETE 请求的便捷入口。
+/// Provides convenience methods for GET, POST, PUT, and DELETE requests.
 extension ApiServicingConvenience on ApiServicing {
 
-  /// 执行 GET 请求并解码业务结果。
+  /// Executes a GET request and decodes the result.
   ///
-  /// - [path]：API 相对路径。
-  /// - [decode]：将业务响应转换为目标类型的函数。
+  /// Parameters:
+  /// - [path]: The relative API path.
+  /// - [decode]: The function converting the application response into the target type.
   ///
-  /// 返回由 [decode] 转换后的业务响应。
+  /// Returns the application response converted by [decode].
   Future<T> get<T>(
     String path,
     T Function(
       Object? json,
     )
     decode,
-  ) => request(ApiMethod.get, path: path, decode: decode);
+  ) => request(
+    ApiMethod.get,
+    path: path,
+    decode: decode,
+  );
 
-  /// 执行 POST 请求并解码业务结果。
+  /// Executes a POST request and decodes the result.
   ///
-  /// - [path]：API 相对路径。
-  /// - [decode]：将业务响应转换为目标类型的函数。
-  /// - [body]：可编码为 JSON 的请求正文；null 表示不发送正文。
+  /// Parameters:
+  /// - [path]: The relative API path.
+  /// - [decode]: The function converting the application response into the target type.
+  /// - [body]: The JSON-encodable request body; null sends no body.
   ///
-  /// 返回由 [decode] 转换后的业务响应。
+  /// Returns the application response converted by [decode].
   Future<T> post<T>(
     String path,
     T Function(
@@ -85,15 +93,21 @@ extension ApiServicingConvenience on ApiServicing {
     )
     decode, {
     Object? body,
-  }) => request(ApiMethod.post, path: path, body: body, decode: decode);
+  }) => request(
+    ApiMethod.post,
+    path: path,
+    body: body,
+    decode: decode,
+  );
 
-  /// 执行 PUT 请求并解码业务结果。
+  /// Executes a PUT request and decodes the result.
   ///
-  /// - [path]：API 相对路径。
-  /// - [decode]：将业务响应转换为目标类型的函数。
-  /// - [body]：可编码为 JSON 的请求正文；null 表示不发送正文。
+  /// Parameters:
+  /// - [path]: The relative API path.
+  /// - [decode]: The function converting the application response into the target type.
+  /// - [body]: The JSON-encodable request body; null sends no body.
   ///
-  /// 返回由 [decode] 转换后的业务响应。
+  /// Returns the application response converted by [decode].
   Future<T> put<T>(
     String path,
     T Function(
@@ -101,19 +115,29 @@ extension ApiServicingConvenience on ApiServicing {
     )
     decode, {
     Object? body,
-  }) => request(ApiMethod.put, path: path, body: body, decode: decode);
+  }) => request(
+    ApiMethod.put,
+    path: path,
+    body: body,
+    decode: decode,
+  );
 
-  /// 执行 DELETE 请求并解码业务结果。
+  /// Executes a DELETE request and decodes the result.
   ///
-  /// - [path]：API 相对路径。
-  /// - [decode]：将业务响应转换为目标类型的函数。
+  /// Parameters:
+  /// - [path]: The relative API path.
+  /// - [decode]: The function converting the application response into the target type.
   ///
-  /// 返回由 [decode] 转换后的业务响应。
+  /// Returns the application response converted by [decode].
   Future<T> delete<T>(
     String path,
     T Function(
       Object? json,
     )
     decode,
-  ) => request(ApiMethod.delete, path: path, decode: decode);
+  ) => request(
+    ApiMethod.delete,
+    path: path,
+    decode: decode,
+  );
 }

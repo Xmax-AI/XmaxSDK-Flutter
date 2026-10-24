@@ -13,48 +13,53 @@ import 'package:flutter/foundation.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
 import 'VideoRenderBinding.dart';
 
-/// 可监听的视频绑定，并协调原生视频移除前的视图隐藏。
+/// An observable video binding that coordinates view hiding before native video removal.
 final class VideoRenderHandle extends ValueNotifier<VideoRenderBinding?> {
 
-  /// 创建可监听的视频渲染句柄。
+  /// Creates an observable video rendering handle.
   VideoRenderHandle(
     super.value,
   );
 
-  /// 原生视频移除前需要等待的视图隐藏操作。
+  /// The view-hiding operations to await before native video removal.
   final Set<Future<void> Function()> _removalListeners = {};
 
-  /// 注册视频移除前的隐藏操作。
+  /// Registers a hide operation to run before video removal.
   ///
-  /// - [listener]：接收本次通知的回调。
+  /// Parameters:
+  /// - [listener]: The callback receiving this notification.
   void addRemovalListener(
     Future<void> Function() listener,
   ) => _removalListeners.add(listener);
 
-  /// 移除已注册的视频隐藏操作。
+  /// Removes a registered video hide operation.
   ///
-  /// - [listener]：接收本次通知的回调。
+  /// Parameters:
+  /// - [listener]: The callback receiving this notification.
   void removeRemovalListener(
     Future<void> Function() listener,
   ) => _removalListeners.remove(listener);
 
-  /// 等待已注册的视频隐藏操作完成，再允许资源移除。
+  /// Waits for registered hide operations before allowing resource removal.
   Future<void> prepareForRemoval() async {
-    await Future.wait(_removalListeners.toList().map((listener) => listener()));
+    await Future.wait(_removalListeners.toList().map((
+      listener,
+    ) => listener()));
   }
 }
 
-/// 按视频轨道身份维护本地及远端渲染绑定。
+/// Maintains local and remote rendering bindings by video track identity.
 abstract final class VideoRenderRegistry {
 
-  /// 按轨道对象身份保存的绑定集合。
+  /// The bindings indexed by track object identity.
   static final Map<RealtimeVideoTrack, VideoRenderHandle> _bindings =
       <RealtimeVideoTrack, VideoRenderHandle>{};
 
-  /// 为指定视频轨道注册绑定。
+  /// Registers a binding for the specified video track.
   ///
-  /// - [track]：目标视频轨道。
-  /// - [binding]：当前轨道的渲染或交互配置。
+  /// Parameters:
+  /// - [track]: The target video track.
+  /// - [binding]: The rendering or interaction configuration for the current track.
   static void register(
     RealtimeVideoTrack track,
     VideoRenderBinding? binding,
@@ -68,20 +73,22 @@ abstract final class VideoRenderRegistry {
     }
   }
 
-  /// 移除指定视频轨道的绑定。
+  /// Removes the binding for the specified video track.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   static void unregister(
     RealtimeVideoTrack track,
   ) {
     _bindings.remove(track)?.value = null;
   }
 
-  /// 查询指定视频轨道的渲染句柄；未注册时返回 null。
+  /// Looks up a video track's rendering handle; returns null if unregistered.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   ///
-  /// 返回已注册的视频渲染句柄；不存在时返回 null。
+  /// Returns the registered video rendering handle, or null if none exists.
   static VideoRenderHandle? handleFor(
     RealtimeVideoTrack track,
   ) => _bindings[track];

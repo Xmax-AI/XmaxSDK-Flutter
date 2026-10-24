@@ -37,40 +37,45 @@ import 'room/RoomController.dart';
 import 'room/RoomControlling.dart';
 import 'StreamControlling.dart';
 
-/// 接收当前结果流绑定变化的内部回调；清理绑定时为 null。
+/// An internal callback for result-stream binding changes; receives null when the binding is
+/// cleared.
 ///
-/// - [stream]：待处理的远端 RTC 流。
+/// Parameters:
+/// - [stream]: The remote RTC stream to process.
 typedef RemoteStreamListener =
     void Function(
       RemoteStream? stream,
     );
 
-/// 接收指定结果流首帧就绪事件的内部回调。
+/// An internal callback for first-frame readiness of a result stream.
 ///
-/// - [stream]：待处理的远端 RTC 流。
+/// Parameters:
+/// - [stream]: The remote RTC stream to process.
 typedef RemoteFrameRenderedListener =
     void Function(
       RemoteStream stream,
     );
 
-/// 协调 RTC 发布订阅、生成信令、结果确认和自适应传输质量。
+/// Coordinates RTC rooms, media streams, encoding, and quality.
 final class StreamController implements StreamControlling {
 
-  /// 创建传输控制器，并注册 RTC 事件处理。
+  /// Creates a transport controller and registers RTC event handlers.
   ///
-  /// - [rtcManager]：采集、房间与传输入口。
-  /// - [roomController]：信令组件；默认基于同一 RTC 管理器创建。
-  /// - [encodingController]：编码组件；默认基于同一 RTC 管理器创建。
-  /// - [qualityController]：质量策略组件；默认创建独立策略。
-  /// - [mediaService]：尺寸解析服务；默认使用 [MediaService] 的模型配置。
-  /// - [errorListener]：远端连接或生成失败通知。
-  /// - [localMediaErrorListener]：未连接时的本地媒体失败通知；默认复用 [errorListener]。
-  /// - [remoteStreamListener]：结果流绑定变化通知。
-  /// - [remoteFrameRenderedListener]：结果流首帧渲染通知。
-  /// - [remoteFrameReadyListener]：结果流首帧解码通知。
-  /// - [generationTimeout]：生成信令与结果确认的等待时限，默认 15 秒。
-  ///
-  /// 当前控制器负责接收此 RTC 管理器的事件。
+  /// Parameters:
+  /// - [rtcManager]: The capture, room, and transport interface.
+  /// - [roomController]: The signaling controller; defaults to one using the same RTC manager.
+  /// - [encodingController]: The encoding controller; defaults to one using the same RTC manager.
+  /// - [qualityController]: The quality controller; defaults to an independent policy instance.
+  /// - [mediaService]: The dimension resolver; defaults to the model configuration in
+  ///   [MediaService].
+  /// - [errorListener]: The callback for remote connection or generation failures.
+  /// - [localMediaErrorListener]: The callback for local media failures while disconnected;
+  ///   defaults to [errorListener].
+  /// - [remoteStreamListener]: The callback for result-stream binding changes.
+  /// - [remoteFrameRenderedListener]: The callback for the first rendered result frame.
+  /// - [remoteFrameReadyListener]: The callback for the first decoded result frame.
+  /// - [generationTimeout]: The timeout for generation signaling and result confirmation; defaults
+  ///   to 15 seconds.
   StreamController({
     required RtcManaging rtcManager,
     RoomControlling? roomController,
@@ -101,10 +106,16 @@ final class StreamController implements StreamControlling {
         onFirstRemoteVideoFrameRendered: _onFirstRemoteVideoFrameRendered,
         onFirstRemoteVideoFrameDecoded: _onFirstRemoteVideoFrameDecoded,
         onRemoteAudioPublished: _onRemoteAudioPublished,
-        onUplinkVideoStatistics: (value) {
-          if (_localVideoPublished) _uplinkStatisticsListener?.call(value);
+        onUplinkVideoStatistics: (
+          value,
+        ) {
+          if (_localVideoPublished) {
+            _uplinkStatisticsListener?.call(value);
+          }
         },
-        onDownlinkVideoStatistics: (value) {
+        onDownlinkVideoStatistics: (
+          value,
+        ) {
           if (value != null && _activeRemoteStream?.userID == value.userID) {
             _downlinkStatisticsListener?.call(value);
           }
@@ -116,51 +127,51 @@ final class StreamController implements StreamControlling {
     );
   }
 
-  /// RTC 采集、房间及传输操作入口。
+  /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// 房间身份、心跳和业务信令组件。
+  /// The controller for room identity, heartbeats, and application signaling.
   final RoomControlling _roomController;
 
-  /// RTC 视频编码配置组件。
+  /// The RTC video encoding controller.
   final EncodingControlling _encodingController;
 
-  /// 上下行网络质量策略组件。
+  /// The controller for uplink and downlink quality policies.
   final QualityControlling _qualityController;
 
-  /// 媒体、生成及回传尺寸解析服务。
+  /// The service that resolves capture, generation, and result dimensions.
   final MediaServicing _mediaService;
 
-  /// 网络质量采样使用的单调时钟。
+  /// The monotonic clock used for network quality samples.
   final _qualityClock = Stopwatch()..start();
 
-  /// 生成结果的回传宽高，单位为像素。
+  /// The result-stream width and height, in pixels.
   Size? _targetSize;
 
-  /// 正在应用的网络质量调档任务。
+  /// The quality-level update currently being applied.
   Future<void>? _adaptation;
 
-  /// 当前任务是否允许自动调整上下行质量。
+  /// Whether the current task permits automatic uplink and downlink quality updates.
   bool _canAdapt = false;
 
-  /// 正在等待或发送的生成条件更新数量。
+  /// The number of queued or in-flight generation condition updates.
   int _conditionUpdates = 0;
 
-  /// 网络质量配置所属连接的版本号。
+  /// The connection version that owns the quality configuration.
   int _qualityVersion = 0;
 
-  /// 生成结果的回传宽高，单位为像素。
+  /// The result-stream width and height, in pixels.
   @override
   Size? get targetSize => _targetSize;
 
-  /// 当前连接的固定媒体基准和成功应用的档位。
+  /// The fixed media baseline and successfully applied levels for the current connection.
   @override
   QualityConfiguration? get qualityConfiguration =>
       _qualityController.qualityConfiguration;
 
-  /// 应用手动档位；调档完成后仍允许后续网络采样触发自动调整。
+  /// Applies a manual quality level without disabling subsequent automatic adjustments.
   ///
-  /// 详细说明见 [StreamControlling.setQualityLevel]。
+  /// See [StreamControlling.setQualityLevel] for the usage contract.
   @override
   Future<void> setQualityLevel(
     RealtimeQualityLevel level, {
@@ -192,10 +203,15 @@ final class StreamController implements StreamControlling {
       propagateErrors: true,
     );
 
-    // 清理流程等待不抛错的屏障；调用方仍从原任务接收调档错误。
+    // Cleanup awaits a non-throwing barrier; callers still receive failures through the original task.
     final barrier = future.then<void>(
-      (_) {},
-      onError: (Object _, StackTrace _) {},
+      (
+        _,
+      ) {},
+      onError: (
+        Object _,
+        StackTrace _,
+      ) {},
     );
 
     _adaptation = barrier;
@@ -203,13 +219,19 @@ final class StreamController implements StreamControlling {
     try {
       await future;
     } finally {
-      if (identical(_adaptation, barrier)) _adaptation = null;
+      if (identical(
+        _adaptation,
+        barrier,
+      )) {
+        _adaptation = null;
+      }
     }
   }
 
-  /// 读取模型的有效档位历史，准备独立上下行策略并应用初始传输规格。
+  /// Loads valid model history, prepares independent link policies, and applies the initial
+  /// transport format.
   ///
-  /// 详细说明见 [StreamControlling.prepareQuality]。
+  /// See [StreamControlling.prepareQuality] for the usage contract.
   @override
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
@@ -217,12 +239,19 @@ final class StreamController implements StreamControlling {
   }) async {
     final version = ++_qualityVersion;
 
-    await _qualityController.prepareQuality(baseline: baseline, model: model);
-    if (version != _qualityVersion) return;
+    await _qualityController.prepareQuality(
+      baseline: baseline,
+      model: model,
+    );
+    if (version != _qualityVersion) {
+      return;
+    }
 
     final configuration = qualityConfiguration;
 
-    if (configuration == null) return;
+    if (configuration == null) {
+      return;
+    }
 
     _targetSize = _resolveTargetSize(
       configuration.baseline,
@@ -231,23 +260,32 @@ final class StreamController implements StreamControlling {
     await _encodingController.configure(configuration.uplink);
   }
 
-  /// 按下行档位计算限制内的对齐回传尺寸。
+  /// Computes aligned result dimensions within the downlink level's limits.
   ///
-  /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [level]：目标质量档位，范围为 1～5。
+  /// Parameters:
+  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
+  ///   updates.
+  /// - [level]: The target quality level, from 1 to 5.
   ///
-  /// 返回当前下行档位限制内的对齐回传尺寸。
+  /// Returns aligned result dimensions within the current downlink level's limits.
   Size _resolveTargetSize(
     RealtimeVideoFormat baseline,
     RealtimeQualityLevel level,
   ) => _mediaService.resolveTargetSize(
-    Size(baseline.width.toDouble(), baseline.height.toDouble()),
-    maximumSize: QualityVideoFormat.downlinkMaximumSize(baseline, level),
+    Size(
+      baseline.width.toDouble(),
+      baseline.height.toDouble(),
+    ),
+    maximumSize: QualityVideoFormat.downlinkMaximumSize(
+      baseline,
+      level,
+    ),
   );
 
-  /// 分发网络质量事件，并在可调档期间收集上下行连续样本。
+  /// Dispatches quality events and collects consecutive link samples while adaptation is enabled.
   ///
-  /// - [quality]：同一次采样得到的上下行网络质量。
+  /// Parameters:
+  /// - [quality]: The uplink and downlink measurements from the same sample.
   void _networkQualityDidChange(
     RealtimeNetworkQuality quality,
   ) {
@@ -264,34 +302,51 @@ final class StreamController implements StreamControlling {
 
     final baseline = qualityConfiguration?.baseline;
 
-    if (baseline == null) return;
+    if (baseline == null) {
+      return;
+    }
 
     final changes = _qualityController.proposeQuality(
       quality,
       _qualityClock.elapsedMicroseconds / 1e6,
     );
 
-    if (changes.uplink == null && changes.downlink == null) return;
+    if (changes.uplink == null && changes.downlink == null) {
+      return;
+    }
 
     final taskID = _generationTaskID!;
     final version = _qualityVersion;
-    final future = _applyQuality(changes, baseline, taskID, version);
+    final future = _applyQuality(
+      changes,
+      baseline,
+      taskID,
+      version,
+    );
 
     _adaptation = future;
     unawaited(
       future.whenComplete(() {
-        if (identical(_adaptation, future)) _adaptation = null;
+        if (identical(
+          _adaptation,
+          future,
+        )) {
+          _adaptation = null;
+        }
       }),
     );
   }
 
-  /// 独立应用上下行候选档位，仅记录成功应用的结果。
+  /// Applies uplink and downlink candidates independently, recording only successful updates.
   ///
-  /// - [changes]：本次建议的上行和下行档位；空值表示保持不变。
-  /// - [baseline]：不随网络调档改变的媒体尺寸、帧率和编码配置。
-  /// - [taskID]：当前生成任务标识。
-  /// - [version]：当前异步操作的版本号。
-  /// - [propagateErrors]：是否向调用方传播失败；自动调档只记录日志。
+  /// Parameters:
+  /// - [changes]: The proposed uplink and downlink levels; null leaves that direction unchanged.
+  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
+  ///   updates.
+  /// - [taskID]: The current generation task identifier.
+  /// - [version]: The asynchronous operation revision.
+  /// - [propagateErrors]: Whether to propagate failures to the caller; automatic adjustments only
+  ///   log failures.
   Future<void> _applyQuality(
     QualityChange changes,
     RealtimeVideoFormat baseline,
@@ -305,7 +360,9 @@ final class StreamController implements StreamControlling {
     for (final downlink in [false, true]) {
       final level = downlink ? changes.downlink : changes.uplink;
 
-      if (level == null) continue;
+      if (level == null) {
+        continue;
+      }
 
       if (!current()) {
         if (propagateErrors) {
@@ -321,7 +378,10 @@ final class StreamController implements StreamControlling {
 
       try {
         if (downlink) {
-          final target = _resolveTargetSize(baseline, level);
+          final target = _resolveTargetSize(
+            baseline,
+            level,
+          );
 
           if (target != _targetSize) {
             await changeTargetSize(
@@ -344,7 +404,11 @@ final class StreamController implements StreamControlling {
           }
         } else {
           await _encodingController.configure(
-            QualityVideoFormat.resolve(baseline, level, downlink: false),
+            QualityVideoFormat.resolve(
+              baseline,
+              level,
+              downlink: false,
+            ),
           );
           success = current();
         }
@@ -368,7 +432,7 @@ final class StreamController implements StreamControlling {
         }
       }
 
-      // 仅将仍属于当前任务的配置结果写入档位历史。
+      // Record applied levels only if the configuration still belongs to the current task.
       if (current()) {
         await _qualityController.completeQuality(
           level,
@@ -386,125 +450,130 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 接收远端连接或生成运行错误的监听器。
+  /// The listener for remote connection and generation runtime errors.
   final RealtimeErrorListener? _errorListener;
 
-  /// 尚未连接远端时，本地媒体发生错误的回调。
+  /// The callback for local media failures before a remote connection exists.
   final RealtimeErrorListener? _localMediaErrorListener;
 
-  /// 生成结果流发生变化时的回调。
+  /// The callback for result-stream changes.
   final RemoteStreamListener? _remoteStreamListener;
 
-  /// 结果流首帧渲染完成时的回调。
+  /// The callback for the first rendered result frame.
   final RemoteFrameRenderedListener? _remoteFrameRenderedListener;
 
-  /// 结果流首帧解码完成时的回调。
+  /// The callback for the first decoded result frame.
   final RemoteFrameRenderedListener? _remoteFrameReadyListener;
 
-  /// 启动信令及结果流确认允许等待的总时限。
+  /// The total timeout for start signaling and result-stream confirmation.
   final Duration generationTimeout;
 
-  /// 云端分配的 RTC 房间标识。
+  /// The server-assigned RTC room identifier.
   String _roomID = '';
 
-  /// 远端连接生命周期的版本号。
+  /// The revision used to reject failures from previous connections.
   int _connectionRevision = 0;
 
-  /// 预期生成结果流的 RTC 用户账号。
+  /// The RTC user account expected to publish the result stream.
   String _botName = '';
 
-  /// 当前房间是否已成功发布本地摄像头视频。
+  /// Whether local camera video has been published in the current room.
   bool _localVideoPublished = false;
 
-  /// 当前已成功订阅的结果视频流标识集合。
+  /// The identifiers of successfully subscribed result video streams.
   final Set<String> _remoteVideoSubscriptions = <String>{};
 
-  /// 按房间、账号和流标识保留的首帧渲染记录。
+  /// First-frame rendering records keyed by room, account, and stream identifier.
   final Set<(String, String, String)> _renderedRemoteStreams = {};
 
-  /// 按房间、账号和流标识保留的首帧解码记录。
+  /// First-frame decoding records keyed by room, account, and stream identifier.
   final Set<(String, String, String)> _decodedRemoteStreams = {};
 
-  /// 预期结果用户已发布的音频流映射。
+  /// The published audio streams belonging to the expected result user.
   final Map<String, String> _publishedRemoteAudioStreams = <String, String>{};
 
-  /// 当前任务已确认的远端结果流。
+  /// The confirmed remote result stream for the current task.
   RemoteStream? _activeRemoteStream;
 
-  /// 当前成功订阅的远端音频流标识。
+  /// The identifier of the currently subscribed remote audio stream.
   String? _subscribedRemoteAudioStreamID;
 
-  /// 正在执行的远端音频激活任务。
+  /// The remote audio activation currently in progress.
   Future<void>? _audioActivation;
 
-  /// 当前结果流是否已允许播放音频。
+  /// Whether audio playback is enabled for the current result stream.
   bool _remoteAudioEnabled = false;
 
-  /// 最近一次成功设置的远端音量百分比。
+  /// The most recently applied remote audio volume, as a percentage.
   int _remoteAudioVolumePercentage = 100;
 
-  /// 远端音频订阅的版本号，用于忽略旧订阅结果。
+  /// The remote audio subscription version used to discard stale results.
   int _audioSubscriptionVersion = 0;
 
-  /// 当前处于启动或生成阶段的任务标识。
+  /// The identifier of the task that is starting or generating.
   String? _generationTaskID;
 
-  /// 用于通知生成结果流已确认或失败的完成器。
+  /// The completer for result-stream confirmation or failure.
   Completer<void>? _generationCompleter;
 
-  /// 当前生成结果确认的超时计时器。
+  /// The timeout timer for current result confirmation.
   Timer? _generationTimer;
 
-  /// 当前任务的启动信令是否已发送成功。
+  /// Whether the current task's start message has been sent successfully.
   bool _startSignalSent = false;
 
-  /// 预期结果用户已发布的视频流映射。
+  /// The published video streams belonging to the expected result user.
   final _publishedVideoStreams = <String, RemoteStream>{};
 
-  /// 正在订阅的结果视频流标识集合。
+  /// The identifiers of result video streams with subscriptions in progress.
   final _subscribingVideo = <String>{};
 
-  /// 本地视频发布期间的上行统计监听器。
+  /// The uplink statistics listener used while local video is published.
   UplinkVideoStatisticsListener? _uplinkStatisticsListener;
 
-  /// 当前结果流的下行视频统计监听器。
+  /// The downlink video statistics listener for the current result stream.
   DownlinkVideoStatisticsListener? _downlinkStatisticsListener;
 
-  /// 设置上行视频统计监听器；停止发布或断开连接时通知 null。
+  /// Sets the uplink statistics listener; reports null when publication stops or the room
+  /// disconnects.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setUplinkVideoStatisticsListener(
     UplinkVideoStatisticsListener? listener,
   ) => _uplinkStatisticsListener = listener;
 
-  /// 设置当前结果流的下行视频统计监听器；结果流清理时通知 null。
+  /// Sets the result-stream downlink statistics listener; reports null when the result is cleared.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setDownlinkVideoStatisticsListener(
     DownlinkVideoStatisticsListener? listener,
   ) => _downlinkStatisticsListener = listener;
 
-  /// 是否有正在启动或运行的生成任务。
+  /// Whether a generation task is starting or running.
   @override
   bool get hasGenerationTask => _generationTaskID != null;
 
-  /// 远端音频播放音量，范围为 0～1，精度为 0.01。
+  /// The remote playback volume, from 0 to 1 in increments of 0.01.
   @override
   double get remoteAudioVolume => _remoteAudioVolumePercentage / 100;
 
-  /// 解析视频码率预算并应用 RTC 编码配置。
+  /// Resolves the video bitrate budget and applies RTC encoding settings.
   ///
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   @override
   Future<void> setVideoEncoderConfig(
     RealtimeVideoFormat videoFormat,
   ) => _encodingController.configure(videoFormat);
 
-  /// 设置上下行网络质量监听器，不替换 SDK 内部自适应策略。
+  /// Sets the network quality listener without replacing the SDK's adaptation policy.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setNetworkQualityListener(
     RealtimeNetworkQualityListener? listener,
@@ -512,9 +581,10 @@ final class StreamController implements StreamControlling {
     _qualityController.setNetworkQualityListener(listener);
   }
 
-  /// 设置性能受限及恢复事件的监听器。
+  /// Sets the listener for performance limitation and recovery events.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   @override
   void setPerformanceAlarmListener(
     RealtimePerformanceAlarmListener? listener,
@@ -522,9 +592,11 @@ final class StreamController implements StreamControlling {
     _qualityController.setPerformanceAlarmListener(listener);
   }
 
-  /// 设置远端音频音量，范围为 0～1，精度为 0.01；RTC 调用失败时保留上次成功值。
+  /// Sets remote volume from 0 to 1 in increments of 0.01; retains the last applied value on
+  /// failure.
   ///
-  /// - [volume]：0～1 范围内的有限音量值。
+  /// Parameters:
+  /// - [volume]: A finite volume value between 0 and 1.
   @override
   Future<void> setRemoteAudioVolume(
     double volume,
@@ -549,7 +621,8 @@ final class StreamController implements StreamControlling {
     _remoteAudioVolumePercentage = rtcVolume;
   }
 
-  /// 在结果流确认后应用音量并订阅远端音频，同时允许网络自适应。
+  /// Applies volume and subscribes to remote audio after result confirmation, then enables
+  /// adaptation.
   @override
   Future<void> activateRemoteAudio() async {
     final stream = _activeRemoteStream;
@@ -563,34 +636,47 @@ final class StreamController implements StreamControlling {
 
     _remoteAudioEnabled = true;
     _canAdapt = true;
-    // 远端音频可能晚于视频发布，收到音频发布通知后再补充订阅。
+    // Audio may be published after video; subscribe when its publication event arrives.
     final streamID = _publishedRemoteAudioStreams[stream.userID];
 
-    if (streamID == null) return;
+    if (streamID == null) {
+      return;
+    }
 
-    if (_subscribedRemoteAudioStreamID == streamID) return;
+    if (_subscribedRemoteAudioStreamID == streamID) {
+      return;
+    }
 
     final activeOperation = _audioActivation;
 
-    if (activeOperation != null) return activeOperation;
+    if (activeOperation != null) {
+      return activeOperation;
+    }
 
-    final operation = _performActivateRemoteAudio(stream, streamID);
+    final operation = _performActivateRemoteAudio(
+      stream,
+      streamID,
+    );
 
     _audioActivation = operation;
 
     try {
       await operation;
     } finally {
-      if (identical(_audioActivation, operation)) {
+      if (identical(
+        _audioActivation,
+        operation,
+      )) {
         _audioActivation = null;
       }
     }
   }
 
-  /// 按当前结果流和音量完成音频订阅，并取消过期订阅。
+  /// Subscribes using the current result stream and volume, cancelling stale subscriptions.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
-  /// - [streamID]：需要发布、订阅或控制的媒体流标识。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
+  /// - [streamID]: The identifier of the media stream to publish, subscribe to, or control.
   Future<void> _performActivateRemoteAudio(
     RemoteStream stream,
     String streamID,
@@ -602,10 +688,21 @@ final class StreamController implements StreamControlling {
       volume: initialVolume,
       streamID: streamID,
     );
-    _ensureAudioStreamCurrent(stream, streamID, version);
+    _ensureAudioStreamCurrent(
+      stream,
+      streamID,
+      version,
+    );
 
-    await _rtcManager.subscribeRemoteAudio(streamID: streamID, subscribe: true);
-    if (!_isAudioStreamCurrent(stream, streamID, version)) {
+    await _rtcManager.subscribeRemoteAudio(
+      streamID: streamID,
+      subscribe: true,
+    );
+    if (!_isAudioStreamCurrent(
+      stream,
+      streamID,
+      version,
+    )) {
       await _safe(
         '取消过期 RTC 远端音频订阅失败 '
         '(Failed to Unsubscribe from Stale RTC Remote Audio)',
@@ -614,7 +711,11 @@ final class StreamController implements StreamControlling {
           subscribe: false,
         ),
       );
-      _ensureAudioStreamCurrent(stream, streamID, version);
+      _ensureAudioStreamCurrent(
+        stream,
+        streamID,
+        version,
+      );
     }
 
     _subscribedRemoteAudioStreamID = streamID;
@@ -626,15 +727,15 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 使用已有会话凭证加入 RTC 房间，并发布本地视频。
+  /// Joins the RTC room with existing session credentials and publishes local video.
   ///
-  /// 详细说明见 [StreamControlling.connect]。
+  /// See [StreamControlling.connect] for the usage contract.
   @override
   Future<void> connect({
     required RealtimeSessionConnection connection,
     required void Function() ensureActive,
   }) async {
-    // 加入房间尚未完成时，也可能收到已有远端流的发布通知。
+    // Existing remote publication events may arrive before room joining completes.
     _connectionRevision += 1;
     _renderedRemoteStreams.clear();
     _decodedRemoteStreams.clear();
@@ -663,7 +764,7 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 结束当前生成并断开远端连接，保留本地摄像头预览。
+  /// Ends generation and disconnects realtime while retaining the local camera preview.
   @override
   Future<void> disconnect() async {
     _canAdapt = false;
@@ -672,7 +773,7 @@ final class StreamController implements StreamControlling {
     _qualityController.resetQuality();
     _targetSize = null;
     _connectionRevision += 1;
-    // 变更 RTC 订阅前，先取消生成结果流的等待任务。
+    // Cancel result-stream waits before changing RTC subscriptions.
     await _clearGeneration(notifyRemote: true);
 
     for (final streamID in _remoteVideoSubscriptions.toList()) {
@@ -707,9 +808,9 @@ final class StreamController implements StreamControlling {
     await _roomController.leave();
   }
 
-  /// 发送生成启动信令，并返回可取消的结果流等待任务。
+  /// Sends the generation start message and returns a cancellable result-stream wait.
   ///
-  /// 详细说明见 [StreamControlling.beginGeneration]。
+  /// See [StreamControlling.beginGeneration] for the usage contract.
   @override
   Future<GenerationStartConfirmation> beginGeneration({
     required String taskID,
@@ -739,16 +840,18 @@ final class StreamController implements StreamControlling {
       );
     }
 
-    // 启动信令提交后，才开始选择匹配的结果流。
+    // Select a matching result stream only after submitting the start message.
     final completer = Completer<void>();
-    // 启动信令发出后可能立即收到取消操作，
-    // 因此先注册异常处理，再将结果流等待任务交给调用方。
+    // Cancellation may arrive immediately after the start message is sent;
+    // attach error handling before returning the result-stream wait to the caller.
     completer.future.ignore();
     _generationTaskID = taskID;
     _generationCompleter = completer;
     _startSignalSent = false;
-    _generationTimer = Timer(generationTimeout, () {
-      // 记录生成启动和结果流确认信息，不记录提示词或访问凭证。
+    _generationTimer = Timer(
+      generationTimeout,
+      () {
+      // Log generation startup and result confirmation without prompts or credentials.
       XmaxLogger.warn(
         category: XmaxLoggerCategory.stream,
         message:
@@ -763,11 +866,12 @@ final class StreamController implements StreamControlling {
           message: 'Realtime generation start timed out',
         ),
       );
-    });
+    },
+    );
 
     try {
-      // 信令排队和结果流发布共用同一超时时限。
-      // 取消操作也要结束仍在等待 RTC 发送完成的任务。
+      // Signaling delays and result publication share a single timeout.
+      // Cancellation must also end tasks still waiting for RTC message delivery.
       await Future.any<void>([
         _roomController.startGeneration(
           taskID: taskID,
@@ -779,7 +883,10 @@ final class StreamController implements StreamControlling {
         completer.future,
       ]);
       if (_generationTaskID == taskID &&
-          identical(_generationCompleter, completer)) {
+          identical(
+            _generationCompleter,
+            completer,
+          )) {
         _startSignalSent = true;
         _confirmPublishedRemoteStream();
       }
@@ -788,7 +895,10 @@ final class StreamController implements StreamControlling {
         value: completer.future,
         onCancel: () {
           if (_generationTaskID == taskID &&
-              identical(_generationCompleter, completer)) {
+              identical(
+                _generationCompleter,
+                completer,
+              )) {
             _rejectGeneration(
               const XmaxError(
                 code: XmaxErrorCode.cancelled,
@@ -799,23 +909,26 @@ final class StreamController implements StreamControlling {
         },
       );
     } catch (error) {
-      // 本次调用会将错误返回给调用方，先移除完成器，
-      // 避免清理时再次产生无人接收的取消错误。
-      if (identical(_generationCompleter, completer)) {
+      // Remove the completer before returning the failure to the caller
+      // to avoid an unhandled cancellation error during cleanup.
+      if (identical(
+        _generationCompleter,
+        completer,
+      )) {
         _generationTimer?.cancel();
         _generationTimer = null;
         _generationCompleter = null;
       }
 
-      // 通知服务端停止任务，因为生成请求可能已经送达。
+      // Stop the server task because the generation request may already have arrived.
       await _clearGeneration(notifyRemote: true);
       rethrow;
     }
   }
 
-  /// 等待当前调档完成后更新当前生成条件，使用最新回传尺寸。
+  /// Wait for quality updates before changing conditions so the latest result dimensions are used.
   ///
-  /// 详细说明见 [StreamControlling.updateGeneration]。
+  /// See [StreamControlling.updateGeneration] for the usage contract.
   @override
   Future<void> updateGeneration({
     required String taskID,
@@ -849,9 +962,9 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 提交当前生成任务的回传尺寸和下行码率预算。
+  /// Submits result dimensions and the downlink bitrate budget for the current task.
   ///
-  /// 详细说明见 [StreamControlling.changeTargetSize]。
+  /// See [StreamControlling.changeTargetSize] for the usage contract.
   @override
   Future<void> changeTargetSize({
     required String taskID,
@@ -863,9 +976,10 @@ final class StreamController implements StreamControlling {
     ensureActive: ensureActive,
   );
 
-  /// 停止当前生成任务和交互输入，保留 RTC 连接。
+  /// Stops generation and interactions while retaining the RTC connection.
   ///
-  /// - [taskID]：当前生成任务标识。
+  /// Parameters:
+  /// - [taskID]: The current generation task identifier.
   @override
   Future<void> stopGeneration({
     required String taskID,
@@ -881,19 +995,25 @@ final class StreamController implements StreamControlling {
     await _roomController.stopGeneration(taskID: stoppedTaskID);
   }
 
-  /// 提交当前生成任务的归一化交互轨迹；任务标识或触点列表为空时不发送。
+  /// Submits normalized interaction points; sends nothing if the task identifier or point list is
+  /// empty.
   ///
-  /// 详细说明见 [StreamControlling.sendTracks]。
+  /// See [StreamControlling.sendTracks] for the usage contract.
   @override
   Future<void> sendTracks({
     required String taskID,
     required List<RealtimePoint> points,
-  }) => _roomController.sendTracks(taskID: taskID, points: points);
+  }) => _roomController.sendTracks(
+    taskID: taskID,
+    points: points,
+  );
 
-  /// 维护预期用户的视频发布状态及订阅，取消发布时清理结果绑定。
+  /// Tracks the expected user's video publications and subscriptions, clearing results on
+  /// unpublication.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
-  /// - [published]：远端流是否处于已发布状态。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
+  /// - [published]: Whether the remote stream is published.
   void _onRemoteVideoPublished(
     RemoteStream stream,
     bool published,
@@ -929,13 +1049,16 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 记录结果流已完成首帧解码，并通知等待方。
+  /// Records the first decoded result frame and notifies waiting operations.
   ///
-  /// - [stream]：完成首帧解码的远端流。
+  /// Parameters:
+  /// - [stream]: The remote stream whose first frame has been decoded.
   void _onFirstRemoteVideoFrameDecoded(
     RemoteStream stream,
   ) {
-    if (!_isExpectedRemote(stream)) return;
+    if (!_isExpectedRemote(stream)) {
+      return;
+    }
 
     _decodedRemoteStreams.add((stream.roomID, stream.userID, stream.streamID));
 
@@ -949,16 +1072,19 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 记录结果流已完成首帧渲染，并通知视图显示画面。
+  /// Records the first rendered result frame and notifies the view that it can display video.
   ///
-  /// - [stream]：完成首帧渲染的远端流。
+  /// Parameters:
+  /// - [stream]: The remote stream whose first frame has been rendered.
   void _onFirstRemoteVideoFrameRendered(
     RemoteStream stream,
   ) {
-    if (!_isExpectedRemote(stream)) return;
+    if (!_isExpectedRemote(stream)) {
+      return;
+    }
 
-    // RTC 按订阅通知首帧，而不是按生成任务通知。
-    // 取消发布或断开连接前保留首帧状态，包括选中结果流之前收到的首帧。
+    // RTC first-frame events belong to subscriptions, not individual generation tasks.
+    // Retain first-frame records until unpublication or disconnect, including events preceding result selection.
     _renderedRemoteStreams.add((stream.roomID, stream.userID, stream.streamID));
 
     final active = _activeRemoteStream;
@@ -973,15 +1099,18 @@ final class StreamController implements StreamControlling {
     _remoteFrameRenderedListener?.call(stream);
   }
 
-  /// 维护结果用户的音频发布状态并按需订阅。
+  /// Tracks the result user's audio publications and subscribes when needed.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
-  /// - [published]：远端流是否处于已发布状态。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
+  /// - [published]: Whether the remote stream is published.
   void _onRemoteAudioPublished(
     RemoteStream stream,
     bool published,
   ) {
-    if (!_isExpectedRemote(stream)) return;
+    if (!_isExpectedRemote(stream)) {
+      return;
+    }
 
     if (published) {
       _publishedRemoteAudioStreams[stream.userID] = stream.streamID;
@@ -992,7 +1121,9 @@ final class StreamController implements StreamControlling {
       return;
     }
 
-    if (_publishedRemoteAudioStreams[stream.userID] != stream.streamID) return;
+    if (_publishedRemoteAudioStreams[stream.userID] != stream.streamID) {
+      return;
+    }
 
     _publishedRemoteAudioStreams.remove(stream.userID);
     if (_activeRemoteStream?.userID == stream.userID) {
@@ -1000,9 +1131,11 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 仅在当前结果音频已启用时激活新发布的音频。
+  /// Activate newly published audio only when result audio is enabled.
   Future<void> _activatePublishedAudio() async {
-    if (!_remoteAudioEnabled) return;
+    if (!_remoteAudioEnabled) {
+      return;
+    }
 
     final revision = _audioSubscriptionVersion;
     final connectionRevision = _connectionRevision;
@@ -1023,9 +1156,10 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 订阅预期用户视频，过滤已失效连接的完成结果。
+  /// Subscribes to the expected user's video, discarding results from expired connections.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
   Future<void> _subscribeRemoteVideo(
     RemoteStream stream,
   ) async {
@@ -1045,8 +1179,10 @@ final class StreamController implements StreamControlling {
       _subscribingVideo.remove(stream.streamID);
       _confirmPublishedRemoteStream();
     } catch (error) {
-      // 旧房间迟到的订阅错误不能移除新房间中同标识的订阅，也不能使新生成请求失败。
-      if (revision != _connectionRevision) return;
+      // Late failures from an older room must not remove newer subscriptions or fail newer generation requests.
+      if (revision != _connectionRevision) {
+        return;
+      }
 
       _subscribingVideo.remove(stream.streamID);
       _remoteVideoSubscriptions.remove(stream.streamID);
@@ -1059,7 +1195,8 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 启动信令发送成功且预期视频已订阅后确认结果流。
+  /// Confirms the result stream after successful start signaling and subscription to the expected
+  /// video.
   void _confirmPublishedRemoteStream() {
     final taskID = _generationTaskID;
     final completer = _generationCompleter;
@@ -1073,13 +1210,17 @@ final class StreamController implements StreamControlling {
 
     final stream = _publishedVideoStreams.values
         .where(
-          (stream) =>
+          (
+            stream,
+          ) =>
               _isExpectedRemote(stream) &&
               _remoteVideoSubscriptions.contains(stream.streamID),
         )
         .firstOrNull;
 
-    if (stream == null) return;
+    if (stream == null) {
+      return;
+    }
 
     XmaxLogger.debug(
       category: XmaxLoggerCategory.stream,
@@ -1110,9 +1251,11 @@ final class StreamController implements StreamControlling {
     completer.complete();
   }
 
-  /// 优先结束正在等待的生成确认，否则转交当前生命周期的错误监听。
+  /// Fails pending result confirmation first; otherwise forwards the error to the active lifecycle
+  /// listener.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   void _onError(
     Object error,
   ) {
@@ -1127,22 +1270,24 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 检查流的房间和用户账号是否符合当前会话预期。
+  /// Checks whether the stream's room and user account match the current session.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
   ///
-  /// 返回远端流的房间及用户账号是否符合当前会话预期。
+  /// Returns whether the stream's room and account match the current session.
   bool _isExpectedRemote(
     RemoteStream stream,
   ) =>
       stream.roomID == _roomID &&
       (_botName.isEmpty || stream.userID == _botName);
 
-  /// 以指定错误结束当前生成确认并取消其计时器。
+  /// Fails current result confirmation with the specified error and cancels its timer.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   ///
-  /// 返回是否存在并已结束正在等待的生成确认。
+  /// Returns whether a pending result confirmation was found and completed.
   bool _rejectGeneration(
     XmaxError error,
   ) {
@@ -1161,9 +1306,11 @@ final class StreamController implements StreamControlling {
     return false;
   }
 
-  /// 结束当前任务和就绪等待，停止质量调节并清理远端音频及显示。
+  /// Ends the task and readiness waits, stops adaptation, and clears remote audio and display
+  /// state.
   ///
-  /// - [notifyRemote]：是否通知视图清除当前结果流绑定。
+  /// Parameters:
+  /// - [notifyRemote]: Whether to notify the view to clear its result-stream binding.
   Future<void> _clearGeneration({
     required bool notifyRemote,
   }) async {
@@ -1188,13 +1335,14 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 检查音频订阅操作是否仍属于当前任务和结果流。
+  /// Checks whether an audio subscription still belongs to the current task and result stream.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
-  /// - [streamID]：需要发布、订阅或控制的媒体流标识。
-  /// - [version]：当前异步操作的版本号。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
+  /// - [streamID]: The identifier of the media stream to publish, subscribe to, or control.
+  /// - [version]: The asynchronous operation revision.
   ///
-  /// 返回任务、音频流和订阅版本是否仍然有效。
+  /// Returns whether the task, audio stream, and subscription version remain valid.
   bool _isAudioStreamCurrent(
     RemoteStream stream,
     String streamID,
@@ -1202,20 +1350,28 @@ final class StreamController implements StreamControlling {
   ) =>
       version == _audioSubscriptionVersion &&
       _generationTaskID != null &&
-      identical(_activeRemoteStream, stream) &&
+      identical(
+        _activeRemoteStream,
+        stream,
+      ) &&
       _publishedRemoteAudioStreams[stream.userID] == streamID;
 
-  /// 音频订阅操作失效时抛出取消错误。
+  /// Throws a cancellation error if the audio subscription is no longer valid.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
-  /// - [streamID]：需要发布、订阅或控制的媒体流标识。
-  /// - [version]：当前异步操作的版本号。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
+  /// - [streamID]: The identifier of the media stream to publish, subscribe to, or control.
+  /// - [version]: The asynchronous operation revision.
   void _ensureAudioStreamCurrent(
     RemoteStream stream,
     String streamID,
     int version,
   ) {
-    if (!_isAudioStreamCurrent(stream, streamID, version)) {
+    if (!_isAudioStreamCurrent(
+      stream,
+      streamID,
+      version,
+    )) {
       throw const XmaxError(
         code: XmaxErrorCode.cancelled,
         message: 'Remote generation audio subscription was cancelled',
@@ -1223,13 +1379,15 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 使旧音频订阅失效，并取消已生效的远端音频订阅。
+  /// Invalidates pending audio subscriptions and cancels the active remote subscription.
   Future<void> _deactivateRemoteAudio() async {
     final subscribedID = _subscribedRemoteAudioStreamID;
 
     _audioSubscriptionVersion += 1;
     _subscribedRemoteAudioStreamID = null;
-    if (subscribedID == null) return;
+    if (subscribedID == null) {
+      return;
+    }
 
     await _safe(
       '取消订阅 RTC 远端音频失败 (Failed to Unsubscribe from RTC Remote Audio)',
@@ -1240,7 +1398,7 @@ final class StreamController implements StreamControlling {
     );
   }
 
-  /// 清空结果流绑定；监听器异常只记录日志。
+  /// Clears the result-stream binding, logging listener failures without propagating them.
   void _clearRemoteStream() {
     try {
       _remoteStreamListener?.call(null);
@@ -1255,10 +1413,11 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// 执行资源清理操作并记录失败，允许其余清理继续进行。
+  /// Performs a cleanup operation, logging failures so remaining cleanup can continue.
   ///
-  /// - [title]：日志组的标题。
-  /// - [operation]：要执行的异步操作。
+  /// Parameters:
+  /// - [title]: The log group's title.
+  /// - [operation]: The asynchronous operation to execute.
   Future<void> _safe(
     String title,
     Future<void> Function() operation,

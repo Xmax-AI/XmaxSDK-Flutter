@@ -1,25 +1,24 @@
 include: ../analysis_options.yaml
 
-# SDK 文档约定：
-# - 正文使用自然、直接的简体中文；保留代码标识符、技术缩写、单位和文件头原文。
-# - 优先用动词和短句说明行为，不照搬英文语序，不堆砌抽象术语。
-# - Dart 和 Swift 使用 ///；Java 使用多行 /** ... */。
-# - 类、接口、枚举、构造方法、方法、属性、字段及回调类型均须记录用途。
-# - 参数按声明顺序说明业务含义；返回值仅补充摘要未涵盖的业务结果。
-# - 简单构造方法不重复字段说明；校验、转换或资源分配行为需明确记录。
-# - 签名中的参数逐行书写；即使只有一个参数也须换行，包括构造方法与回调类型。
-# - 对外文档说明最终使用契约、必要前提与异常，不记录开发过程或平台比较。
-# - 方法内部仅用 // 解释约束、边界或关键逻辑，按职责分组留空行。
-# - 成员声明之间留空行；源码文件头使用实际文件名、作者及当前仓库地址。
-# - 类、枚举和扩展的左花括号后保留一个空行，再书写首成员注释。
-# - 仅在影响使用时说明默认值、空值及边界行为，不机械复述类型或构造结果。
-# - 共同约定集中说明；实现可引用接口契约，不复制相同参数表。
-# 公开 API 的遗漏由以下规则检查；私有成员在代码审查中执行相同标准。
-# SDK 使用手工排版，不执行 dart format；该工具会删除类体首成员前的空行。
-# VS Code 的 SDK 格式化入口和自动格式化已在工作区设置中关闭。
+# SDK documentation and formatting:
+# - Write concise English comments describing responsibilities and usage contracts.
+# - Use /// for Dart and Swift declarations; use multiline Javadoc for Java.
+# - Document public and private types, constructors, methods, fields, and callbacks.
+# - Describe parameters in declaration order; document useful, nonduplicated results.
+# - Keep simple constructor summaries brief instead of repeating field descriptions.
+# - Explain meaningful state, units, ownership, cancellation, and failure conditions.
+# - Use // for implementation constraints, not history or platform comparisons.
+# - Group logical phases and separate documented members with one blank line.
+# - Retain a blank line between a type's opening brace and its first member.
+# - Put declaration parameters on separate lines, including single parameters.
+# - Expand multi-argument calls; retain compact interpolation and scalar calculations.
+# - Preserve the standard file header, actual filename, and repository URL.
+# - Keep localized strings and log messages unchanged.
+# - Maintain SDK whitespace manually; do not run dart format on SDK sources.
+# Public coverage is checked below; private coverage is also required in review.
 
 linter:
   rules:
-    # 文档规则仅作用于 lib，不要求 example 遵循 SDK 的覆盖标准。
+    # SDK documentation coverage applies to lib, not the example app.
     public_member_api_docs: true
     comment_references: true

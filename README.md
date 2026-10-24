@@ -399,10 +399,7 @@ class _RealtimePageState extends State<RealtimePage> {
   }
 
   Future<void> _start() async {
-    final localStream = await _realtime.createLocalCameraStream(
-      videoFormat: _model.defaultCameraVideoFormat,
-      position: CameraPosition.front,
-    );
+    final localStream = await _realtime.createLocalCameraStream();
     if (!mounted) return;
     setState(() => _localStream = localStream);
 
@@ -442,7 +439,21 @@ class _RealtimePageState extends State<RealtimePage> {
 
 `RealtimeModel.x2_1` defaults to 1080×1920 at 30 fps. Its
 `supportedVideoFormats` list contains 1920×1080, 1080×1920, 1408×1408,
-1152×1536, and 1536×1152 formats. While the preview is ready and disconnected,
+1152×1536, and 1536×1152 formats. Create a stream without arguments to use the
+model's default format and the front camera, or select a supported preset:
+
+```dart
+final localStream = await _realtime.createLocalCameraStream(
+  preset: RealtimeCameraPreset.resolution1408x1408,
+  position: CameraPosition.back,
+);
+```
+
+Pass `videoFormat` instead of `preset` to specify a complete capture format.
+Providing both is invalid; preset creation uses the matching entry from the
+model's supported formats, including its frame rate and encoding settings.
+
+While the preview is ready and disconnected,
 update the capture format without recreating the stream or view:
 
 ```dart

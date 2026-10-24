@@ -26,14 +26,17 @@ import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
 import '../../foundation/media/camera/CameraPosition.dart';
 
-/// 申请摄像头权限并创建采集轨道，在首帧和预览挂载后通知就绪。
+/// Requests camera permission and creates a capture track, reporting readiness after the first
+/// frame and preview mount.
 final class CameraController {
 
-  /// 创建摄像头控制器。
+  /// Creates a camera controller.
   ///
-  /// - [rtcManager]：采集和本地预览入口。
-  /// - [permissionManager]：媒体权限检查入口，默认查询系统权限。
-  /// - [mediaService]：尺寸解析服务，默认使用 [MediaService] 的模型配置。
+  /// Parameters:
+  /// - [rtcManager]: The capture and local preview interface.
+  /// - [permissionManager]: The permission checker; defaults to system permission checks.
+  /// - [mediaService]: The dimension resolver; defaults to the model configuration in
+  ///   [MediaService].
   CameraController({
     required RtcManaging rtcManager,
     PermissionManaging permissionManager = const PermissionManager(),
@@ -42,58 +45,64 @@ final class CameraController {
        _permissionManager = permissionManager,
        _mediaService = mediaService ?? MediaService();
 
-  /// 本地摄像头视频轨道的内部标识。
+  /// The internal identifier of the local camera video track.
   static const localVideoTrackID = 'video0';
 
-  /// 本地摄像头媒体流的内部标识。
+  /// The internal identifier of the local camera media stream.
   static const localStreamID = 'stream-local';
 
-  /// RTC 采集、房间及传输操作入口。
+  /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// 媒体采集权限检查入口。
+  /// The media capture permission checker.
   final PermissionManaging _permissionManager;
 
-  /// 媒体、生成及回传尺寸解析服务。
+  /// The service that resolves capture, generation, and result dimensions.
   final MediaServicing _mediaService;
 
-  /// 当前摄像头流持有的视频轨道。
+  /// The video track owned by the current camera stream.
   RealtimeVideoTrack? _activeTrack;
 
-  /// 正在创建、尚未启用的视频轨道。
+  /// The video track being created but not yet activated.
   RealtimeVideoTrack? _preparingTrack;
 
-  /// 本地摄像头首帧及预览挂载均就绪后的通知。
+  /// The callback invoked after both camera first-frame capture and preview mounting.
   RealtimeCameraPreviewReadyListener? _previewReadyListener;
 
-  /// 当前本地轨道是否已采集到有效首帧。
+  /// Whether the local track has captured a valid first frame.
   bool _hasCapturedFrame = false;
 
-  /// 本地视频原生预览是否已完成挂载。
+  /// Whether the native local video preview is mounted.
   bool _isPreviewAttached = false;
 
-  /// 当前本地轨道是否已通知预览就绪。
+  /// Whether preview readiness has been reported for the current local track.
   bool _didNotifyPreviewReady = false;
 
-  /// 当前有效的本地视频轨道；尚未创建或已停止时为空。
+  /// The active local video track; null before creation or after stopping.
   RealtimeVideoTrack? get currentTrack => _activeTrack;
 
-  /// 设置首帧与原生预览均就绪后的通知。
+  /// Sets the callback for first-frame capture and native preview readiness.
   ///
-  /// - [listener]：事件回调；传入 null 可取消监听。
+  /// Parameters:
+  /// - [listener]: The event listener, or null to remove it.
   void setPreviewReadyListener(
     RealtimeCameraPreviewReadyListener? listener,
   ) {
     _previewReadyListener = listener;
-    if (_didNotifyPreviewReady) listener?.call();
+    if (_didNotifyPreviewReady) {
+      listener?.call();
+    }
   }
 
-  /// 创建本地摄像头流并开始预览，首帧采集和视图挂载均完成后触发就绪回调。
+  /// Creates a camera stream and starts preview, notifying readiness after first-frame capture and
+  /// view mounting.
   ///
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
-  /// - [position]：摄像头位置；创建流时默认使用前置摄像头。
+  /// Parameters:
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
+  /// - [position]: The camera position, initially front-facing when a stream is created.
   ///
-  /// 返回新建的本地摄像头媒体流；参数或权限错误通过 Future 抛出。
+  /// Returns the new local camera stream; the future fails on invalid arguments or denied
+  /// permission.
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
@@ -121,8 +130,8 @@ final class CameraController {
     try {
       await _permissionManager.ensureCameraPermission();
 
-      // RtcManager.destroy() 会清除原生回调。
-      // 管理器保留预览监听器，每次重新创建摄像头流时再次注册。
+      // RtcManager.destroy() clears native callbacks.
+      // Retain the preview listener and register it again when recreating the camera stream.
       _rtcManager.setCameraPreviewReadyListener(() => _capturedFrame(track));
       await _rtcManager.switchCamera(position: position);
       await _rtcManager.startVideoCapture(
@@ -131,7 +140,7 @@ final class CameraController {
         frameRate: format.fps,
       );
 
-      // 摄像头采集成功后再注册预览渲染。
+      // Register preview rendering only after camera capture starts successfully.
       VideoRenderRegistry.register(
         track,
         LocalVideoRenderBinding(
@@ -142,12 +151,18 @@ final class CameraController {
       _activeTrack = track;
       _notifyPreviewReady(track);
 
-      return createRealtimeMediaStream(id: localStreamID, videoTrack: track);
+      return createRealtimeMediaStream(
+        id: localStreamID,
+        videoTrack: track,
+      );
     } catch (error) {
-      if (identical(_preparingTrack, track)) {
+      if (identical(
+        _preparingTrack,
+        track,
+      )) {
         _preparingTrack = null;
       }
-      // 创建中途失败时，同时撤销渲染注册并停止采集。
+      // If creation fails, unregister rendering and stop capture together.
       VideoRenderRegistry.unregister(track);
 
       try {
@@ -165,7 +180,8 @@ final class CameraController {
     }
   }
 
-  /// 停止本地摄像头流并释放采集资源；公开管理器仅允许在实时连接断开后调用。
+  /// Stops local camera capture and releases resources; the public manager requires a disconnected
+  /// session.
   Future<void> stopLocalCameraStream() async {
     final track = _activeTrack;
 
@@ -182,40 +198,56 @@ final class CameraController {
     await _rtcManager.stopVideoCapture();
   }
 
-  /// 记录指定本地轨道已采集首帧，并检查预览是否就绪。
+  /// Records first-frame capture for the local track and checks preview readiness.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   void _capturedFrame(
     RealtimeVideoTrack track,
   ) {
-    if (!identical(_preparingTrack, track)) return;
+    if (!identical(
+      _preparingTrack,
+      track,
+    )) {
+      return;
+    }
 
     _hasCapturedFrame = true;
     _notifyPreviewReady(track);
   }
 
-  /// 记录指定本地轨道的原生预览已挂载。
+  /// Records that the local track's native preview is mounted.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   void _previewAttached(
     RealtimeVideoTrack track,
   ) {
-    if (!identical(_preparingTrack, track)) return;
+    if (!identical(
+      _preparingTrack,
+      track,
+    )) {
+      return;
+    }
 
     _isPreviewAttached = true;
     _notifyPreviewReady(track);
   }
 
-  /// 首帧采集和预览视图挂载都完成后，通知预览就绪；每个轨道只通知一次。
+  /// Reports preview readiness once per track after both first-frame capture and view mounting.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   void _notifyPreviewReady(
     RealtimeVideoTrack track,
   ) {
     if (_didNotifyPreviewReady ||
         !_hasCapturedFrame ||
         !_isPreviewAttached ||
-        !identical(_activeTrack, track)) {
+        !identical(
+          _activeTrack,
+          track,
+        )) {
       return;
     }
 
@@ -223,9 +255,9 @@ final class CameraController {
     _previewReadyListener?.call();
   }
 
-  /// 切换前后置摄像头，返回更新后的本地媒体流。
+  /// Switches between front and rear cameras and returns the updated local media stream.
   ///
-  /// 返回切换后的本地摄像头媒体流。
+  /// Returns the local camera stream after switching cameras.
   Future<RealtimeMediaStream> switchCamera() async {
     final track = _activeTrack;
     final position = track?.position;
@@ -243,17 +275,24 @@ final class CameraController {
 
     try {
       await _rtcManager.switchCamera(position: next);
-      updateRealtimeVideoTrack(track: track, position: next);
+      updateRealtimeVideoTrack(
+        track: track,
+        position: next,
+      );
 
-      return createRealtimeMediaStream(id: localStreamID, videoTrack: track);
+      return createRealtimeMediaStream(
+        id: localStreamID,
+        videoTrack: track,
+      );
     } catch (error) {
       throw XmaxError.from(error);
     }
   }
 
-  /// 校验并原地更新采集规格；原生设置成功后才更新轨道信息。
+  /// Validates and updates capture in place, updating track metadata only after native success.
   ///
-  /// - [videoFormat]：符合当前模型约束的采集规格。
+  /// Parameters:
+  /// - [videoFormat]: The capture format satisfying the current model's constraints.
   Future<void> updateVideoFormat(
     RealtimeVideoFormat videoFormat,
   ) async {
@@ -268,28 +307,37 @@ final class CameraController {
 
     final format = _resolveVideoFormat(videoFormat);
 
-    if (format == track.videoFormat) return;
+    if (format == track.videoFormat) {
+      return;
+    }
 
     await _rtcManager.updateVideoCapture(
       width: format.width,
       height: format.height,
       frameRate: format.fps,
     );
-    updateRealtimeVideoTrack(track: track, videoFormat: format);
+    updateRealtimeVideoTrack(
+      track: track,
+      videoFormat: format,
+    );
   }
 
-  /// 依据当前模型校验并解析摄像头采集规格。
+  /// Validates and resolves camera capture settings for the current model.
   ///
-  /// - [videoFormat]：视频尺寸、帧率和编码配置。
+  /// Parameters:
+  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   ///
-  /// 返回包含有效尺寸、帧率及编码配置的视频规格。
+  /// Returns a validated video format with dimensions, frame rate, and encoding settings.
   RealtimeVideoFormat _resolveVideoFormat(
     RealtimeVideoFormat videoFormat,
   ) {
     videoFormat.validate();
 
     final size = _mediaService.resolveMediaSize(
-      Size(videoFormat.width.toDouble(), videoFormat.height.toDouble()),
+      Size(
+        videoFormat.width.toDouble(),
+        videoFormat.height.toDouble(),
+      ),
       source: RealtimeMediaSource.camera,
     );
     final format = videoFormat.resized(

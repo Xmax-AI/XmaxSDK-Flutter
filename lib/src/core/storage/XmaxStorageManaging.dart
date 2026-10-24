@@ -14,22 +14,24 @@ import 'XmaxDownloadedFile.dart';
 import 'XmaxStorageProgressHandler.dart';
 import 'XmaxUploadedFile.dart';
 
-/// 图片、视频的上传和下载接口。
+/// An interface for uploading and downloading media files.
 ///
-/// 上传来源只能二选一：data 或 at。
-/// 使用 data 上传内存数据时，必须同时提供 fileName 和 contentType。
-/// 使用 at 上传本地文件时，文件名取自路径，contentType 可根据扩展名推断。
+/// Provide exactly one upload source: data or at.
+/// Byte-backed uploads require both fileName and contentType.
+/// File-backed uploads use the path's filename and infer contentType from its extension when
+/// omitted.
 abstract interface class XmaxStorageManaging {
 
-  /// 上传图片到对象存储；来源约束见 [XmaxStorageManaging]。
+  /// Uploads an image to object storage; see [XmaxStorageManaging] for source constraints.
   ///
-  /// - [data]：图片原始字节。
-  /// - [at]：本地图片的 file URI。
-  /// - [fileName]：内存上传使用的文件名，须包含扩展名；本地文件上传忽略此参数。
-  /// - [contentType]：写入对象 Content-Type 的 MIME 类型，例如 image/jpeg。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [data]: The encoded image bytes.
+  /// - [at]: The local image file URI.
+  /// - [fileName]: The filename including its extension for byte uploads; ignored for local files.
+  /// - [contentType]: The MIME type stored as Content-Type, such as image/jpeg.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回对象访问地址、对象键和可用的 ETag。
+  /// Returns the object URL, key, and ETag when provided by storage.
   Future<XmaxUploadedFile> uploadImage({
     Uint8List? data,
     Uri? at,
@@ -38,18 +40,19 @@ abstract interface class XmaxStorageManaging {
     XmaxStorageProgressHandler? progress,
   });
 
-  /// 上传图片，并检查内容是否安全；未通过时抛出 unsafeImage 错误。
+  /// Uploads an image and performs a safety check, rejecting unsafe content with unsafeImage.
   ///
-  /// 检查在上传后执行，因此即使检查失败，文件也可能已存入 COS。
-  /// 上传参数和来源限制见 [uploadImage]、[XmaxStorageManaging]。
+  /// Safety checking runs after upload, so a rejected file may already exist in COS.
+  /// See [uploadImage] and [XmaxStorageManaging] for upload source constraints.
   ///
-  /// - [data]：图片原始字节。
-  /// - [at]：本地图片的 file URI。
-  /// - [fileName]：内存上传使用的文件名。
-  /// - [contentType]：图片的 MIME 类型。
-  /// - [progress]：进度回调，包含已上传字节数和总字节数。
+  /// Parameters:
+  /// - [data]: The encoded image bytes.
+  /// - [at]: The local image file URI.
+  /// - [fileName]: The filename for byte-backed uploads.
+  /// - [contentType]: The image MIME type.
+  /// - [progress]: The progress handler receiving uploaded and total bytes.
   ///
-  /// 返回对象访问地址、对象键及 ETag；服务端未提供 ETag 时，该字段为空。
+  /// Returns the object URL and key, with a null ETag if storage does not provide one.
   Future<XmaxUploadedFile> uploadImageWithSafetyCheck({
     Uint8List? data,
     Uri? at,
@@ -58,17 +61,18 @@ abstract interface class XmaxStorageManaging {
     XmaxStorageProgressHandler? progress,
   });
 
-  /// 上传视频并返回对象存储结果；不创建实时视频输入流。
+  /// Uploads a video file without creating a realtime video input stream.
   ///
-  /// 来源约束见 [XmaxStorageManaging]，文件名规则与 [uploadImage] 相同。
+  /// Source constraints follow [XmaxStorageManaging]; filename rules follow [uploadImage].
   ///
-  /// - [data]：视频原始字节。
-  /// - [at]：本地视频的 file URI。
-  /// - [fileName]：内存上传使用的文件名。
-  /// - [contentType]：视频 MIME 类型，例如 video/mp4。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [data]: The encoded video bytes.
+  /// - [at]: The local video file URI.
+  /// - [fileName]: The filename for byte-backed uploads.
+  /// - [contentType]: The video MIME type, such as video/mp4.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回对象访问地址、对象键和可用的 ETag。
+  /// Returns the object URL, key, and ETag when provided by storage.
   Future<XmaxUploadedFile> uploadVideo({
     Uint8List? data,
     Uri? at,
@@ -77,26 +81,28 @@ abstract interface class XmaxStorageManaging {
     XmaxStorageProgressHandler? progress,
   });
 
-  /// 将远程图片下载到指定本地文件位置。
+  /// Downloads an image to a local file.
   ///
-  /// - [from]：远程文件的 HTTP 或 HTTPS URL。
-  /// - [to]：下载目标的本地 file URI。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [from]: The remote file's HTTP or HTTPS URL.
+  /// - [to]: The destination file URI.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回下载后的本地文件 URI 和实际字节数。
+  /// Returns the downloaded file URI and its byte count.
   Future<XmaxDownloadedFile> downloadImage({
     required Uri from,
     required Uri to,
     XmaxStorageProgressHandler? progress,
   });
 
-  /// 将远程视频下载到指定本地文件位置。
+  /// Downloads a video to a local file.
   ///
-  /// - [from]：远程文件的 HTTP 或 HTTPS URL。
-  /// - [to]：下载目标的本地 file URI。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [from]: The remote file's HTTP or HTTPS URL.
+  /// - [to]: The destination file URI.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回下载后的本地文件 URI 和实际字节数。
+  /// Returns the downloaded file URI and its byte count.
   Future<XmaxDownloadedFile> downloadVideo({
     required Uri from,
     required Uri to,

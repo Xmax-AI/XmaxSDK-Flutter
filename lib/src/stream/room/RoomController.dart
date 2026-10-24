@@ -24,34 +24,35 @@ import 'RoomControlling.dart';
 import 'RoomEvent.dart';
 import 'RoomHeartbeat.dart';
 
-/// 管理 RTC 房间身份、心跳和生成控制信令。
+/// Manages RTC room lifecycle, heartbeat, and generation signaling.
 final class RoomController implements RoomControlling {
 
-  /// 创建房间信令控制器。
+  /// Creates a room signaling controller.
   ///
-  /// - [rtcManager]：房间信令发送入口。
-  /// - [heartbeat]：心跳调度器；默认基于同一 RTC 管理器创建。
+  /// Parameters:
+  /// - [rtcManager]: The RTC room signaling interface.
+  /// - [heartbeat]: The heartbeat scheduler; defaults to one using the same RTC manager.
   RoomController({
     required RtcManaging rtcManager,
     RoomHeartbeat? heartbeat,
   }) : _rtcManager = rtcManager,
        _heartbeat = heartbeat ?? RoomHeartbeat(rtcManager: rtcManager);
 
-  /// RTC 采集、房间及传输操作入口。
+  /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// 维持当前 RTC 房间的心跳组件。
+  /// The heartbeat scheduler for the current RTC room.
   final RoomHeartbeat _heartbeat;
 
-  /// RTC 用户账号，不是数字 UID。
+  /// The RTC user account, not a numeric UID.
   String? _userID;
 
-  /// 是否正在执行 RTC 入房操作。
+  /// Whether an RTC room join operation is in progress.
   bool _joining = false;
 
-  /// 加入 RTC 房间，成功后保存用户身份并启动房间心跳。
+  /// Joins the RTC room, saves the user identity, and starts heartbeats after success.
   ///
-  /// 详细说明见 [RoomControlling.join]。
+  /// See [RoomControlling.join] for the usage contract.
   @override
   Future<void> join({
     required RealtimeSessionConnection connection,
@@ -70,8 +71,8 @@ final class RoomController implements RoomControlling {
     _heartbeat.stop();
 
     try {
-      // RoomEvent 同步编码信令，因此先读取并缓存运行环境，
-      // 再发送生成信令或启动房间心跳。
+      // RoomEvent encodes messages synchronously; cache runtime information
+      // before sending generation messages or starting room heartbeats.
       await RuntimeInfo.resolve();
       ensureActive();
 
@@ -95,10 +96,10 @@ final class RoomController implements RoomControlling {
     }
   }
 
-  /// 停止房间心跳、清除本地用户身份并退出 RTC 房间。
+  /// Stops heartbeats, clears the local user identity, and leaves the RTC room.
   @override
   Future<void> leave() async {
-    // 等待原生房间退出前，先清除本地保存的用户身份。
+    // Clear the saved identity before awaiting native room exit.
     _userID = null;
     _joining = false;
     _heartbeat.stop();
@@ -106,9 +107,10 @@ final class RoomController implements RoomControlling {
     await _rtcManager.leaveRoom();
   }
 
-  /// 向已加入的房间发送生成启动信令；不在此层建立连接或等待结果首帧。
+  /// Sends a start message to the joined room without establishing a connection or waiting for a
+  /// result frame.
   ///
-  /// 详细说明见 [RoomControlling.startGeneration]。
+  /// See [RoomControlling.startGeneration] for the usage contract.
   @override
   Future<void> startGeneration({
     required String taskID,
@@ -127,9 +129,9 @@ final class RoomController implements RoomControlling {
     ),
   );
 
-  /// 向当前任务发送新条件；省略参考图字段会清除先前参考图条件。
+  /// Updates task conditions; omitting the reference image clears the previous reference condition.
   ///
-  /// 详细说明见 [RoomControlling.changeGenerationCondition]。
+  /// See [RoomControlling.changeGenerationCondition] for the usage contract.
   @override
   Future<void> changeGenerationCondition({
     required String taskID,
@@ -148,9 +150,9 @@ final class RoomController implements RoomControlling {
     ),
   );
 
-  /// 提交当前生成任务的回传尺寸和下行码率预算。
+  /// Submits result dimensions and the downlink bitrate budget for the current task.
   ///
-  /// 详细说明见 [RoomControlling.changeTargetSize]。
+  /// See [RoomControlling.changeTargetSize] for the usage contract.
   @override
   Future<void> changeTargetSize({
     required String taskID,
@@ -168,9 +170,10 @@ final class RoomController implements RoomControlling {
     );
   }
 
-  /// 发送停止信令，保留 RTC 房间连接。
+  /// Sends a stop message while retaining the RTC room connection.
   ///
-  /// - [taskID]：要停止的生成任务标识。
+  /// Parameters:
+  /// - [taskID]: The identifier of the generation task to stop.
   @override
   Future<void> stopGeneration({
     required String taskID,
@@ -181,12 +184,16 @@ final class RoomController implements RoomControlling {
       return;
     }
 
-    await _send(RoomEvent.stop(userID: userID, taskID: taskID));
+    await _send(RoomEvent.stop(
+      userID: userID,
+      taskID: taskID,
+    ));
   }
 
-  /// 提交当前生成任务的归一化交互轨迹；任务标识或触点列表为空时不发送。
+  /// Submits normalized interaction points; sends nothing if the task identifier or point list is
+  /// empty.
   ///
-  /// 详细说明见 [RoomControlling.sendTracks]。
+  /// See [RoomControlling.sendTracks] for the usage contract.
   @override
   Future<void> sendTracks({
     required String taskID,
@@ -205,9 +212,9 @@ final class RoomController implements RoomControlling {
     );
   }
 
-  /// 读取已加入房间的用户账号；未加入时抛出 RTC 错误。
+  /// Reads the joined room's user account; throws an RTC error if no room is joined.
   ///
-  /// 返回当前已加入房间的用户账号；未加入时抛出 RTC 错误。
+  /// Returns the current room's user account; throws an RTC error if no room is joined.
   String _requireUserID() {
     final userID = _userID;
 
@@ -221,9 +228,10 @@ final class RoomController implements RoomControlling {
     return userID;
   }
 
-  /// 发送完整房间信令并记录格式化日志。
+  /// Sends a complete room message and logs its formatted representation.
   ///
-  /// - [message]：需要发送或格式化的完整房间 JSON 信令。
+  /// Parameters:
+  /// - [message]: The complete room JSON message to send or format.
   Future<void> _send(
     String message,
   ) async {
@@ -239,11 +247,12 @@ final class RoomController implements RoomControlling {
     );
   }
 
-  /// 将房间 JSON 信令按固定的键顺序格式化为日志。
+  /// Formats a room JSON message with a stable key order for logging.
   ///
-  /// - [message]：需要发送或格式化的完整房间 JSON 信令。
+  /// Parameters:
+  /// - [message]: The complete room JSON message to send or format.
   ///
-  /// 返回按固定的键顺序格式化的房间信令日志。
+  /// Returns the room message formatted with a stable key order.
   static String _formatSignalLog(
     String message,
   ) {
@@ -260,7 +269,10 @@ final class RoomController implements RoomControlling {
       final formatted = const JsonEncoder.withIndent(
         '  ',
       ).convert(_sortJson(object));
-      final indented = formatted.replaceAll('\n', '\n   ');
+      final indented = formatted.replaceAll(
+        '\n',
+        '\n   ',
+      );
 
       return '发送房间信令 (Outbound Room Signaling)\n'
           '├─ ${XmaxLogger.localized('类型：', 'Type: ')}$eventType\n'
@@ -271,16 +283,19 @@ final class RoomController implements RoomControlling {
     }
   }
 
-  /// 递归按键排序 JSON 对象，保留数组顺序和空值。
+  /// Recursively sorts JSON object keys, preserving array order and null values.
   ///
-  /// - [value]：要排序的 JSON 数据。
+  /// Parameters:
+  /// - [value]: The JSON value to sort.
   ///
-  /// 返回排序后的 JSON 数据。
+  /// Returns the sorted JSON value.
   static Object? _sortJson(
     Object? value,
   ) {
     if (value is Map) {
-      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      final keys = value.keys.map((
+        key,
+      ) => key.toString()).toList()..sort();
 
       return <String, Object?>{
         for (final key in keys) key: _sortJson(value[key]),

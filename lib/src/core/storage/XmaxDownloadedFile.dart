@@ -8,43 +8,53 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// 文件下载结果，包含本地文件位置和实际字节数。
+/// A downloaded file's local location and byte count.
 final class XmaxDownloadedFile {
 
-  /// 创建文件下载结果。
+  /// Creates a file download result.
   const XmaxDownloadedFile._({
     required this.fileURL,
     required this.byteCount,
   });
 
-  /// 本地文件的 file URI。
+  /// The local file URI.
   final Uri fileURL;
 
-  /// 文件大小，单位为字节。
+  /// The file size, in bytes.
   final int byteCount;
 
-  /// 与 [other] 比较类型及 [fileURL]、[byteCount] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is XmaxDownloadedFile &&
           fileURL == other.fileURL &&
           byteCount == other.byteCount;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(fileURL, byteCount);
+  int get hashCode => Object.hash(
+    fileURL,
+    byteCount,
+  );
 }
 
-/// 将本地文件位置和实际字节数封装为下载结果。
+/// Creates a download result from a local file and its byte count.
 ///
-/// - [fileURL]：本地文件的 file URI。
-/// - [byteCount]：文件大小，单位为字节。
+/// Parameters:
+/// - [fileURL]: The local file URI.
+/// - [byteCount]: The file size, in bytes.
 ///
-/// 返回下载后的本地文件 URI 和实际字节数。
+/// Returns the downloaded file URI and its byte count.
 XmaxDownloadedFile createXmaxDownloadedFile({
   required Uri fileURL,
   required int byteCount,
-}) => XmaxDownloadedFile._(fileURL: fileURL, byteCount: byteCount);
+}) => XmaxDownloadedFile._(
+  fileURL: fileURL,
+  byteCount: byteCount,
+);

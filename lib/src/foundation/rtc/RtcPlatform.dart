@@ -10,12 +10,12 @@
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
-/// 隔离 RTC 引擎的创建与原生资源释放。
+/// An interface for RTC engine creation and native resource release.
 abstract interface class RtcPlatform {
 
-  /// 当前使用的原生 RTC 引擎。
+  /// The native RTC engine in use.
   RtcEngineEx get engine;
 
-  /// 关闭当前 RTC 资源，并使后续原生回调失效。
+  /// Releases RTC resources and invalidates subsequent native callbacks.
   Future<void> destroy();
 }

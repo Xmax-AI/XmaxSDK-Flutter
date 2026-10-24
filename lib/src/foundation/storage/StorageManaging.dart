@@ -10,18 +10,20 @@
 
 import 'StorageModels.dart';
 
-/// 对象上传与 HTTP 文件下载的底层传输接口。
+/// A transport interface for object uploads and HTTP file downloads.
 abstract interface class StorageManaging {
 
-  /// 使用本次临时凭证执行普通 PUT 上传，不自动切换为分片上传。
+  /// Uploads with a single PUT using request-scoped temporary credentials, without multipart
+  /// fallback.
   ///
-  /// - [source]：待上传的内存字节或本地文件来源。
-  /// - [objectKey]：对象在存储桶内的完整键，不是本地文件路径。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [configuration]：本次上传使用的存储桶、区域、服务地址和临时凭证。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [source]: The in-memory bytes or local file to upload.
+  /// - [objectKey]: The full object key within the bucket, not a local file path.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [configuration]: The bucket, region, endpoint, and temporary credentials for this upload.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> upload({
     required StorageUploadSource source,
     required String objectKey,
@@ -30,13 +32,14 @@ abstract interface class StorageManaging {
     StorageProgressListener? progress,
   });
 
-  /// 流式下载文件到本地目标，并返回实际写入的字节数。
+  /// Streams a download to the local destination and returns the actual number of bytes written.
   ///
-  /// - [remoteURL]：待下载文件的 HTTP 或 HTTPS URL。
-  /// - [destinationURL]：下载目标的本地 file URI。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
+  /// - [destinationURL]: The destination file URI.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回已下载文件的本地 URI 和实际字节数。
+  /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> download({
     required Uri remoteURL,
     required Uri destinationURL,

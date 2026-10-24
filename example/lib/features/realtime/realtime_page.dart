@@ -227,9 +227,7 @@ class _RealtimePageState extends State<RealtimePage>
       _lastError = null;
     });
     try {
-      final stream = await _manager.createLocalCameraStream(
-        videoFormat: widget.model.defaultCameraVideoFormat,
-      );
+      final stream = await _manager.createLocalCameraStream();
       if (_isCurrentRealtimeOperation(operation)) {
         setState(() => _localStream = stream);
       }

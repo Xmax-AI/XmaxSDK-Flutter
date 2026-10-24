@@ -12,21 +12,22 @@ import '../../foundation/errors/ErrorMessageFormatter.dart';
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
 
-/// 实时错误所影响的资源范围。
+/// The resources affected by a realtime failure.
 enum RealtimeFailureScope {
 
-  /// 仅远端连接资源，保留本地媒体。
+  /// Remote connection resources, retaining local media.
   connection,
 
-  /// 本地媒体和远端连接资源。
+  /// Local media and remote connection resources.
   all,
 }
 
-/// 当前有效生命周期中统一处理实时失败的异步回调。
+/// An asynchronous handler for failures in the current realtime lifecycle.
 ///
-/// - [error]：本次操作的错误。
-/// - [scope]：错误影响的资源范围。
-/// - [isCurrent]：检查操作是否仍属于当前生命周期的函数。
+/// Parameters:
+/// - [error]: The operation error.
+/// - [scope]: The resources affected by the failure.
+/// - [isCurrent]: A check that the operation still belongs to the current lifecycle.
 typedef RealtimeFailureHandler =
     Future<void> Function(
       XmaxError error,
@@ -34,42 +35,47 @@ typedef RealtimeFailureHandler =
       bool Function() isCurrent,
     );
 
-/// 统一处理实时错误，忽略已结束生命周期的错误回调。
+/// Logs and routes realtime failures while rejecting callbacks from expired lifecycles.
 final class RealtimeErrorHandler {
 
-  /// 当前生命周期的失败处理回调。
+  /// The failure handler for the current lifecycle.
   RealtimeFailureHandler? _failureHandler;
 
-  /// 本地媒体生命周期的版本号。
+  /// The revision used to reject failures from previous media bindings.
   int _mediaRevision = 0;
 
-  /// 远端连接生命周期的版本号。
+  /// The revision used to reject failures from previous connections.
   int _connectionRevision = 0;
 
-  /// 设置当前生命周期的错误处理回调。
+  /// Sets the failure handler for the current lifecycle.
   ///
-  /// - [handler]：错误处理回调；传入 null 后不再分发错误。
+  /// Parameters:
+  /// - [handler]: The failure handler, or null to stop forwarding failures.
   void setFailureHandler(
     RealtimeFailureHandler? handler,
   ) {
     _failureHandler = handler;
   }
 
-  /// 使指定资源的旧错误回调失效，避免它们关闭新创建的连接或媒体流。
+  /// Invalidates earlier callbacks so they cannot close newly created connections or media.
   ///
-  /// - [scope]：受影响的资源范围；默认包含本地媒体和远端连接。
+  /// Parameters:
+  /// - [scope]: The affected resources; defaults to both local media and the connection.
   void invalidatePendingFailures({
     RealtimeFailureScope scope = RealtimeFailureScope.all,
   }) {
     _connectionRevision += 1;
-    if (scope == RealtimeFailureScope.all) _mediaRevision += 1;
+    if (scope == RealtimeFailureScope.all) {
+      _mediaRevision += 1;
+    }
   }
 
-  /// 记录指定资源的当前版本，供异步回调判断原操作是否仍有效。
+  /// Captures a resource revision for validating asynchronous callbacks.
   ///
-  /// - [scope]：要检查的资源范围。
+  /// Parameters:
+  /// - [scope]: The resources whose validity is checked.
   ///
-  /// 返回版本检查函数；资源已重建或关闭时返回 false。
+  /// Returns a check that becomes false after the resources are rebuilt or closed.
   bool Function() captureValidity(
     RealtimeFailureScope scope,
   ) {
@@ -78,20 +84,22 @@ final class RealtimeErrorHandler {
     return () => revision == _revision(scope);
   }
 
-  /// 读取指定资源范围的生命周期的版本号。
+  /// Reads the lifecycle revision for a resource scope.
   ///
-  /// - [scope]：错误影响的资源范围。
+  /// Parameters:
+  /// - [scope]: The resources affected by the failure.
   ///
-  /// 返回指定资源范围当前的版本号。
+  /// Returns the current resource revision.
   int _revision(
     RealtimeFailureScope scope,
   ) => scope == RealtimeFailureScope.all ? _mediaRevision : _connectionRevision;
 
-  /// 将错误转换为 SDK 错误并记录。
+  /// Normalizes and logs an SDK error.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   ///
-  /// 返回统一 SDK 错误。
+  /// Returns the normalized SDK error.
   XmaxError report(
     Object error,
   ) {
@@ -102,30 +110,40 @@ final class RealtimeErrorHandler {
     return xmaxError;
   }
 
-  /// 仅在来源生命周期仍有效时分发运行错误。
+  /// Forwards a runtime failure only while its source lifecycle remains valid.
   ///
-  /// - [error]：本次操作的错误。
-  /// - [scope]：错误影响的资源范围。省略时仅影响远端连接，保留本地媒体。
+  /// Parameters:
+  /// - [error]: The operation error.
+  /// - [scope]: The affected resources; defaults to the connection while retaining local media.
   void forward(
     XmaxError error, {
     RealtimeFailureScope scope = RealtimeFailureScope.connection,
   }) {
     final isCurrent = captureValidity(scope);
     final handler = _failureHandler;
-    // 异步处理前记录所属生命周期，分发错误前再次检查，避免旧错误关闭新的连接或媒体流。
+    // Check lifecycle ownership before dispatching errors so stale failures cannot close newer resources.
     Future<void>.microtask(() async {
-      if (!isCurrent()) return;
+      if (!isCurrent()) {
+        return;
+      }
 
       _log(error);
-      await handler?.call(error, scope, isCurrent);
-    }).catchError((Object failure) {
+      await handler?.call(
+        error,
+        scope,
+        isCurrent,
+      );
+    }).catchError((
+      Object failure,
+    ) {
       _log(XmaxError.from(failure));
     });
   }
 
-  /// 记录统一错误；日志输出失败不影响错误传播。
+  /// Logs an SDK error without letting logging failures suppress error propagation.
   ///
-  /// - [error]：本次操作的错误。
+  /// Parameters:
+  /// - [error]: The operation error.
   void _log(
     XmaxError error,
   ) {
@@ -137,7 +155,7 @@ final class RealtimeErrorHandler {
             '└─ ${XmaxLogger.localized('原因：', 'Reason: ')}${ErrorMessageFormatter.format(error)}',
       );
     } catch (_) {
-      // 日志输出失败不能阻止原始错误继续传递。
+      // Logging failures must not suppress the original error.
     }
   }
 }

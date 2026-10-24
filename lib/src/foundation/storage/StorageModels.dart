@@ -10,40 +10,41 @@
 
 import 'dart:typed_data';
 
-/// 按已完成字节数和总字节数接收传输进度的回调。
+/// A transfer progress callback receiving completed and total byte counts.
 ///
-/// - [completedBytes]：已经传输的字节数。
-/// - [totalBytes]：传输的总字节数。
+/// Parameters:
+/// - [completedBytes]: The number of bytes transferred.
+/// - [totalBytes]: The total transfer size, in bytes.
 typedef StorageProgressListener =
     void Function(
       int completedBytes,
       int totalBytes,
     );
 
-/// 对象存储请求使用的临时访问密钥和会话令牌。
+/// Temporary access keys and a session token for object storage requests.
 final class StorageCredential {
 
-  /// 创建对象存储临时凭证。
+  /// Creates temporary object storage credentials.
   const StorageCredential({
     required this.accessKeyID,
     required this.secretAccessKey,
     required this.sessionToken,
   });
 
-  /// 临时访问密钥标识。
+  /// The temporary access key identifier.
   final String accessKeyID;
 
-  /// 临时访问密钥内容，不得写入日志。
+  /// The temporary secret access key; must not be logged.
   final String secretAccessKey;
 
-  /// 临时访问凭证中的会话令牌。
+  /// The temporary credential session token.
   final String sessionToken;
 }
 
-/// 单次对象上传所需的存储桶、区域、服务地址和临时凭证。
+/// The bucket, region, endpoint, and temporary credentials for one object upload.
 final class StorageConfiguration {
 
-  /// 创建对象存储连接配置。
+  /// Creates an object storage connection configuration.
   const StorageConfiguration({
     required this.bucket,
     required this.region,
@@ -51,82 +52,82 @@ final class StorageConfiguration {
     required this.credential,
   });
 
-  /// 对象存储桶名称。
+  /// The object storage bucket name.
   final String bucket;
 
-  /// 对象存储区域标识。
+  /// The object storage region identifier.
   final String region;
 
-  /// 对象存储服务的访问地址。
+  /// The object storage service endpoint.
   final String endpoint;
 
-  /// 本次传输使用的临时访问凭证。
+  /// The temporary credentials used for this transfer.
   final StorageCredential credential;
 }
 
-/// 对象上传的数据来源，仅接受内存字节或本地文件。
+/// An object upload source backed by in-memory bytes or a local file.
 sealed class StorageUploadSource {
 
-  /// 创建文件上传来源。
+  /// Creates a file upload source.
   const StorageUploadSource();
 }
 
-/// 以内存字节作为上传来源。
+/// Creates an upload source from in-memory bytes.
 final class StorageDataUploadSource extends StorageUploadSource {
 
-  /// 以图片或视频字节作为上传来源。
+  /// Creates an upload source from image or video bytes.
   const StorageDataUploadSource(
     this.data,
   );
 
-  /// 待上传的原始文件字节。
+  /// The encoded file bytes to upload.
   final Uint8List data;
 }
 
-/// 以本地文件 URI 作为上传来源，不将整个文件读入 Dart 内存。
+/// Creates an upload source from a local file URI without loading the entire file into Dart memory.
 final class StorageFileUploadSource extends StorageUploadSource {
 
-  /// 以本地文件作为上传来源。
+  /// Creates an upload source from a local file.
   const StorageFileUploadSource(
     this.fileURL,
   );
 
-  /// 本地文件的 file URI。
+  /// The local file URI.
   final Uri fileURL;
 }
 
-/// 底层上传结果，包含对象访问地址、对象键和 ETag。
+/// A transport upload result containing the object URL, key, and ETag.
 final class StoredFile {
 
-  /// 创建底层文件上传结果。
+  /// Creates a transport upload result.
   const StoredFile({
     required this.url,
     required this.objectKey,
     this.etag,
   });
 
-  /// 上传对象的访问地址。
+  /// The uploaded object's access URL.
   final Uri url;
 
-  /// 对象在存储桶内的完整键，不是本地文件路径。
+  /// The full object key within the bucket, not a local file path.
   final String objectKey;
 
-  /// 对象存储返回的 ETag；服务未返回时为空。
+  /// The ETag returned by storage, or null when not provided.
   final String? etag;
 }
 
-/// 底层下载结果，包含目标文件 URI 和实际写入字节数。
+/// A transport download result containing the destination URI and actual byte count.
 final class DownloadedFile {
 
-  /// 创建底层文件下载结果。
+  /// Creates a transport download result.
   const DownloadedFile({
     required this.fileURL,
     required this.byteCount,
   });
 
-  /// 本地文件的 file URI。
+  /// The local file URI.
   final Uri fileURL;
 
-  /// 文件大小，单位为字节。
+  /// The file size, in bytes.
   final int byteCount;
 }

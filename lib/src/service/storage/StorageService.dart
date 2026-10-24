@@ -23,37 +23,45 @@ import '../../foundation/storage/StorageModels.dart';
 import '../network/ApiServicing.dart';
 import 'StorageServicing.dart';
 
-/// 上传文件的媒体类别及日志展示名称。
+/// An upload media type and its display name for logging.
 enum _StorageMediaType {
 
-  /// 图片文件。
-  image('image', 'Image'),
+  /// An image file.
+  image(
+    'image',
+    'Image',
+  ),
 
-  /// 视频文件。
-  video('video', 'Video');
+  /// A video file.
+  video(
+    'video',
+    'Video',
+  );
 
-  /// 定义上传媒体类别及日志名称。
+  /// Defines an upload media type and log display name.
   const _StorageMediaType(
     this.value,
     this.displayName,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 
-  /// 用于界面或日志展示的名称。
+  /// The name used in UI or logs.
   final String displayName;
 }
 
-/// 获取临时凭证，校验上传下载参数，并按需执行图片安全检查。
+/// Coordinates media transfers, temporary credentials, and image safety checks.
 final class StorageService implements StorageServicing {
 
-  /// 创建凭证获取、参数校验及文件安全检查服务。
+  /// Creates a service for credentials, transfer validation, and file safety checks.
   ///
-  /// - [apiService]：凭证和安全检查的网络服务。
-  /// - [storageManager]：对象上传与文件下载入口。
-  /// - [dateGenerator]：对象键时间戳来源，默认使用系统时间。
-  /// - [identifierGenerator]：对象键随机标识来源，默认生成 UUID。
+  /// Parameters:
+  /// - [apiService]: The API service for credentials and safety checks.
+  /// - [storageManager]: The object upload and file download transport.
+  /// - [dateGenerator]: The timestamp provider for object keys; defaults to the system time.
+  /// - [identifierGenerator]: The random identifier provider for object keys; defaults to UUID
+  ///   generation.
   StorageService({
     required ApiServicing apiService,
     required StorageManaging storageManager,
@@ -64,21 +72,21 @@ final class StorageService implements StorageServicing {
        _dateGenerator = dateGenerator ?? DateTime.now,
        _identifierGenerator = identifierGenerator ?? _makeIdentifier;
 
-  /// 云端 API 请求服务。
+  /// The service used for API requests.
   final ApiServicing _apiService;
 
-  /// 执行对象上传及 HTTP 下载的底层组件。
+  /// The underlying object upload and HTTP download transport.
   final StorageManaging _storageManager;
 
-  /// 生成对象键时间戳的时间提供函数。
+  /// The timestamp provider for object keys.
   final DateTime Function() _dateGenerator;
 
-  /// 生成随机对象标识的函数。
+  /// The random object identifier generator.
   final String Function() _identifierGenerator;
 
-  /// 上传内存图片到对象存储。
+  /// Uploads an in-memory image to object storage.
   ///
-  /// 详细说明见 [StorageServicing.uploadImage]。
+  /// See [StorageServicing.uploadImage] for the usage contract.
   @override
   Future<StoredFile> uploadImage({
     required Uint8List data,
@@ -94,9 +102,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 上传本地图片文件；未指定 MIME 类型时按扩展名推断。
+  /// Uploads a local image, inferring its MIME type from the extension if unspecified.
   ///
-  /// 详细说明见 [StorageServicing.uploadImageFile]。
+  /// See [StorageServicing.uploadImageFile] for the usage contract.
   @override
   Future<StoredFile> uploadImageFile({
     required Uri fileURL,
@@ -111,9 +119,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 上传图片并执行内容安全检查；未通过时抛出 unsafeImage。
+  /// Uploads an image and checks content safety; throws unsafeImage if rejected.
   ///
-  /// 详细说明见 [StorageServicing.uploadImageWithSafetyCheck]。
+  /// See [StorageServicing.uploadImageWithSafetyCheck] for the usage contract.
   @override
   Future<StoredFile> uploadImageWithSafetyCheck({
     required Uint8List data,
@@ -129,9 +137,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 上传本地图片并执行内容安全检查；未通过时抛出 unsafeImage。
+  /// Uploads a local image and checks content safety; throws unsafeImage if rejected.
   ///
-  /// 详细说明见 [StorageServicing.uploadImageFileWithSafetyCheck]。
+  /// See [StorageServicing.uploadImageFileWithSafetyCheck] for the usage contract.
   @override
   Future<StoredFile> uploadImageFileWithSafetyCheck({
     required Uri fileURL,
@@ -146,9 +154,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 上传视频并返回对象存储结果；不创建实时视频输入流。
+  /// Uploads a video file without creating a realtime video input stream.
   ///
-  /// 详细说明见 [StorageServicing.uploadVideo]。
+  /// See [StorageServicing.uploadVideo] for the usage contract.
   @override
   Future<StoredFile> uploadVideo({
     required Uint8List data,
@@ -164,9 +172,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 上传本地视频文件；未指定 MIME 类型时按扩展名推断。
+  /// Uploads a local video, inferring its MIME type from the extension if unspecified.
   ///
-  /// 详细说明见 [StorageServicing.uploadVideoFile]。
+  /// See [StorageServicing.uploadVideoFile] for the usage contract.
   @override
   Future<StoredFile> uploadVideoFile({
     required Uri fileURL,
@@ -181,9 +189,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 将远程图片下载到指定本地文件位置。
+  /// Downloads an image to a local file.
   ///
-  /// 详细说明见 [StorageServicing.downloadImage]。
+  /// See [StorageServicing.downloadImage] for the usage contract.
   @override
   Future<DownloadedFile> downloadImage({
     required Uri remoteURL,
@@ -195,9 +203,9 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 将远程视频下载到指定本地文件位置。
+  /// Downloads a video to a local file.
   ///
-  /// 详细说明见 [StorageServicing.downloadVideo]。
+  /// See [StorageServicing.downloadVideo] for the usage contract.
   @override
   Future<DownloadedFile> downloadVideo({
     required Uri remoteURL,
@@ -209,16 +217,17 @@ final class StorageService implements StorageServicing {
     progress: progress,
   );
 
-  /// 校验上传来源并执行上传，返回成功保存的对象信息。
+  /// Validates an upload source and returns the stored object.
   ///
-  /// - [source]：待上传的内存字节或本地文件来源。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [mediaType]：上传文件的媒体类型：图片或视频。
-  /// - [checksSafety]：是否在上传后执行图片安全检查。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [source]: The in-memory bytes or local file to upload.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [mediaType]: The upload media type: image or video.
+  /// - [checksSafety]: Whether to check image safety after uploading.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回上传后对象的访问地址、对象键和可用的 ETag。
+  /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> _upload({
     required StorageUploadSource source,
     required String fileName,
@@ -239,9 +248,9 @@ final class StorageService implements StorageServicing {
       final byteCount = _sourceByteCount(source);
       final resolution = XmaxLogger.isEnabled(XmaxLoggerOption.business)
           ? await const MediaFileMetadataManager().readResolution(
-              source,
-              isVideo: mediaType == _StorageMediaType.video,
-            )
+            source,
+            isVideo: mediaType == _StorageMediaType.video,
+          )
           : '--';
 
       XmaxLogger.info(
@@ -255,7 +264,10 @@ final class StorageService implements StorageServicing {
       );
 
       final temporary = await _fetchStorageConfiguration();
-      final objectKey = _makeObjectKey(temporary.prefix, safeName);
+      final objectKey = _makeObjectKey(
+        temporary.prefix,
+        safeName,
+      );
 
       final stored = await _storageManager.upload(
         source: source,
@@ -268,7 +280,7 @@ final class StorageService implements StorageServicing {
       final StoredFile result;
 
       if (checksSafety) {
-        // 安全检测接口接收图片地址，因此先上传到 COS，再执行检测。
+        // The safety endpoint requires an image URL; upload to COS before requesting the check.
         final checkedURL = await _checkImage(stored.url);
 
         result = StoredFile(
@@ -290,7 +302,10 @@ final class StorageService implements StorageServicing {
 
       return result;
     } on XmaxError catch (error) {
-      _logUploadFailure(error, startedAt);
+      _logUploadFailure(
+        error,
+        startedAt,
+      );
       rethrow;
     } catch (error) {
       if (ErrorNormalizer.isCancellation(error)) {
@@ -299,7 +314,10 @@ final class StorageService implements StorageServicing {
           message: 'Storage upload was cancelled',
         );
 
-        _logUploadFailure(cancelledError, startedAt);
+        _logUploadFailure(
+          cancelledError,
+          startedAt,
+        );
         throw cancelledError;
       }
 
@@ -308,16 +326,21 @@ final class StorageService implements StorageServicing {
         message: ErrorMessageFormatter.format(error),
       );
 
-      _logUploadFailure(uploadError, startedAt);
+      _logUploadFailure(
+        uploadError,
+        startedAt,
+      );
       throw uploadError;
     }
   }
 
-  /// 读取上传来源的实际字节数。
+  /// Reads the upload source's actual byte count.
   ///
-  /// - [source]：内存字节或本地文件来源，不读取完整文件内容。
+  /// Parameters:
+  /// - [source]: The in-memory bytes or local file source; the complete file is not read into
+  ///   memory.
   ///
-  /// 返回上传来源的字节数，本地文件不存在时抛出文件访问错误。
+  /// Returns the source byte count; throws a file access error if a local file does not exist.
   static int _sourceByteCount(
     StorageUploadSource source,
   ) => switch (source) {
@@ -327,17 +350,20 @@ final class StorageService implements StorageServicing {
     ).lengthSync(),
   };
 
-  /// 按便于阅读的容量单位格式化字节数。
+  /// Formats a byte count using readable size units.
   ///
-  /// - [byteCount]：文件大小，单位为字节。
+  /// Parameters:
+  /// - [byteCount]: The file size, in bytes.
   ///
-  /// 返回使用 B、KB、MB 或 GB 表示的文件容量。
+  /// Returns the file size in B, KB, MB, or GB.
   static String _formatByteCount(
     int byteCount,
   ) {
     final count = byteCount.toDouble();
 
-    if (byteCount < 1024) return '$byteCount B';
+    if (byteCount < 1024) {
+      return '$byteCount B';
+    }
 
     if (byteCount < 1024 * 1024) {
       return '${(count / 1024).toStringAsFixed(1)} KB';
@@ -350,25 +376,29 @@ final class StorageService implements StorageServicing {
     return '${(count / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
-  /// 将操作开始时间到现在的耗时格式化为毫秒或秒。
+  /// Formats the elapsed operation time in milliseconds or seconds.
   ///
-  /// - [startedAt]：当前操作的开始时间，用于计算耗时。
+  /// Parameters:
+  /// - [startedAt]: The operation start time used to calculate elapsed time.
   ///
-  /// 返回从开始时刻到当前时间的耗时文本；不足一秒使用 ms，否则使用 s。
+  /// Returns elapsed time using ms below one second, or s otherwise.
   static String _formatDuration(
     DateTime startedAt,
   ) {
     final milliseconds = DateTime.now().difference(startedAt).inMilliseconds;
 
-    if (milliseconds < 1000) return '$milliseconds ms';
+    if (milliseconds < 1000) {
+      return '$milliseconds ms';
+    }
 
     return '${(milliseconds / 1000).toStringAsFixed(2)} s';
   }
 
-  /// 记录上传失败原因和已用时间。
+  /// Logs an upload failure reason and elapsed time.
   ///
-  /// - [error]：本次操作的错误。
-  /// - [startedAt]：当前操作的开始时间，用于计算耗时。
+  /// Parameters:
+  /// - [error]: The operation error.
+  /// - [startedAt]: The operation start time used to calculate elapsed time.
   static void _logUploadFailure(
     XmaxError error,
     DateTime startedAt,
@@ -383,19 +413,23 @@ final class StorageService implements StorageServicing {
     );
   }
 
-  /// 校验下载地址并将文件写入本地目标位置。
+  /// Validates the download URL and writes the file to the local destination.
   ///
-  /// - [remoteURL]：待下载文件的 HTTP 或 HTTPS URL。
-  /// - [destinationURL]：下载目标的本地 file URI。
-  /// - [progress]：传输进度回调，按已完成和总字节数通知。
+  /// Parameters:
+  /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
+  /// - [destinationURL]: The destination file URI.
+  /// - [progress]: The progress callback receiving completed and total bytes.
   ///
-  /// 返回已下载文件的本地 URI 和实际字节数。
+  /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> _download({
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
   }) async {
-    _validateDownload(remoteURL, destinationURL);
+    _validateDownload(
+      remoteURL,
+      destinationURL,
+    );
 
     return _storageManager.download(
       remoteURL: remoteURL,
@@ -404,13 +438,15 @@ final class StorageService implements StorageServicing {
     );
   }
 
-  /// 获取本次上传的存储区域、对象前缀和临时凭证。
+  /// Obtains the region, object prefix, and temporary credentials for this upload.
   ///
-  /// 返回云端授权的对象前缀及临时存储配置。
+  /// Returns the authorized object prefix and temporary storage configuration.
   Future<_TemporaryStorageConfiguration> _fetchStorageConfiguration() async {
     final payload = await _apiService.get<Map<String, dynamic>>(
       '/cos/sts',
-      (json) => Map<String, dynamic>.from(json! as Map),
+      (
+        json,
+      ) => Map<String, dynamic>.from(json! as Map),
     );
 
     const message = 'Invalid storage credential payload';
@@ -425,7 +461,10 @@ final class StorageService implements StorageServicing {
         region == null ||
         endpoint == null ||
         prefix == null) {
-      throw const XmaxError(code: XmaxErrorCode.apiError, message: message);
+      throw const XmaxError(
+        code: XmaxErrorCode.apiError,
+        message: message,
+      );
     }
 
     final accessKeyID = _requiredString(credentials['accessKeyId']);
@@ -435,7 +474,10 @@ final class StorageService implements StorageServicing {
     if (accessKeyID == null ||
         secretAccessKey == null ||
         sessionToken == null) {
-      throw const XmaxError(code: XmaxErrorCode.apiError, message: message);
+      throw const XmaxError(
+        code: XmaxErrorCode.apiError,
+        message: message,
+      );
     }
 
     return _TemporaryStorageConfiguration(
@@ -453,17 +495,20 @@ final class StorageService implements StorageServicing {
     );
   }
 
-  /// 请求图片内容安全检查，返回审核通过的访问地址。
+  /// Requests an image safety check and returns the approved URL.
   ///
-  /// - [url]：上传对象的访问地址。
+  /// Parameters:
+  /// - [url]: The uploaded object's access URL.
   ///
-  /// 返回经过校验的访问地址或文件 URI。
+  /// Returns the validated access URL or file URI.
   Future<Uri> _checkImage(
     Uri url,
   ) async {
     final payload = await _apiService.post<Map<String, dynamic>>(
       '/cos/image/check',
-      (json) => Map<String, dynamic>.from(json! as Map),
+      (
+        json,
+      ) => Map<String, dynamic>.from(json! as Map),
       body: <String, Object?>{'url': url.toString()},
     );
 
@@ -471,7 +516,10 @@ final class StorageService implements StorageServicing {
     final safe = payload['safe'];
 
     if (safe is! bool) {
-      throw const XmaxError(code: XmaxErrorCode.apiError, message: message);
+      throw const XmaxError(
+        code: XmaxErrorCode.apiError,
+        message: message,
+      );
     }
 
     if (!safe) {
@@ -485,20 +533,25 @@ final class StorageService implements StorageServicing {
     final checkedURL = value == null ? null : Uri.tryParse(value);
 
     if (checkedURL == null || !_isHTTPURL(checkedURL)) {
-      throw const XmaxError(code: XmaxErrorCode.apiError, message: message);
+      throw const XmaxError(
+        code: XmaxErrorCode.apiError,
+        message: message,
+      );
     }
 
     return checkedURL;
   }
 
-  /// 校验上传来源、对象信息和凭证是否满足传输要求。
+  /// Validates the upload source, object information, and credentials for transfer.
   ///
-  /// - [source]：待上传的内存字节或本地文件来源。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [contentType]：对象的 MIME 类型，例如 image/jpeg 或 video/mp4。
-  /// - [mediaType]：上传文件的媒体类型：图片或视频。
+  /// Parameters:
+  /// - [source]: The in-memory bytes or local file to upload.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
+  /// - [mediaType]: The upload media type: image or video.
   ///
-  /// 返回清理后的文件名；文件来源或 MIME 类型不合法时抛出配置错误。
+  /// Returns the sanitized filename; throws a configuration error for an invalid source or MIME
+  /// type.
   String _validateUpload({
     required StorageUploadSource source,
     required String fileName,
@@ -547,10 +600,11 @@ final class StorageService implements StorageServicing {
     return safeName;
   }
 
-  /// 校验远程下载地址和本地目标文件 URI。
+  /// Validates the remote download URL and local destination file URI.
   ///
-  /// - [remoteURL]：待下载文件的 HTTP 或 HTTPS URL。
-  /// - [destinationURL]：下载目标的本地 file URI。
+  /// Parameters:
+  /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
+  /// - [destinationURL]: The destination file URI.
   void _validateDownload(
     Uri remoteURL,
     Uri destinationURL,
@@ -570,14 +624,17 @@ final class StorageService implements StorageServicing {
     }
   }
 
-  /// 根据受支持的图片扩展名推断 MIME 类型。
+  /// Infers the MIME type from a supported image extension.
   ///
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
+  /// Parameters:
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   ///
-  /// 返回受支持图片格式的 MIME 类型；无法推断时抛出配置错误。
+  /// Returns a supported image MIME type; throws a configuration error if it cannot be inferred.
   String _inferImageContentType(
     String fileName,
-  ) => _inferContentType(fileName, const <String, String>{
+  ) => _inferContentType(
+    fileName,
+    const <String, String>{
     'jpg': 'image/jpeg',
     'jpeg': 'image/jpeg',
     'jpe': 'image/jpeg',
@@ -591,16 +648,21 @@ final class StorageService implements StorageServicing {
     'tif': 'image/tiff',
     'tiff': 'image/tiff',
     'avif': 'image/avif',
-  }, 'image');
+  },
+    'image',
+  );
 
-  /// 根据受支持的视频扩展名推断 MIME 类型。
+  /// Infers the MIME type from a supported video extension.
   ///
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
+  /// Parameters:
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   ///
-  /// 返回受支持视频格式的 MIME 类型；无法推断时抛出配置错误。
+  /// Returns a supported video MIME type; throws a configuration error if it cannot be inferred.
   String _inferVideoContentType(
     String fileName,
-  ) => _inferContentType(fileName, const <String, String>{
+  ) => _inferContentType(
+    fileName,
+    const <String, String>{
     'mp4': 'video/mp4',
     'mov': 'video/quicktime',
     'm4v': 'video/x-m4v',
@@ -610,15 +672,18 @@ final class StorageService implements StorageServicing {
     '3gp': 'video/3gpp',
     '3g2': 'video/3gpp2',
     'ts': 'video/mp2t',
-  }, 'video');
+  },
+    'video',
+  );
 
-  /// 根据媒体类别和扩展名映射推断 MIME 类型；不支持时抛出配置错误。
+  /// Infers a MIME type using the media category and extension map; throws if unsupported.
   ///
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
-  /// - [types]：扩展名与 MIME 类型的映射。
-  /// - [mediaType]：上传文件的媒体类型：图片或视频。
+  /// Parameters:
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
+  /// - [types]: The mapping of file extensions to MIME types.
+  /// - [mediaType]: The upload media type: image or video.
   ///
-  /// 返回扩展名映射的 MIME 类型；未命中时抛出配置错误。
+  /// Returns the MIME type mapped to the extension; throws a configuration error if unmapped.
   String _inferContentType(
     String fileName,
     Map<String, String> types,
@@ -638,30 +703,43 @@ final class StorageService implements StorageServicing {
     return contentType;
   }
 
-  /// 清理文件名中的非法字符，避免将本地目录写入对象键。
+  /// Sanitizes filenames to prevent local directory paths from entering object keys.
   ///
-  /// - [value]：需要去除不安全字符和首尾标点的原始文件名。
+  /// Parameters:
+  /// - [value]: The raw filename to strip of unsafe characters and leading or trailing punctuation.
   ///
-  /// 返回仅保留安全字符并去除首尾标点的文件名，结果可能为空。
+  /// Returns a filename containing safe characters without surrounding punctuation; may be empty.
   String _sanitizeFileName(
     String value,
   ) {
     var result = value
         .trim()
-        .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '_')
-        .replaceAll(RegExp('_+'), '_');
+        .replaceAll(
+          RegExp(r'[^A-Za-z0-9._-]+'),
+          '_',
+        )
+        .replaceAll(
+          RegExp('_+'),
+          '_',
+        );
 
-    result = result.replaceAll(RegExp(r'^[._-]+|[._-]+$'), '');
+    result = result.replaceAll(
+      RegExp(r'^[._-]+|[._-]+$'),
+      '',
+    );
 
     return result;
   }
 
-  /// 组合授权前缀、毫秒时间戳、随机标识和安全文件名，生成存储对象键。
+  /// Builds an object key from the authorized prefix, millisecond timestamp, random ID, and safe
+  /// filename.
   ///
-  /// - [prefix]：云端允许写入的对象键前缀。
-  /// - [fileName]：包含扩展名的文件名；内存上传时必须提供。
+  /// Parameters:
+  /// - [prefix]: The object key prefix authorized for writing.
+  /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   ///
-  /// 返回包含授权前缀、毫秒时间戳和随机标识的对象键。
+  /// Returns an object key containing the authorized prefix, millisecond timestamp, and random
+  /// identifier.
   String _makeObjectKey(
     String prefix,
     String fileName,
@@ -669,11 +747,12 @@ final class StorageService implements StorageServicing {
       '$prefix${_dateGenerator().millisecondsSinceEpoch}_'
       '${_identifierGenerator().toLowerCase()}_$fileName';
 
-  /// 从本地文件 URI 提取文件名。
+  /// Extracts the filename from a local file URI.
   ///
-  /// - [uri]：待校验或读取的 URI。
+  /// Parameters:
+  /// - [uri]: The URI to validate or read.
   ///
-  /// 返回 URI 的最后一段路径；没有路径段时为空字符串。
+  /// Returns the last URI path segment, or an empty string if no segment exists.
   static String _fileName(
     Uri uri,
   ) {
@@ -684,18 +763,21 @@ final class StorageService implements StorageServicing {
     return uri.pathSegments.last;
   }
 
-  /// 去除字符串响应字段两端空白；非字符串字段返回 null。
+  /// Trims a string response field; returns null for non-string values.
   ///
-  /// - [value]：需要清除首尾空白的响应字段；非字符串返回 null。
+  /// Parameters:
+  /// - [value]: The response field to trim; non-string values produce null.
   ///
-  /// 返回去除两端空白的字符串，包括空字符串；输入不是字符串时为 null。
+  /// Returns the trimmed string, including an empty string, or null if the input is not a string.
   static String? _normalizedString(
     Object? value,
   ) => value is String ? value.trim() : null;
 
-  /// 读取非空字符串字段。
+  /// Reads a nonempty string field.
   ///
-  /// - [value]：响应字段；不是字符串或去除首尾空白后为空时返回 null。
+  /// Parameters:
+  /// - [value]: The response field; null is returned for non-string values or strings that are
+  ///   blank after trimming.
   static String? _requiredString(
     Object? value,
   ) {
@@ -704,28 +786,39 @@ final class StorageService implements StorageServicing {
     return normalized == null || normalized.isEmpty ? null : normalized;
   }
 
-  /// 检查 URI 是否具有有效的 HTTP 或 HTTPS 服务地址。
+  /// Checks whether a URI is a valid HTTP or HTTPS endpoint.
   ///
-  /// - [uri]：待校验或读取的 URI。
+  /// Parameters:
+  /// - [uri]: The URI to validate or read.
   ///
-  /// 返回 URI 是否使用 HTTP 或 HTTPS 且包含非空主机名。
+  /// Returns whether the URI uses HTTP or HTTPS and has a nonempty host.
   static bool _isHTTPURL(
     Uri uri,
   ) =>
       (uri.isScheme('https') || uri.isScheme('http')) &&
       uri.host.trim().isNotEmpty;
 
-  /// 生成用于存储对象键的随机 UUID。
+  /// Generates a random UUID for a storage object key.
   static String _makeIdentifier() {
     final random = Random.secure();
-    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    final bytes = List<int>.generate(
+      16,
+      (
+        _,
+      ) => random.nextInt(256),
+    );
 
-    // 按 RFC 4122 设置版本位和变体位，再生成 UUID 文本。
+    // Set RFC 4122 version and variant bits before encoding the UUID.
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
 
     final value = bytes
-        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .map((
+          byte,
+        ) => byte.toRadixString(16).padLeft(
+          2,
+          '0',
+        ))
         .join();
 
     return '${value.substring(0, 8)}-${value.substring(8, 12)}-'
@@ -734,18 +827,18 @@ final class StorageService implements StorageServicing {
   }
 }
 
-/// 云端签发的对象键前缀和临时存储配置。
+/// A server-issued object key prefix and temporary storage configuration.
 final class _TemporaryStorageConfiguration {
 
-  /// 保存临时凭证及允许写入的对象键前缀。
+  /// Stores temporary credentials and the authorized object key prefix.
   const _TemporaryStorageConfiguration({
     required this.prefix,
     required this.configuration,
   });
 
-  /// 云端允许写入的对象键前缀。
+  /// The object key prefix authorized for writing.
   final String prefix;
 
-  /// 本次上传使用的区域、存储桶和临时访问凭证。
+  /// The region, bucket, and temporary credentials used for this upload.
   final StorageConfiguration configuration;
 }

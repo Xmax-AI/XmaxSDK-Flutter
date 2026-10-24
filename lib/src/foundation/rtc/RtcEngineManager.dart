@@ -14,59 +14,60 @@ import '../errors/XmaxError.dart';
 import 'RtcPlatform.dart';
 import 'AgoraRtcPlatform.dart';
 
-/// RTC 引擎的独占使用凭证（租约），释放引擎时用于确认资源归属。
+/// An exclusive RTC engine lease used to verify ownership during release.
 final class RtcEngineLease {
 
-  /// 创建 RTC 引擎独占租约。
+  /// Creates an exclusive RTC engine lease.
   RtcEngineLease(
     this.engine,
   );
 
-  /// 当前使用的原生 RTC 引擎。
+  /// The native RTC engine in use.
   final RtcPlatform engine;
 
-  /// 识别引擎使用者的唯一标识。
+  /// The unique identifier of the engine owner.
   final Object id = Object();
 }
 
-/// 按申请顺序分配 RTC 引擎，同一时刻只允许一个使用者持有引擎。
+/// Allocates exclusive RTC engine leases in request order.
 final class RtcEngineManager {
 
-  /// 创建使用原生 RTC 引擎工厂的独占分配器。
+  /// Creates an allocator using the native RTC engine factory.
   RtcEngineManager._() : _createEngine = _createNativeEngine;
 
-  /// 使用指定引擎工厂创建独占分配器。
+  /// Creates an allocator with an injected engine factory.
   ///
-  /// - [createEngine]：每次分配租约时创建并初始化平台资源的函数。
+  /// Parameters:
+  /// - [createEngine]: The factory that creates initialized platform resources for each lease.
   RtcEngineManager.internal({
     required Future<RtcPlatform> Function() createEngine,
   }) : _createEngine = createEngine;
 
-  /// 进程共享的独占 RTC 引擎分配器。
+  /// The process-wide exclusive RTC engine allocator.
   static final shared = RtcEngineManager._();
 
-  /// RTC 引擎与服务端凭证约定的应用标识。
+  /// The RTC application identifier expected by server credentials.
   static const defaultAppID = '5588dfe2e7874bd08ea28f4968ec2d40';
 
-  /// 创建原生 RTC 引擎资源的函数。
+  /// The factory for native RTC engine resources.
   final Future<RtcPlatform> Function() _createEngine;
 
-  /// 创建使用约定应用标识的原生 RTC 平台资源。
+  /// Creates native RTC resources using the configured application identifier.
   ///
-  /// 返回已初始化且本地采集尚未开启的 RTC 平台资源。
+  /// Returns initialized platform resources with local capture disabled.
   static Future<RtcPlatform> _createNativeEngine() =>
       AgoraRtcPlatform.create(defaultAppID);
 
-  /// 当前占用引擎的独占租约。
+  /// The current exclusive engine lease.
   RtcEngineLease? _activeLease;
 
-  /// 按申请顺序排队的独占引擎租约请求。
+  /// The pending lease requests in arrival order.
   final List<Completer<RtcEngineLease>> _requests =
       <Completer<RtcEngineLease>>[];
 
-  /// 按请求顺序获取 RTC 引擎的独占租约。
+  /// Acquires an exclusive RTC engine lease in request order.
   ///
-  /// 返回当前调用持有的独占 RTC 引擎租约。
+  /// Returns the exclusive engine lease owned by this caller.
   Future<RtcEngineLease> acquire() async {
     final completer = Completer<RtcEngineLease>();
 
@@ -76,28 +77,32 @@ final class RtcEngineManager {
     return completer.future;
   }
 
-  /// 仅释放匹配的当前引擎租约，并继续处理等待中的使用者。
+  /// Releases only the matching active lease and serves waiting owners.
   ///
-  /// - [lease]：需要释放的独占 RTC 引擎租约。
+  /// Parameters:
+  /// - [lease]: The exclusive RTC engine lease to release.
   Future<void> release(
     RtcEngineLease lease,
   ) async {
-    if (!identical(_activeLease?.id, lease.id)) {
+    if (!identical(
+      _activeLease?.id,
+      lease.id,
+    )) {
       return;
     }
 
     try {
       await lease.engine.destroy();
     } finally {
-      // 即使原生引擎释放失败，也要清除占用状态，让排队中的其他管理器继续申请引擎。
+      // Clears ownership even if native release fails so waiting managers can acquire the engine.
       _activeLease = null;
       await _fulfillNext();
     }
   }
 
-  /// 创建新的原生引擎租约；初始化失败时返回 RTC 错误。
+  /// Creates an engine lease, rejecting initialization failures as RTC errors.
   ///
-  /// 返回当前调用持有的独占 RTC 引擎租约。
+  /// Returns the exclusive engine lease owned by this caller.
   Future<RtcEngineLease> _createLease() async {
     try {
       final engine = await _createEngine();
@@ -111,9 +116,11 @@ final class RtcEngineManager {
     }
   }
 
-  /// 在没有活动租约时依次满足排队的引擎使用请求。
+  /// Serves queued requests when no active lease exists.
   Future<void> _fulfillNext() async {
-    if (_creating) return;
+    if (_creating) {
+      return;
+    }
 
     _creating = true;
 
@@ -127,7 +134,10 @@ final class RtcEngineManager {
           _activeLease = lease;
           request.complete(lease);
         } catch (error, stackTrace) {
-          request.completeError(error, stackTrace);
+          request.completeError(
+            error,
+            stackTrace,
+          );
         }
       }
     } finally {
@@ -135,6 +145,6 @@ final class RtcEngineManager {
     }
   }
 
-  /// 是否正在串行创建新的 RTC 引擎。
+  /// Whether serialized RTC engine creation is active.
   bool _creating = false;
 }

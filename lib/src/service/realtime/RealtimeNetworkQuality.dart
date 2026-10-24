@@ -8,72 +8,79 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// RTC 上行或下行链路的网络质量等级。
+/// A network quality measurement for an uplink or downlink RTC connection.
 enum RealtimeNetworkQualityLevel {
 
-  /// 尚未取得有效的网络质量。
+  /// No valid network quality measurement is available.
   unknown('Unknown'),
 
-  /// 网络质量优秀。
+  /// Excellent network quality.
   excellent('Excellent'),
 
-  /// 网络质量良好。
+  /// Good network quality.
   good('Good'),
 
-  /// 网络质量一般。
+  /// Fair network quality.
   poor('Poor'),
 
-  /// 网络质量差。
+  /// Poor network quality.
   bad('Bad'),
 
-  /// 网络质量很差。
+  /// Very poor network quality.
   veryBad('VeryBad'),
 
-  /// 网络连接已断开。
+  /// The network connection is down.
   down('Down');
 
-  /// 定义网络质量等级标识。
+  /// Defines a network quality identifier.
   const RealtimeNetworkQualityLevel(
     this.value,
   );
 
-  /// 序列化时使用的值。
+  /// The serialized value.
   final String value;
 }
 
-/// 同一次 RTC 采样的上行与下行网络质量。
+/// The uplink and downlink quality from one RTC sample.
 final class RealtimeNetworkQuality {
 
-  /// 创建同一次采样的上下行网络质量记录。
+  /// Creates a network quality sample.
   const RealtimeNetworkQuality({
     required this.uplink,
     required this.downlink,
   });
 
-  /// 本地视频上行链路的网络质量。
+  /// The local video uplink network quality.
   final RealtimeNetworkQualityLevel uplink;
 
-  /// 本地视频下行链路的网络质量。
+  /// The local video downlink network quality.
   final RealtimeNetworkQualityLevel downlink;
 
-  /// 与 [other] 比较类型及 [uplink]、[downlink] 的值。
+  /// Whether [other] has the same value.
   @override
   bool operator ==(
     Object other,
   ) =>
-      identical(this, other) ||
+      identical(
+        this,
+        other,
+      ) ||
       other is RealtimeNetworkQuality &&
           uplink == other.uplink &&
           downlink == other.downlink;
 
-  /// 与相等判断一致的哈希值。
+  /// The hash code consistent with value equality.
   @override
-  int get hashCode => Object.hash(uplink, downlink);
+  int get hashCode => Object.hash(
+    uplink,
+    downlink,
+  );
 }
 
-/// 接收同一次采样中上下行网络质量的回调。
+/// A listener receiving uplink and downlink quality from one sample.
 ///
-/// - [quality]：同一次采样得到的上下行网络质量。
+/// Parameters:
+/// - [quality]: The uplink and downlink measurements from the same sample.
 typedef RealtimeNetworkQualityListener =
     void Function(
       RealtimeNetworkQuality quality,

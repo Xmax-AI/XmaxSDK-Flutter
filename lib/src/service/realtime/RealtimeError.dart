@@ -10,9 +10,10 @@
 
 import '../../foundation/errors/XmaxError.dart';
 
-/// 接收统一 SDK 运行错误的内部回调。
+/// An internal callback receiving normalized runtime failures.
 ///
-/// - [error]：本次操作的错误。
+/// Parameters:
+/// - [error]: The operation error.
 typedef RealtimeErrorListener =
     void Function(
       XmaxError error,

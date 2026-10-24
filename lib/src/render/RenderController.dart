@@ -20,30 +20,30 @@ import 'trajectory/TrajectoryRegistry.dart';
 import 'video/VideoRenderBinding.dart';
 import 'video/VideoRenderRegistry.dart';
 
-/// 管理远端轨道绑定、首帧就绪等待和移除前的视频隐藏。
+/// Manages remote track bindings, first-frame readiness, and video hiding before removal.
 final class RenderController implements RenderControlling {
 
-  /// 创建远端视频渲染控制器。
+  /// Creates a remote video rendering controller.
   RenderController({
     this.remoteFrameReadyTimeout = const Duration(seconds: 10),
   });
 
-  /// 等待远端首帧解码就绪的最长时限，默认 10 秒。
+  /// The maximum wait for the first decoded remote frame; defaults to 10 seconds.
   final Duration remoteFrameReadyTimeout;
 
-  /// 当前远端生成结果的视频轨道。
+  /// The video track for the current remote generation result.
   RealtimeVideoTrack? _remoteTrack;
 
-  /// 当前生成结果的远端媒体流。
+  /// The remote media stream for this generation result.
   RemoteStream? _remoteStream;
 
-  /// 当前结果流是否已解码有效首帧。
+  /// Whether a valid first frame has been decoded for the current result stream.
   bool _remoteFrameReady = false;
 
-  /// 等待当前结果流完成首帧解码的完成器集合。
+  /// The completers waiting for the current result stream's first decoded frame.
   final Set<Completer<void>> _frameWaiters = {};
 
-  /// 等待已挂载视图隐藏远端视频，再释放对应渲染资源。
+  /// Waits for mounted views to conceal remote video before releasing its rendering resources.
   @override
   Future<void> prepareForRemoteRemoval() async {
     final track = _remoteTrack;
@@ -53,9 +53,9 @@ final class RenderController implements RenderControlling {
     }
   }
 
-  /// 为远端轨道注册渲染句柄和交互采样入口。
+  /// Registers a rendering handle and interaction sample handler for the remote track.
   ///
-  /// 详细说明见 [RenderControlling.registerRemoteTrack]。
+  /// See [RenderControlling.registerRemoteTrack] for the usage contract.
   @override
   void registerRemoteTrack(
     RealtimeVideoTrack track, {
@@ -66,16 +66,20 @@ final class RenderController implements RenderControlling {
   }) {
     _resetFrameReadiness();
     _remoteTrack = track;
-    VideoRenderRegistry.register(track, null);
+    VideoRenderRegistry.register(
+      track,
+      null,
+    );
     TrajectoryRegistry.register(
       track,
       TrajectoryBinding(interactionListener: interactionListener),
     );
   }
 
-  /// 更新当前轨道的结果流绑定。
+  /// Updates the result-stream binding for the current track.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
   @override
   void setRemoteStream(
     RemoteStream? stream,
@@ -93,9 +97,10 @@ final class RenderController implements RenderControlling {
     }
   }
 
-  /// 记录结果流已完成首帧解码，不要求视图已经挂载。
+  /// Records first-frame decoding without requiring the view to be mounted.
   ///
-  /// - [stream]：完成首帧解码的远端流。
+  /// Parameters:
+  /// - [stream]: The remote stream whose first frame has been decoded.
   void markRemoteFrameReady(
     RemoteStream stream,
   ) {
@@ -111,13 +116,15 @@ final class RenderController implements RenderControlling {
 
     _remoteFrameReady = true;
     for (final waiter in _frameWaiters) {
-      if (!waiter.isCompleted) waiter.complete();
+      if (!waiter.isCompleted) {
+        waiter.complete();
+      }
     }
 
     _frameWaiters.clear();
   }
 
-  /// 等待当前结果流首帧解码就绪，不要求预先挂载远端视图。
+  /// Waits for the first decoded result frame without requiring a mounted remote view.
   @override
   Future<void> waitUntilRemoteFrameReady() async {
     if (_remoteTrack == null || _remoteStream == null) {
@@ -127,7 +134,9 @@ final class RenderController implements RenderControlling {
       );
     }
 
-    if (_remoteFrameReady) return;
+    if (_remoteFrameReady) {
+      return;
+    }
 
     final waiter = Completer<void>();
 
@@ -148,7 +157,7 @@ final class RenderController implements RenderControlling {
     }
   }
 
-  /// 结束旧结果流的就绪等待并清除首帧标记。
+  /// Ends readiness waits for the old result stream and clears first-frame flags.
   void _resetFrameReadiness() {
     _remoteStream = null;
     _remoteFrameReady = false;
@@ -166,15 +175,18 @@ final class RenderController implements RenderControlling {
     _frameWaiters.clear();
   }
 
-  /// 记录当前结果流已渲染首帧，以便视图开始显示远端画面。
+  /// Records the first rendered result frame so the view can display remote video.
   ///
-  /// - [stream]：待处理的远端 RTC 流。
+  /// Parameters:
+  /// - [stream]: The remote RTC stream to process.
   void markRemoteFrameRendered(
     RemoteStream stream,
   ) {
     final track = _remoteTrack;
 
-    if (track == null) return;
+    if (track == null) {
+      return;
+    }
 
     final handle = VideoRenderRegistry.handleFor(track);
     final binding = handle?.value;
@@ -189,13 +201,17 @@ final class RenderController implements RenderControlling {
 
     VideoRenderRegistry.register(
       track,
-      RemoteVideoRenderBinding(stream, firstFrameRendered: true),
+      RemoteVideoRenderBinding(
+        stream,
+        firstFrameRendered: true,
+      ),
     );
   }
 
-  /// 解除远端轨道的渲染、交互和首帧等待。
+  /// Removes remote track rendering, interaction bindings, and first-frame waits.
   ///
-  /// - [track]：目标视频轨道。
+  /// Parameters:
+  /// - [track]: The target video track.
   @override
   void resetRemoteTrack(
     RealtimeVideoTrack? track,
