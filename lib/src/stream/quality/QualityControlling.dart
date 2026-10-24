@@ -8,11 +8,11 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'QualityConfiguration.dart';
+import 'RealtimeQualityLevel.dart';
 
 /// An interface for link policy preparation, level proposals, result commits, and quality
 /// notifications.

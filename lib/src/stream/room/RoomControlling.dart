@@ -12,7 +12,7 @@ import 'dart:ui';
 
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimePoint.dart';
-import '../../service/realtime/RealtimeSession.dart';
+import '../../service/realtime/RealtimeSessionConnection.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 
 /// An interface for room lifecycle and signaling.

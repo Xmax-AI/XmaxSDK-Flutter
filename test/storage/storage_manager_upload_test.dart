@@ -6,7 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:tencentcloud_cos_sdk_plugin_nobeacon/cos.dart';
 import 'package:tencentcloud_cos_sdk_plugin_nobeacon/pigeon.dart';
 import 'package:xmax_sdk/src/foundation/storage/StorageManager.dart';
-import 'package:xmax_sdk/src/foundation/storage/StorageModels.dart';
+import 'package:xmax_sdk/src/foundation/storage/StorageCredential.dart';
+import 'package:xmax_sdk/src/foundation/storage/StorageConfiguration.dart';
+import 'package:xmax_sdk/src/foundation/storage/StorageUploadSource.dart';
+import 'package:xmax_sdk/src/foundation/storage/StoredFile.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

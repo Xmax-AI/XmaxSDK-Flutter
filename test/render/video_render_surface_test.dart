@@ -1,7 +1,7 @@
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';

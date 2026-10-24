@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/render/RenderController.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderRegistry.dart';

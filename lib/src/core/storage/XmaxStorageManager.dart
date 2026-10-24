@@ -11,7 +11,9 @@
 import 'dart:typed_data';
 
 import '../../foundation/errors/XmaxError.dart';
-import '../../foundation/storage/StorageModels.dart';
+import '../../foundation/storage/DownloadedFile.dart';
+import '../../foundation/storage/StorageProgressListener.dart';
+import '../../foundation/storage/StoredFile.dart';
 import '../../service/storage/StorageServicing.dart';
 import 'XmaxDownloadedFile.dart';
 import 'XmaxStorageManaging.dart';

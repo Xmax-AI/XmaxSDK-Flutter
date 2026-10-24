@@ -8,7 +8,11 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import 'StorageModels.dart';
+import 'DownloadedFile.dart';
+import 'StorageConfiguration.dart';
+import 'StorageProgressListener.dart';
+import 'StorageUploadSource.dart';
+import 'StoredFile.dart';
 
 /// A transport interface for object uploads and HTTP file downloads.
 abstract interface class StorageManaging {

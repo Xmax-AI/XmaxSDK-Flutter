@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import 'RealtimeModel.dart';
+import '../../service/realtime/RealtimeModel.dart';
 
 /// The model configuration for a realtime manager.
 final class RealtimeConfiguration {

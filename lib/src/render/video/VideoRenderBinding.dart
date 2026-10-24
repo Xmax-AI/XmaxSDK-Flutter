@@ -8,8 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../foundation/rtc/RtcModels.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+
+import '../../foundation/rtc/RemoteStream.dart';
 
 /// An internal rendering binding for local preview or remote result video.
 sealed class VideoRenderBinding {

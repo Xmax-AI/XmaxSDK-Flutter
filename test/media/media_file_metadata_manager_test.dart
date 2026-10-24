@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/media/MediaFileMetadataManager.dart';
-import 'package:xmax_sdk/src/foundation/storage/StorageModels.dart';
+import 'package:xmax_sdk/src/foundation/storage/StorageUploadSource.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

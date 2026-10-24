@@ -2,7 +2,9 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/core/storage/XmaxStorageManager.dart';
-import 'package:xmax_sdk/src/foundation/storage/StorageModels.dart';
+import 'package:xmax_sdk/src/foundation/storage/StorageProgressListener.dart';
+import 'package:xmax_sdk/src/foundation/storage/StoredFile.dart';
+import 'package:xmax_sdk/src/foundation/storage/DownloadedFile.dart';
 import 'package:xmax_sdk/src/service/storage/StorageServicing.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 

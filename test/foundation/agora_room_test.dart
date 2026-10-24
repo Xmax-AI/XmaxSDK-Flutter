@@ -4,7 +4,8 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcRoom.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {

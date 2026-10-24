@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xmax_sdk/src/core/realtime/RealtimeTiming.dart';
+import 'package:xmax_sdk/src/service/realtime/RealtimeTiming.dart';
 import 'package:xmax_sdk/src/core/XmaxEnvironment.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLogger.dart';

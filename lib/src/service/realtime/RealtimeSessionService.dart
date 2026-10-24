@@ -11,11 +11,12 @@
 import 'dart:async';
 import 'dart:convert';
 
-import '../../core/realtime/RealtimeModel.dart';
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/rtc/RtcEngineManager.dart';
 import '../network/ApiServicing.dart';
+import 'RealtimeModel.dart';
 import 'RealtimeSession.dart';
+import 'RealtimeSessionConnection.dart';
 import 'RealtimeSessionServicing.dart';
 
 /// Creates and closes server sessions while maintaining heartbeats and rejecting stale responses.

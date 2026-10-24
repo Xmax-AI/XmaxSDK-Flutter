@@ -10,8 +10,9 @@
 
 import 'dart:math' as math;
 import 'dart:ui';
-import '../../core/realtime/RealtimeQualityLevel.dart';
+
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import 'RealtimeQualityLevel.dart';
 
 /// Resolves transport levels from a fixed baseline without changing capture or generation formats.
 abstract final class QualityVideoFormat {

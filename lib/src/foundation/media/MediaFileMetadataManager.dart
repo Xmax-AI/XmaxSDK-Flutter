@@ -10,7 +10,7 @@
 
 import 'package:flutter/services.dart';
 
-import '../storage/StorageModels.dart';
+import '../storage/StorageUploadSource.dart';
 
 /// Reads media pixel dimensions, returning a placeholder on failure without blocking uploads.
 final class MediaFileMetadataManager {

@@ -8,9 +8,10 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../foundation/media/camera/CameraPosition.dart';
+import '../media/camera/CameraPosition.dart';
+import 'RoomJoinConfiguration.dart';
 import 'RtcEventListener.dart';
-import 'RtcModels.dart';
+import 'VideoEncodingConfiguration.dart';
 
 /// An interface for RTC capture, encoding, rooms, publication, subscriptions, and volume.
 abstract interface class RtcManaging {

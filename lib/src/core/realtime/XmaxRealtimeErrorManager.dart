@@ -1,5 +1,5 @@
 //
-//  RealtimeErrorHandler.dart
+//  XmaxRealtimeErrorManager.dart
 //  XmaxSDK
 //
 //  Author: 翁跃庭 (Yueting Weng)
@@ -35,8 +35,8 @@ typedef RealtimeFailureHandler =
       bool Function() isCurrent,
     );
 
-/// Logs and routes realtime failures while rejecting callbacks from expired lifecycles.
-final class RealtimeErrorHandler {
+/// Logs realtime errors and forwards runtime failures for coordinated lifecycle termination.
+final class XmaxRealtimeErrorManager {
 
   /// The failure handler for the current lifecycle.
   RealtimeFailureHandler? _failureHandler;

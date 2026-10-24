@@ -10,7 +10,7 @@
 
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
-import 'RtcModels.dart';
+import 'RemoteStream.dart';
 import 'VideoStatistics.dart';
 
 /// The internal RTC publication, first-frame, quality, statistics, and failure callbacks.

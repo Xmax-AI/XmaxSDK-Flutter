@@ -4,10 +4,10 @@ import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/core/realtime/RealtimeConfiguration.dart';
-import 'package:xmax_sdk/src/core/realtime/RealtimeErrorHandler.dart';
-import 'package:xmax_sdk/src/core/realtime/RealtimeModel.dart';
-import 'package:xmax_sdk/src/core/realtime/RealtimeQualityLevel.dart';
-import 'package:xmax_sdk/src/core/realtime/RealtimeCameraPreset.dart';
+import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeErrorManager.dart';
+import 'package:xmax_sdk/src/service/realtime/RealtimeModel.dart';
+import 'package:xmax_sdk/src/stream/quality/RealtimeQualityLevel.dart';
+import 'package:xmax_sdk/src/service/realtime/RealtimeCameraPreset.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeConnectionManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeGenerationManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeManager.dart';
@@ -16,7 +16,7 @@ import 'package:xmax_sdk/src/core/XmaxClient.dart';
 import 'package:xmax_sdk/src/core/XmaxConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/media/camera/CameraPosition.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoStatistics.dart';
 import 'package:xmax_sdk/src/media/interaction/InteractionFrame.dart';
 import 'package:xmax_sdk/src/media/MediaControlling.dart';
@@ -27,6 +27,7 @@ import 'package:xmax_sdk/src/service/realtime/RealtimeNetworkQuality.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimePerformanceAlarm.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimePoint.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeSession.dart';
+import 'package:xmax_sdk/src/service/realtime/RealtimeSessionConnection.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeSessionServicing.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeState.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoFormat.dart';
@@ -624,7 +625,7 @@ void main() {
   }
 
   test('method errors do not invoke the internal runtime failure handler', () {
-    final handler = RealtimeErrorHandler();
+    final handler = XmaxRealtimeErrorManager();
     handler.setFailureHandler(
       (_, _, _) async => fail('Unexpected runtime failure'),
     );
@@ -1188,7 +1189,7 @@ final class _Dependencies {
       streamController: stream,
       connectionManager: connection,
       generationManager: generation,
-      errorHandler: errors,
+      errorManager: errors,
     );
   }
 
@@ -1197,7 +1198,7 @@ final class _Dependencies {
   final stream = _FakeStream();
   final render = _FakeRender();
   final sessions = _FakeSessions();
-  final errors = RealtimeErrorHandler();
+  final errors = XmaxRealtimeErrorManager();
   late final XmaxRealtimeConnectionManager connection;
   late final XmaxRealtimeGenerationManager generation;
   late final XmaxRealtimeManager manager;

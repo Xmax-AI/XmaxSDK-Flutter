@@ -8,11 +8,11 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../service/realtime/RealtimeVideoFormat.dart';
-import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
+import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../encoding/EncodingBitratePolicy.dart';
 import 'QualityVideoFormat.dart';
+import 'RealtimeQualityLevel.dart';
 
 /// The sampling, level adjustment, and recovery cooldown policy for one transport direction.
 final class QualityDirection {

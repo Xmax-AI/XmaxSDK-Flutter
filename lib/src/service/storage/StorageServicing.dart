@@ -10,7 +10,9 @@
 
 import 'dart:typed_data';
 
-import '../../foundation/storage/StorageModels.dart';
+import '../../foundation/storage/DownloadedFile.dart';
+import '../../foundation/storage/StorageProgressListener.dart';
+import '../../foundation/storage/StoredFile.dart';
 
 /// An interface for image and video uploads, image safety checks, and downloads.
 abstract interface class StorageServicing {

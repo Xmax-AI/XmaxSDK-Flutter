@@ -12,19 +12,19 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
+import '../../foundation/media/camera/CameraPosition.dart';
 import '../../foundation/permissions/PermissionManager.dart';
 import '../../foundation/permissions/PermissionManaging.dart';
-import '../../foundation/rtc/RtcManaging.dart';
 import '../../foundation/rtc/RtcManager.dart';
-import '../../core/realtime/RealtimeMediaSource.dart';
+import '../../foundation/rtc/RtcManaging.dart';
 import '../../render/video/VideoRenderBinding.dart';
 import '../../render/video/VideoRenderRegistry.dart';
 import '../../service/media/MediaService.dart';
 import '../../service/media/MediaServicing.dart';
+import '../../service/media/RealtimeMediaSource.dart';
 import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
-import '../../foundation/media/camera/CameraPosition.dart';
 
 /// Requests camera permission and creates a capture track, reporting readiness after the first
 /// frame and preview mount.

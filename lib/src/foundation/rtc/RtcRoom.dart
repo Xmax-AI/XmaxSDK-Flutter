@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import 'RtcModels.dart';
+import 'RoomJoinConfiguration.dart';
 
 /// One RTC room connection and its publication, subscription, and signaling resources.
 abstract interface class RtcRoom {

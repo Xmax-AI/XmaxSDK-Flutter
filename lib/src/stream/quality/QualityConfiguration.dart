@@ -8,9 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'QualityVideoFormat.dart';
+import 'RealtimeQualityLevel.dart';
 
 /// The current connection's fixed media baseline and successfully applied link levels.
 final class QualityConfiguration {

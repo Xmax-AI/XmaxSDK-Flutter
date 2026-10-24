@@ -5,7 +5,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLogger.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
+import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 

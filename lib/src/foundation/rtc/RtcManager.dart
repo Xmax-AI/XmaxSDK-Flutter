@@ -9,16 +9,19 @@
 //
 
 import 'dart:async';
+
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../errors/XmaxError.dart';
 import '../logging/XmaxLogger.dart';
 import '../media/camera/CameraPosition.dart';
 import 'AgoraRtcRoom.dart';
+import 'RoomJoinConfiguration.dart';
 import 'RtcEngineManager.dart';
 import 'RtcEventListener.dart';
 import 'RtcManaging.dart';
-import 'RtcModels.dart';
+import 'VideoEncodingConfiguration.dart';
 
 /// Coordinates a shared engine lease, camera preview, and one room lifecycle.
 final class RtcManager implements RtcManaging {

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:xmax_sdk/src/core/realtime/RealtimeErrorHandler.dart';
+import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeErrorManager.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLogger.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLoggerOption.dart';
@@ -19,7 +19,7 @@ void main() {
       message: 'Realtime generation start timed out',
     );
 
-    expect(RealtimeErrorHandler().report(error), same(error));
+    expect(XmaxRealtimeErrorManager().report(error), same(error));
     expect(messages.single, contains('[Xmax][Realtime]'));
     expect(messages.single, contains(error.message));
   });
@@ -29,7 +29,7 @@ void main() {
     () async {
       XmaxLogger.setSink((_, _) => throw StateError('sink failed'));
       final received = <XmaxError>[];
-      final handler = RealtimeErrorHandler()
+      final handler = XmaxRealtimeErrorManager()
         ..setFailureHandler((error, _, _) async => received.add(error));
       const error = XmaxError(
         code: XmaxErrorCode.timeout,
@@ -53,7 +53,7 @@ void main() {
     () async {
       XmaxLogger.setSink((_, _) {});
       final scopes = <RealtimeFailureScope>[];
-      final handler = RealtimeErrorHandler()
+      final handler = XmaxRealtimeErrorManager()
         ..setFailureHandler((_, scope, isCurrent) async {
           if (isCurrent()) scopes.add(scope);
         });
@@ -81,7 +81,7 @@ void main() {
     () async {
       XmaxLogger.setSink((_, _) {});
       bool Function()? isCurrent;
-      final handler = RealtimeErrorHandler()
+      final handler = XmaxRealtimeErrorManager()
         ..setFailureHandler((_, _, check) async => isCurrent = check);
       handler.forward(
         const XmaxError(code: XmaxErrorCode.rtcError, message: 'failure'),

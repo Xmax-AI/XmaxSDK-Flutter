@@ -8,9 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../core/realtime/RealtimeQualityLevel.dart';
-
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'RealtimeQualityLevel.dart';
 
 /// Stores successful quality levels for one hour, isolated by model and transport direction.
 final class QualityHistory {

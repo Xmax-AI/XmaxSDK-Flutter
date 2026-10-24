@@ -18,8 +18,13 @@ import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
 import '../../foundation/logging/XmaxLoggerOption.dart';
 import '../../foundation/media/MediaFileMetadataManager.dart';
+import '../../foundation/storage/DownloadedFile.dart';
+import '../../foundation/storage/StorageConfiguration.dart';
+import '../../foundation/storage/StorageCredential.dart';
 import '../../foundation/storage/StorageManaging.dart';
-import '../../foundation/storage/StorageModels.dart';
+import '../../foundation/storage/StorageProgressListener.dart';
+import '../../foundation/storage/StorageUploadSource.dart';
+import '../../foundation/storage/StoredFile.dart';
 import '../network/ApiServicing.dart';
 import 'StorageServicing.dart';
 

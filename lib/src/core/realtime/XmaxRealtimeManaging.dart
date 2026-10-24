@@ -9,16 +9,16 @@
 //
 
 import '../../foundation/media/camera/CameraPosition.dart';
+import '../../foundation/rtc/VideoStatistics.dart';
+import '../../service/realtime/RealtimeCameraPreset.dart';
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeState.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import '../../stream/quality/RealtimeQualityLevel.dart';
 import 'RealtimeConfiguration.dart';
-import 'RealtimeCameraPreset.dart';
-import 'RealtimeQualityLevel.dart';
-import '../../foundation/rtc/VideoStatistics.dart';
 
 /// An interface for local media, realtime connections, and video generation.
 abstract interface class XmaxRealtimeManaging {

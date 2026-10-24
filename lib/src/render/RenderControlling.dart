@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../foundation/rtc/RtcModels.dart';
+import '../foundation/rtc/RemoteStream.dart';
 import '../media/interaction/InteractionFrame.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
 

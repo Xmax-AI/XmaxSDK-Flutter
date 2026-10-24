@@ -8,7 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../service/realtime/RealtimeVideoFormat.dart';
+import 'RealtimeVideoFormat.dart';
 
 /// A realtime generation model supported by XmaxSDK.
 enum RealtimeModel {

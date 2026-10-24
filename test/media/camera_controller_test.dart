@@ -5,7 +5,8 @@ import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/permissions/PermissionManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
+import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/media/camera/CameraController.dart';
 import 'package:xmax_sdk/src/media/MediaController.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
@@ -14,7 +15,7 @@ import 'package:xmax_sdk/src/service/media/MediaServicing.dart';
 import 'package:xmax_sdk/src/service/media/MediaService.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoFormat.dart';
 import 'package:xmax_sdk/xmax_sdk.dart' show RealtimeModel;
-import 'package:xmax_sdk/src/core/realtime/RealtimeMediaSource.dart';
+import 'package:xmax_sdk/src/service/media/RealtimeMediaSource.dart';
 
 void main() {
   test(

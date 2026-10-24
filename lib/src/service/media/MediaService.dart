@@ -12,10 +12,10 @@ import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
 
-import '../../core/realtime/RealtimeModel.dart';
-import '../../core/realtime/RealtimeMediaSource.dart';
 import '../../foundation/errors/XmaxError.dart';
+import '../realtime/RealtimeModel.dart';
 import 'MediaServicing.dart';
+import 'RealtimeMediaSource.dart';
 
 /// The sizing and capability rules for local media, generation canvases, and returned media.
 final class MediaService implements MediaServicing {

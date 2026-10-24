@@ -14,14 +14,14 @@ import '../service/media/MediaService.dart';
 import '../service/media/MediaServicing.dart';
 import '../service/network/ApiService.dart';
 import '../service/network/ApiServicing.dart';
+import '../service/realtime/RealtimeModel.dart';
 import '../service/storage/StorageService.dart';
+import 'XmaxConfiguration.dart';
 import 'realtime/RealtimeConfiguration.dart';
-import 'realtime/RealtimeModel.dart';
 import 'realtime/XmaxRealtimeManager.dart';
 import 'realtime/XmaxRealtimeManaging.dart';
 import 'storage/XmaxStorageManager.dart';
 import 'storage/XmaxStorageManaging.dart';
-import 'XmaxConfiguration.dart';
 
 /// A client that provides access to Xmax realtime generation, storage, and media services.
 final class XmaxClient {

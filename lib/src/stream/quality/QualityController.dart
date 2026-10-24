@@ -8,14 +8,14 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../core/realtime/RealtimeQualityLevel.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
-import 'QualityControlling.dart';
+import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'QualityConfiguration.dart';
+import 'QualityControlling.dart';
 import 'QualityDirection.dart';
 import 'QualityHistory.dart';
-import '../../service/realtime/RealtimeVideoFormat.dart';
+import 'RealtimeQualityLevel.dart';
 
 /// Maintains independent link quality levels, proposes adjustments, and records successful updates.
 final class QualityController implements QualityControlling {

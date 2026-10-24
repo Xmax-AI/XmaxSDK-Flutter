@@ -4,7 +4,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
 
 void main() {
   test('concurrent cold acquisitions create only one native engine', () async {

@@ -10,15 +10,15 @@
 
 import 'dart:ui';
 
+import '../foundation/rtc/VideoStatistics.dart';
 import '../service/realtime/RealtimeContext.dart';
 import '../service/realtime/RealtimeNetworkQuality.dart';
 import '../service/realtime/RealtimePerformanceAlarm.dart';
 import '../service/realtime/RealtimePoint.dart';
-import '../service/realtime/RealtimeSession.dart';
+import '../service/realtime/RealtimeSessionConnection.dart';
 import '../service/realtime/RealtimeVideoFormat.dart';
-import '../foundation/rtc/VideoStatistics.dart';
-import '../core/realtime/RealtimeQualityLevel.dart';
 import 'quality/QualityConfiguration.dart';
+import 'quality/RealtimeQualityLevel.dart';
 
 /// A cancellable wait for a generation result stream.
 ///

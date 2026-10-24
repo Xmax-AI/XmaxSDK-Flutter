@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcModels.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/media/interaction/InteractionFrame.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryBinding.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryRegistry.dart';

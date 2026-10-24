@@ -8,8 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../core/realtime/RealtimeModel.dart';
+import 'RealtimeModel.dart';
 import 'RealtimeSession.dart';
+import 'RealtimeSessionConnection.dart';
 
 /// An interface for server session creation, heartbeats, and closure.
 abstract interface class RealtimeSessionServicing {

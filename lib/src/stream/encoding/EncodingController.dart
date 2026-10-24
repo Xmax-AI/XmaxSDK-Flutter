@@ -11,7 +11,7 @@
 import 'dart:math' as math;
 
 import '../../foundation/rtc/RtcManaging.dart';
-import '../../foundation/rtc/RtcModels.dart';
+import '../../foundation/rtc/VideoEncodingConfiguration.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'EncodingBitratePolicy.dart';
 import 'EncodingControlling.dart';

@@ -11,7 +11,7 @@
 import 'dart:async';
 
 import '../foundation/errors/XmaxError.dart';
-import '../foundation/rtc/RtcModels.dart';
+import '../foundation/rtc/RemoteStream.dart';
 import '../media/interaction/InteractionFrame.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
 import 'RenderControlling.dart';

@@ -20,8 +20,12 @@ import 'package:tencentcloud_cos_sdk_plugin_nobeacon/pigeon.dart';
 import '../errors/ErrorMessageFormatter.dart';
 import '../errors/ErrorNormalizer.dart';
 import '../errors/XmaxError.dart';
+import 'DownloadedFile.dart';
+import 'StorageConfiguration.dart';
 import 'StorageManaging.dart';
-import 'StorageModels.dart';
+import 'StorageProgressListener.dart';
+import 'StorageUploadSource.dart';
+import 'StoredFile.dart';
 
 /// The simple PUT threshold preventing automatic multipart uploads.
 /// Combined with forced simple upload, ensures every file size uses a single PUT request.

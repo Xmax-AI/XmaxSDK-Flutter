@@ -10,8 +10,8 @@
 
 import 'package:flutter/widgets.dart';
 
-import '../../core/realtime/RealtimeModel.dart';
-import '../../core/realtime/RealtimeMediaSource.dart';
+import '../realtime/RealtimeModel.dart';
+import 'RealtimeMediaSource.dart';
 
 /// Media sizing rules for a realtime model.
 abstract interface class MediaServicing {

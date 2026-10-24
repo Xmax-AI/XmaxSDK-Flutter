@@ -13,12 +13,12 @@ import 'dart:ui';
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
+import '../../foundation/rtc/RoomJoinConfiguration.dart';
 import '../../foundation/rtc/RtcManaging.dart';
-import '../../foundation/rtc/RtcModels.dart';
 import '../../foundation/runtime/RuntimeInfo.dart';
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimePoint.dart';
-import '../../service/realtime/RealtimeSession.dart';
+import '../../service/realtime/RealtimeSessionConnection.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'RoomControlling.dart';
 import 'RoomEvent.dart';
