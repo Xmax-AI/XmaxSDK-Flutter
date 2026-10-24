@@ -81,7 +81,7 @@ void main() {
       final local = await deps.manager.createLocalCameraStream();
       await deps.manager.connect(localStream: local);
       expect(deps.stream.preparedAdaptiveQuality, enabled);
-      expect(deps.stream.qualityConfiguration!.minimumInputPixels, 500000);
+      expect(deps.stream.qualityConfiguration!.minimumInputPixels, 200000);
     });
   }
 
@@ -1300,6 +1300,7 @@ final class _FakeMedia implements MediaControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    Future<void>? cancellation,
   }) async {
     createCount++;
     await createGate?.future;

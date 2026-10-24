@@ -85,7 +85,7 @@ void main() {
         ),
         const [Size(1024, 1920), Size(1920, 1024)],
       );
-      expect(model.minimumInputPixels, 500000);
+      expect(model.minimumInputPixels, 200000);
       expect(model.maximumInputPixels, 2100000);
       expect(model.inputSizeAlignment, 32);
       expect(model.defaultFrameRate, 30);

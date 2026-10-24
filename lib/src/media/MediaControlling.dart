@@ -42,12 +42,14 @@ abstract interface class MediaControlling implements InteractionControlling {
   /// Parameters:
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   /// - [position]: The camera position to use.
+  /// - [cancellation]: Completes to cancel pending engine acquisition before capture starts.
   ///
   /// Returns the new local camera stream; the future fails on invalid arguments or denied
   /// permission.
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    Future<void>? cancellation,
   });
 
   /// Stops the local camera stream and releases capture resources.

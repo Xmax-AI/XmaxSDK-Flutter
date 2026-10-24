@@ -63,9 +63,9 @@ void main() {
         );
         final target = service.resolveTargetSize(
           source,
-          maximumSize: Size(source.width / 2, source.height / 2),
+          maximumSize: Size(source.width / 4, source.height / 4),
         );
-        expect(target.width * target.height, 491520);
+        expect(target.width * target.height, 122880);
         expect(
           target.width * target.height,
           lessThan(service.model.minimumInputPixels),

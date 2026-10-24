@@ -53,7 +53,7 @@ enum RealtimeModel {
   ];
 
   /// The minimum local media and uplink area, in pixels; also limits variable generation canvases.
-  int get minimumInputPixels => 500000;
+  int get minimumInputPixels => 200000;
 
   /// The maximum local media area, in pixels; also limits variable generation canvases.
   int get maximumInputPixels => 2100000;

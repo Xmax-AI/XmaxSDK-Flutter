@@ -50,7 +50,10 @@ void main() {
           expect(rtc.configuration!.width, format.width);
           expect(rtc.configuration!.height, format.height);
           expect(rtc.configuration!.frameRate, format.fps);
-          expect(format.width * format.height, greaterThanOrEqualTo(500000));
+          expect(
+            format.width * format.height,
+            greaterThanOrEqualTo(model.minimumInputPixels),
+          );
         }
       }
     }

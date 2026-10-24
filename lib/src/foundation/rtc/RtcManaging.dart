@@ -17,7 +17,14 @@ import 'VideoEncodingConfiguration.dart';
 abstract interface class RtcManaging {
 
   /// Acquires and initializes the RTC engine for this lifecycle.
-  Future<void> initialize();
+  ///
+  /// Parameters:
+  /// - [cancellation]: Completes to cancel engine acquisition. Queued requests are removed without
+  ///   interrupting another owner's engine; native creation already in progress settles and releases
+  ///   its resources before cancellation completes.
+  Future<void> initialize({
+    Future<void>? cancellation,
+  });
 
   /// Releases RTC resources and invalidates subsequent native callbacks.
   Future<void> destroy();

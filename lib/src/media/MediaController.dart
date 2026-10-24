@@ -18,6 +18,7 @@ import '../service/realtime/RealtimeMediaStream.dart';
 import '../service/realtime/RealtimeVideoFormat.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
 import 'camera/CameraController.dart';
+import 'camera/CameraControlling.dart';
 import 'interaction/InteractionController.dart';
 import 'interaction/InteractionFrame.dart';
 import 'MediaControlling.dart';
@@ -34,7 +35,7 @@ final class MediaController implements MediaControlling {
   ///   points.
   MediaController({
     required RtcManaging rtcManager,
-    CameraController? cameraController,
+    CameraControlling? cameraController,
     required InteractionListener interactionListener,
   }) : _rtcManager = rtcManager,
        _cameraController =
@@ -47,7 +48,7 @@ final class MediaController implements MediaControlling {
   final RtcManaging _rtcManager;
 
   /// The controller for camera track creation, preview readiness, and camera switching.
-  final CameraController _cameraController;
+  final CameraControlling _cameraController;
 
   /// The controller that samples and maps interactions for the generation task.
   final InteractionController _interactionController;
@@ -101,6 +102,7 @@ final class MediaController implements MediaControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    Future<void>? cancellation,
   }) async {
     if (_hasActiveSource) {
       throw const XmaxError(
@@ -118,9 +120,29 @@ final class MediaController implements MediaControlling {
     final completion = _operationCompletion = Completer<void>();
 
     _hasActiveSource = true;
+    var isCancelled = false;
+    final cancellationSignal = cancellation?.then<void>(
+      (
+        _,
+      ) {
+        isCancelled = true;
+      },
+      onError: (
+        Object error,
+        StackTrace stackTrace,
+      ) {
+        isCancelled = true;
+      },
+    );
 
     try {
-      await _rtcManager.initialize();
+      await _rtcManager.initialize(cancellation: cancellationSignal);
+      if (isCancelled) {
+        throw const XmaxError(
+          code: XmaxErrorCode.cancelled,
+          message: 'Local camera creation was cancelled',
+        );
+      }
 
       return await _cameraController.createLocalCameraStream(
         videoFormat: videoFormat,

@@ -373,7 +373,7 @@ final class _FakeRtc implements RtcManaging {
   }
 
   @override
-  Future<void> initialize() async {}
+  Future<void> initialize({Future<void>? cancellation}) async {}
 
   @override
   Future<void> configureVideoEncoding(

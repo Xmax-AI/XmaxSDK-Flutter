@@ -78,7 +78,10 @@ void main() {
             );
             expect(format.width % 4, 0);
             expect(format.height % 4, 0);
-            expect(format.width * format.height, greaterThanOrEqualTo(500000));
+            expect(
+              format.width * format.height,
+              greaterThanOrEqualTo(model.minimumInputPixels),
+            );
             expect(format.width, lessThanOrEqualTo(baseline.width));
             expect(format.height, lessThanOrEqualTo(baseline.height));
             expect(
@@ -93,7 +96,9 @@ void main() {
             downlink: false,
             minimumInputPixels: model.minimumInputPixels,
           );
-          expect(l5.width * l5.height, 554880);
+          expect(l5.width, baseline.width ~/ 2);
+          expect(l5.height, baseline.height ~/ 2);
+          expect(l5.width * l5.height, 491520);
           expect(l5.fps, 16);
           final down = QualityVideoFormat.resolve(
             baseline,

@@ -25,10 +25,11 @@ import '../../service/media/RealtimeMediaSource.dart';
 import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
+import 'CameraControlling.dart';
 
 /// Requests camera permission and creates a capture track, reporting readiness after the first
 /// frame and preview mount.
-final class CameraController {
+final class CameraController implements CameraControlling {
 
   /// Creates a camera controller.
   ///
@@ -79,12 +80,14 @@ final class CameraController {
   bool _didNotifyPreviewReady = false;
 
   /// The active local video track; null before creation or after stopping.
+  @override
   RealtimeVideoTrack? get currentTrack => _activeTrack;
 
   /// Sets the callback for first-frame capture and native preview readiness.
   ///
   /// Parameters:
   /// - [listener]: The event listener, or null to remove it.
+  @override
   void setPreviewReadyListener(
     RealtimeCameraPreviewReadyListener? listener,
   ) {
@@ -103,6 +106,7 @@ final class CameraController {
   ///
   /// Returns the new local camera stream; the future fails on invalid arguments or denied
   /// permission.
+  @override
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
@@ -182,6 +186,7 @@ final class CameraController {
 
   /// Stops local camera capture and releases resources; the public manager requires a disconnected
   /// session.
+  @override
   Future<void> stopLocalCameraStream() async {
     final track = _activeTrack;
 
@@ -258,6 +263,7 @@ final class CameraController {
   /// Switches between front and rear cameras and returns the updated local media stream.
   ///
   /// Returns the local camera stream after switching cameras.
+  @override
   Future<RealtimeMediaStream> switchCamera() async {
     final track = _activeTrack;
     final position = track?.position;
@@ -293,6 +299,7 @@ final class CameraController {
   ///
   /// Parameters:
   /// - [videoFormat]: The capture format satisfying the current model's constraints.
+  @override
   Future<void> updateVideoFormat(
     RealtimeVideoFormat videoFormat,
   ) async {

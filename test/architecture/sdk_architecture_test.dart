@@ -56,7 +56,7 @@ void main() {
       const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
     );
     expect(RealtimeModel.x2_1_1_preview_cn.supportedVideoFormats.length, 2);
-    expect(RealtimeModel.x2_1_1_preview_cn.minimumInputPixels, 500000);
+    expect(RealtimeModel.x2_1_1_preview_cn.minimumInputPixels, 200000);
     expect(RealtimeModel.x2_1_1_preview_cn.maximumInputPixels, 2100000);
     expect(RealtimeModel.x2_1_1_preview_cn.inputSizeAlignment, 32);
   });

@@ -397,6 +397,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       final stream = await _mediaController.createLocalCameraStream(
         videoFormat: format,
         position: position,
+        cancellation: token.cancellation,
       );
       token.ensureCurrent();
       await _streamController.setRemoteAudioVolume(0);

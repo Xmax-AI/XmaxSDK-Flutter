@@ -218,7 +218,8 @@ abstract interface class XmaxRealtimeManaging {
   /// Closes realtime and releases connection and local capture resources.
   ///
   /// Repeated calls await the same cleanup. The manager can create a new local stream after cleanup
-  /// completes.
+  /// completes. Pending engine acquisition is cancelled without waiting for or stopping another
+  /// manager's local preview.
   Future<void> close();
 
   /// Starts generation, or updates active conditions without repeating first-frame readiness.

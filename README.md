@@ -492,7 +492,7 @@ saving quality history, while manual changes remain available. Read the applied 
 completes or once disconnection starts. Downlink changes report the submitted
 target, which may precede the corresponding video frames.
 
-Uplink dimensions remain aligned to 4 pixels and retain at least 500000 pixels
+Uplink dimensions remain aligned to 4 pixels and retain at least 200000 pixels
 for both preview models, even at lower quality levels. This input minimum does
 not constrain returned video dimensions. The SDK resolves the generation canvas
 separately and automatically requests contain padding when its aspect ratio
@@ -601,6 +601,11 @@ call. Runtime failures are reported through `state.reason?.error`.
   ```dart
   await realtime.close();
   ```
+
+  If another manager owns the shared RTC engine, closing a waiting manager cancels
+  its queued acquisition without stopping the active owner's preview. Native
+  initialization already in progress finishes and releases its resources before
+  teardown completes.
 
 > **Note:** `disconnect()` and `close()` are alternatives, not sequential steps.
 > When exiting a screen, call `close()` directly—there is no need to call

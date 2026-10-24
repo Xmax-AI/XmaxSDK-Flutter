@@ -62,19 +62,78 @@ final class RtcEngineManager {
   RtcEngineLease? _activeLease;
 
   /// The pending lease requests in arrival order.
-  final List<Completer<RtcEngineLease>> _requests =
-      <Completer<RtcEngineLease>>[];
+  final List<_RtcEngineRequest> _requests = [];
+
+  /// The error delivered when a pending lease request is cancelled.
+  static const _cancelledError = XmaxError(
+    code: XmaxErrorCode.cancelled,
+    message: 'RTC engine acquisition was cancelled',
+  );
 
   /// Acquires an exclusive RTC engine lease in request order.
   ///
+  /// Parameters:
+  /// - [cancellation]: Completes to withdraw this request without releasing another owner's lease.
+  ///
   /// Returns the exclusive engine lease owned by this caller.
-  Future<RtcEngineLease> acquire() async {
-    final completer = Completer<RtcEngineLease>();
+  /// Cancellation during native creation waits for that creation and its cleanup to settle.
+  Future<RtcEngineLease> acquire({
+    Future<void>? cancellation,
+  }) async {
+    final request = _RtcEngineRequest();
 
-    _requests.add(completer);
-    unawaited(_fulfillNext());
+    _requests.add(request);
+    if (cancellation == null) {
+      unawaited(_fulfillNext());
+    } else {
+      unawaited(
+        cancellation.then<void>(
+          (
+            _,
+          ) => _cancelRequest(request),
+          onError: (
+            Object error,
+            StackTrace stackTrace,
+          ) => _cancelRequest(request),
+        ),
+      );
+      // Deliver an already-completed cancellation before allocating native resources.
+      unawaited(Future<void>.microtask(_fulfillNext));
+    }
 
-    return completer.future;
+    try {
+      final lease = await request.completion.future;
+
+      if (request.isCancelled) {
+        try {
+          await release(lease);
+        } catch (_) {
+          // Release clears ownership even when native destruction fails.
+        }
+        throw _cancelledError;
+      }
+
+      return lease;
+    } finally {
+      request.acceptsCancellation = false;
+    }
+  }
+
+  /// Removes a queued request or invalidates an acquisition that has not reached its caller.
+  ///
+  /// Parameters:
+  /// - [request]: The lease request associated with the cancellation signal.
+  void _cancelRequest(
+    _RtcEngineRequest request,
+  ) {
+    if (!request.acceptsCancellation || request.isCancelled) {
+      return;
+    }
+
+    request.isCancelled = true;
+    if (_requests.remove(request)) {
+      request.completion.completeError(_cancelledError);
+    }
   }
 
   /// Releases only the matching active lease and serves waiting owners.
@@ -96,7 +155,7 @@ final class RtcEngineManager {
     } finally {
       // Clears ownership even if native release fails so waiting managers can acquire the engine.
       _activeLease = null;
-      await _fulfillNext();
+      unawaited(_fulfillNext());
     }
   }
 
@@ -131,11 +190,20 @@ final class RtcEngineManager {
         try {
           final lease = await _createLease();
 
+          if (request.isCancelled) {
+            try {
+              await lease.engine.destroy();
+            } catch (_) {
+              // Preserve cancellation and let the next queued owner proceed.
+            }
+            throw _cancelledError;
+          }
+
           _activeLease = lease;
-          request.complete(lease);
+          request.completion.complete(lease);
         } catch (error, stackTrace) {
-          request.completeError(
-            error,
+          request.completion.completeError(
+            request.isCancelled ? _cancelledError : error,
             stackTrace,
           );
         }
@@ -147,4 +215,17 @@ final class RtcEngineManager {
 
   /// Whether serialized RTC engine creation is active.
   bool _creating = false;
+}
+
+/// A pending exclusive engine acquisition and its cancellation validity.
+final class _RtcEngineRequest {
+
+  /// The continuation awaiting engine ownership.
+  final Completer<RtcEngineLease> completion = Completer<RtcEngineLease>();
+
+  /// Whether cancellation arrived before acquisition reached the caller.
+  bool isCancelled = false;
+
+  /// Whether the request still accepts cancellation rather than belonging to an active owner.
+  bool acceptsCancellation = true;
 }

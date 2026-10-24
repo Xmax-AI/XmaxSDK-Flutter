@@ -49,6 +49,9 @@ final class RtcManager implements RtcManaging {
   /// The in-flight engine initialization.
   Future<void>? _initializing;
 
+  /// The cancellation signal for the current engine acquisition.
+  Completer<void>? _initializationCancellation;
+
   /// The in-flight native resource release.
   Future<void>? _destroyFuture;
 
@@ -89,36 +92,110 @@ final class RtcManager implements RtcManaging {
   }
 
   /// Acquires and initializes the RTC engine for this lifecycle.
+  ///
+  /// Concurrent callers share initialization and its cancellation. See [RtcManaging.initialize]
+  /// for cancellation and native resource ownership.
   @override
-  Future<void> initialize() async {
-    await _destroyFuture;
-    if (_lease != null) {
-      return;
-    }
-
+  Future<void> initialize({
+    Future<void>? cancellation,
+  }) {
     if (_initializing case final pending?) {
+      _bindInitializationCancellation(cancellation);
       return pending;
     }
 
-    final future = _initialize();
+    if (_lease != null && _destroyFuture == null) {
+      return Future<void>.value();
+    }
+
+    final signal = Completer<void>();
+
+    _initializationCancellation = signal;
+    _bindInitializationCancellation(cancellation);
+    final future = _initialize(
+      _destroyFuture,
+      signal,
+    );
 
     _initializing = future;
 
-    try {
-      await future;
-    } finally {
+    return future.whenComplete(() {
       if (identical(
         _initializing,
         future,
       )) {
         _initializing = null;
+        _initializationCancellation = null;
+      }
+    });
+  }
+
+  /// Binds an operation's cancellation without allowing stale signals to affect later owners.
+  ///
+  /// Parameters:
+  /// - [cancellation]: The operation's cancellation signal, or null for explicit destruction only.
+  void _bindInitializationCancellation(
+    Future<void>? cancellation,
+  ) {
+    final signal = _initializationCancellation;
+
+    if (cancellation == null || signal == null) {
+      return;
+    }
+
+    // A signal from a completed initialization must not cancel a later engine owner.
+    void cancel() {
+      if (identical(
+        _initializationCancellation,
+        signal,
+      ) && !signal.isCompleted) {
+        signal.complete();
       }
     }
+
+    unawaited(
+      cancellation.then<void>(
+        (
+          _,
+        ) => cancel(),
+        onError: (
+          Object error,
+          StackTrace stackTrace,
+        ) => cancel(),
+      ),
+    );
   }
 
   /// Acquires an exclusive engine lease and registers local media events.
-  Future<void> _initialize() async {
-    final lease = await _engineManager.acquire();
+  ///
+  /// Parameters:
+  /// - [release]: The preceding destruction to await without waiting on this initialization itself.
+  /// - [cancellation]: The signal invalidating this initialization before lease handoff.
+  Future<void> _initialize(
+    Future<void>? release,
+    Completer<void> cancellation,
+  ) async {
+    await release;
+    if (cancellation.isCompleted) {
+      throw const XmaxError(
+        code: XmaxErrorCode.cancelled,
+        message: 'RTC initialization was cancelled',
+      );
+    }
+
+    final lease = await _engineManager.acquire(cancellation: cancellation.future);
+
+    if (cancellation.isCompleted) {
+      try {
+        await _engineManager.release(lease);
+      } catch (error) {
+        _logCleanup(error);
+      }
+      throw const XmaxError(
+        code: XmaxErrorCode.cancelled,
+        message: 'RTC initialization was cancelled',
+      );
+    }
 
     _lease = lease;
 
@@ -158,6 +235,11 @@ final class RtcManager implements RtcManaging {
   /// Releases RTC resources and invalidates subsequent native callbacks.
   @override
   Future<void> destroy() {
+    final cancellation = _initializationCancellation;
+
+    if (cancellation != null && !cancellation.isCompleted) {
+      cancellation.complete();
+    }
     if (_destroyFuture case final active?) {
       return active;
     }

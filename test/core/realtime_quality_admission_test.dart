@@ -62,7 +62,7 @@ void main() {
 
       await d.manager.setUplinkQualityLevel(RealtimeQualityLevel.l5);
       final format = d.rtc.formats.last;
-      expect((format.width, format.height, format.frameRate), (544, 1020, 16));
+      expect((format.width, format.height, format.frameRate), (512, 960, 16));
       await d.manager.setDownlinkQualityLevel(RealtimeQualityLevel.l5);
       expect(d.connection.currentTargetSize, const Size(512, 960));
       expect(
@@ -415,6 +415,7 @@ class _Media implements MediaControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    Future<void>? cancellation,
   }) async {
     stream = createRealtimeMediaStream(
       id: 'local',
