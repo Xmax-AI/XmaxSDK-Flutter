@@ -36,14 +36,19 @@ abstract interface class StorageManaging {
     StorageProgressListener? progress,
   });
 
-  /// Streams a download to the local destination and returns the actual number of bytes written.
+  /// Downloads a file and replaces the destination only after the transfer and file write succeed.
+  ///
+  /// A failed transfer leaves an existing destination unchanged and removes its staged partial file.
+  /// The destination's parent directory must exist; directory destinations are rejected.
   ///
   /// Parameters:
   /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
   /// - [destinationURL]: The destination file URI.
-  /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [progress]: Receives bytes written and expected bytes; zero total means unknown until
+  ///   completion. Observer exceptions do not interrupt the transfer.
   ///
   /// Returns the downloaded file's local URI and actual byte count.
+  /// Only this future's successful completion confirms that the destination was committed.
   Future<DownloadedFile> download({
     required Uri remoteURL,
     required Uri destinationURL,

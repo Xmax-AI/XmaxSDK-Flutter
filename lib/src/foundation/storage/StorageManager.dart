@@ -22,6 +22,7 @@ import '../errors/ErrorNormalizer.dart';
 import '../errors/XmaxError.dart';
 import 'DownloadedFile.dart';
 import 'StorageConfiguration.dart';
+import 'StorageDownloadOperation.dart';
 import 'StorageManaging.dart';
 import 'StorageProgressListener.dart';
 import 'StorageUploadSource.dart';
@@ -194,7 +195,7 @@ final class StorageManager implements StorageManaging {
     }
   }
 
-  /// Streams a download to the local destination and returns the actual number of bytes written.
+  /// Downloads to a staged file and replaces the destination only after the transfer succeeds.
   ///
   /// See [StorageManaging.download] for the usage contract.
   @override
@@ -217,50 +218,11 @@ final class StorageManager implements StorageManaging {
       );
     }
 
-    IOSink? sink;
-
     try {
-      final request = await _httpClient.getUrl(remoteURL);
-      final response = await request.close();
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw XmaxError(
-          code: XmaxErrorCode.downloadError,
-          message: 'Storage download failed with HTTP ${response.statusCode}',
-          httpStatus: response.statusCode,
-        );
-      }
-
-      final target = File(destinationURL.toFilePath());
-
-      sink = target.openWrite();
-
-      var completed = 0;
-      final total = response.contentLength;
-
-      await for (final chunk in response) {
-        sink.add(chunk);
-        completed += chunk.length;
-        if (total >= completed && total > 0) {
-          progress?.call(
-            completed,
-            total,
-          );
-        }
-      }
-
-      await sink.flush();
-      await sink.close();
-      sink = null;
-
-      progress?.call(
-        completed,
-        completed,
-      );
-
-      return DownloadedFile(
-        fileURL: destinationURL,
-        byteCount: completed,
+      return await StorageDownloadOperation(progress: progress).value(
+        client: _httpClient,
+        remoteURL: remoteURL,
+        destinationURL: destinationURL,
       );
     } on XmaxError {
       rethrow;
@@ -276,8 +238,6 @@ final class StorageManager implements StorageManaging {
         code: XmaxErrorCode.downloadError,
         message: ErrorMessageFormatter.format(error),
       );
-    } finally {
-      await sink?.close();
     }
   }
 

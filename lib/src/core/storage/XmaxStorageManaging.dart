@@ -83,12 +83,17 @@ abstract interface class XmaxStorageManaging {
 
   /// Downloads an image to a local file.
   ///
+  /// Replaces an existing file only after download succeeds. Failed transfers remove staged data
+  /// without changing the existing file. The parent directory must exist; [to] cannot be a directory.
+  ///
   /// Parameters:
   /// - [from]: The remote file's HTTP or HTTPS URL.
   /// - [to]: The destination file URI.
-  /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [progress]: Receives bytes written and expected bytes, with zero total when unknown until
+  ///   completion. Observer exceptions do not interrupt the transfer.
   ///
   /// Returns the downloaded file URI and its byte count.
+  /// The returned future completes only after the destination has been committed.
   Future<XmaxDownloadedFile> downloadImage({
     required Uri from,
     required Uri to,
@@ -97,12 +102,16 @@ abstract interface class XmaxStorageManaging {
 
   /// Downloads a video to a local file.
   ///
+  /// File replacement, failure cleanup, and progress behavior follow [downloadImage].
+  ///
   /// Parameters:
   /// - [from]: The remote file's HTTP or HTTPS URL.
   /// - [to]: The destination file URI.
-  /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [progress]: Receives bytes written and expected bytes, with zero total when unknown until
+  ///   completion. Observer exceptions do not interrupt the transfer.
   ///
   /// Returns the downloaded file URI and its byte count.
+  /// The returned future completes only after the destination has been committed.
   Future<XmaxDownloadedFile> downloadVideo({
     required Uri from,
     required Uri to,
