@@ -10,6 +10,7 @@ import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeGenerationManager.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/media/MediaControlling.dart';
@@ -44,6 +45,26 @@ void main() {
         InMemorySharedPreferencesAsync.withData({}),
   );
   tearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+
+  test(
+    'automatic adaptation survives a throwing application network listener',
+    () async {
+      final d = _Fixture();
+      addTearDown(d.manager.close);
+      await d.start();
+      await d.manager.setNetworkQualityListener(
+        (_) => throw StateError('application observer failed'),
+      );
+      await d.poorSamples();
+      expect(await d.manager.uplinkQualityLevel, RealtimeQualityLevel.l3);
+      expect(await d.manager.downlinkQualityLevel, RealtimeQualityLevel.l3);
+      expect(d.rtc.formats.last.width, 768);
+      expect(
+        (await d.manager.currentState).connectionState,
+        RealtimeConnectionState.generating,
+      );
+    },
+  );
 
   test(
     'disabled adaptation retains public samples and manual directional controls',
@@ -319,7 +340,7 @@ class _Fixture {
   Future<void> poorSamples() async {
     for (var i = 5; i <= 7; i++) {
       now = i.toDouble();
-      rtc.listener!.onNetworkQuality!(
+      rtc.quality!.onNetworkQuality(
         const RealtimeNetworkQuality(
           uplink: RealtimeNetworkQualityLevel.bad,
           downlink: RealtimeNetworkQualityLevel.bad,
@@ -333,6 +354,9 @@ class _Fixture {
 
 class _Rtc implements RtcManaging {
   RtcEventListener? listener;
+  RtcQualityListener? quality;
+  @override
+  void setQualityListener(RtcQualityListener? value) => quality = value;
   Object? encodingError;
   final formats = <VideoEncodingConfiguration>[];
   @override
@@ -466,16 +490,18 @@ class _Render implements RenderControlling {
 class _Sessions implements RealtimeSessionServicing {
   int closed = 0;
   @override
-  Future<RealtimeSession> createSession({required RealtimeModel model}) async =>
-      const RealtimeSession(
-        id: 'session',
-        connection: RealtimeSessionConnection(
-          roomID: 'room',
-          userID: 'user',
-          token: 'token',
-          botName: 'bot',
-        ),
-      );
+  Future<RealtimeSession> createSession({
+    required RealtimeModel model,
+    Future<void>? cancellation,
+  }) async => const RealtimeSession(
+    id: 'session',
+    connection: RealtimeSessionConnection(
+      roomID: 'room',
+      userID: 'user',
+      token: 'token',
+      botName: 'bot',
+    ),
+  );
   @override
   Future<void> closeSession({required String sessionID}) async {
     closed++;

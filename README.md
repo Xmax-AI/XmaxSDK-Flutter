@@ -659,9 +659,10 @@ credentials are not embedded in the host application.
 
 <br>
 
-### Download cancellation
+### File transfer cancellation
 
-Pass an optional cancellation token to `downloadImage()` or `downloadVideo()`.
+Pass an optional cancellation token to `uploadImage()`,
+`uploadImageWithSafetyCheck()`, `uploadVideo()`, `downloadImage()`, or `downloadVideo()`.
 Existing calls without a token remain unchanged:
 
 ```dart
@@ -684,9 +685,18 @@ try {
 
 Cancellation aborts only the associated download, preserves an existing destination,
 and removes staged data before the future completes with `XmaxErrorCode.cancelled`.
-Once destination replacement starts, cancellation cannot undo it. Create a new token
-for each download; a cancelled token cannot be reset. Sharing a token cancels all
-downloads using it. Cancelling a completed download has no effect on its result.
+Once destination replacement starts, cancellation cannot undo it.
+
+For uploads, the token also cancels credential retrieval and optional image safety
+checks. COS cancellation targets only the associated native upload task. If task
+registration is still in progress, cancellation waits for its handle before
+releasing it. Objects already received by cloud storage are not deleted automatically.
+
+Create a new token for each transfer; a cancelled token cannot be reset. Sharing a
+token cancels all transfers using it. Cancelling a completed transfer does not
+change its result. Download progress preserves transferred bytes when the total
+size is unknown: `totalBytes` and `fractionCompleted` remain zero until completion,
+when the actual total is reported.
 
 <br>
 

@@ -16,6 +16,7 @@ import '../../foundation/errors/ErrorMessageFormatter.dart';
 import '../../foundation/errors/ErrorNormalizer.dart';
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/runtime/RuntimeInfo.dart';
+import '../../foundation/tasks/OperationCancellation.dart';
 import '../../core/XmaxEnvironment.dart';
 import 'ApiLogger.dart';
 import 'ApiServicing.dart';
@@ -46,8 +47,8 @@ abstract interface class ApiTransport {
   /// - [url]: The complete request URL.
   /// - [headers]: The HTTP request headers.
   /// - [body]: The encoded request body bytes; null sends no body.
-  /// - [timeout]: The separate timeouts for opening the request and awaiting headers; body reads
-  ///   have no default timeout.
+  /// - [timeout]: The inactivity limit for connection, response headers, and each response body read.
+  /// - [cancellation]: Completes to abort this request and release its response.
   ///
   /// Returns the HTTP status code and complete response body.
   Future<ApiTransportResponse> send({
@@ -56,6 +57,7 @@ abstract interface class ApiTransport {
     required Map<String, String> headers,
     required List<int>? body,
     required Duration timeout,
+    Future<void>? cancellation,
   });
 }
 
@@ -83,31 +85,95 @@ final class HttpApiTransport implements ApiTransport {
     required Map<String, String> headers,
     required List<int>? body,
     required Duration timeout,
+    Future<void>? cancellation,
   }) async {
-    final request = await _client.openUrl(
-      method.value,
-      url,
-    ).timeout(timeout);
+    final operation = OperationCancellation(cancellation: cancellation);
+    HttpClientRequest? request;
+    HttpClientResponse? response;
+    StreamIterator<List<int>>? chunks;
+    var subscribed = false;
+    var completed = false;
 
-    headers.forEach(request.headers.set);
+    operation.observe(() {
+      try {
+        request?.abort(OperationCancellation.error);
+      } catch (_) {}
+    });
 
-    if (body != null) {
-      request.add(body);
+    try {
+      // Allow a completed parent signal to cancel before opening a connection.
+      await operation.wait(Future<void>.value());
+      final activeRequest = await operation.wait(
+        _client.openUrl(
+          method.value,
+          url,
+        ).then((
+          opened,
+        ) {
+          opened.done.ignore();
+          if (operation.isCancelled || operation.isFinished) {
+            opened.abort(OperationCancellation.error);
+          } else {
+            request = opened;
+          }
+          return opened;
+        }),
+        timeout: timeout,
+      );
+
+      headers.forEach(activeRequest.headers.set);
+      if (body != null) {
+        activeRequest.add(body);
+      }
+
+      final activeResponse = await operation.wait(
+        activeRequest.close().then((
+          received,
+        ) async {
+          if (operation.isCancelled || operation.isFinished) {
+            await received.listen(null).cancel();
+            operation.check();
+            throw OperationCancellation.error;
+          }
+
+          response = received;
+          return received;
+        }),
+        timeout: timeout,
+      );
+      chunks = StreamIterator<List<int>>(activeResponse);
+      final bytes = <int>[];
+
+      subscribed = true;
+      while (await operation.wait(
+        chunks.moveNext(),
+        timeout: timeout,
+      )) {
+        bytes.addAll(chunks.current);
+      }
+
+      operation.check();
+      completed = true;
+      return ApiTransportResponse(
+        statusCode: activeResponse.statusCode,
+        body: bytes,
+      );
+    } finally {
+      operation.finish();
+      if (!completed) {
+        try {
+          request?.abort();
+        } catch (_) {}
+      }
+
+      try {
+        if (subscribed) {
+          await chunks?.cancel();
+        } else {
+          await response?.listen(null).cancel();
+        }
+      } catch (_) {}
     }
-
-    final response = await request.close().timeout(timeout);
-    final bytes = await response.fold<List<int>>(
-      <int>[],
-      (
-        buffer,
-        chunk,
-      ) => buffer..addAll(chunk),
-    );
-
-    return ApiTransportResponse(
-      statusCode: response.statusCode,
-      body: bytes,
-    );
   }
 }
 
@@ -180,11 +246,46 @@ final class ApiService implements ApiServicing {
       Object? json,
     )
     decode,
+    Future<void>? cancellation,
+  }) async {
+    final operation = OperationCancellation(cancellation: cancellation);
+
+    try {
+      return await _request(
+        method,
+        path: path,
+        body: body,
+        decode: decode,
+        operation: operation,
+      );
+    } finally {
+      operation.finish();
+    }
+  }
+
+  /// Executes one request while retaining cancellation ownership through response decoding.
+  ///
+  /// Parameters:
+  /// - [method]: The HTTP method.
+  /// - [path]: The API path relative to this service.
+  /// - [body]: The JSON request payload.
+  /// - [decode]: The business response decoder.
+  /// - [operation]: The scoped cancellation owner.
+  ///
+  /// Returns the decoded business response.
+  Future<T> _request<T>(
+    ApiMethod method, {
+    required String path,
+    Object? body,
+    required T Function(
+      Object? json,
+    ) decode,
+    required OperationCancellation operation,
   }) async {
     _validateConfiguration();
 
     final url = _makeURL(path);
-    final runtime = await RuntimeInfo.resolve();
+    final runtime = await operation.wait(RuntimeInfo.resolve());
     final encodedBody = body == null ? null : utf8.encode(jsonEncode(body));
     final stopwatch = Stopwatch()..start();
 
@@ -206,6 +307,7 @@ final class ApiService implements ApiServicing {
         },
         body: encodedBody,
         timeout: _timeout,
+        cancellation: operation.signal,
       );
     } on XmaxError catch (error) {
       ApiLogger.logFailure(
@@ -236,11 +338,13 @@ final class ApiService implements ApiServicing {
     }
 
     try {
+      operation.check();
       final value = _parseResponse(
         response,
         decode,
       );
 
+      operation.check();
       ApiLogger.logResponse(
         method: method,
         path: path,

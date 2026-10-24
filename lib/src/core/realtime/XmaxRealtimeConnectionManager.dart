@@ -126,6 +126,7 @@ final class XmaxRealtimeConnectionManager {
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   /// - [isCurrent]: A check that the operation still belongs to the current lifecycle.
   /// - [onHeartbeatFailure]: The handler for heartbeat failures in the current session.
+  /// - [cancellation]: Completes to abort HTTP session creation for an invalidated operation.
   ///
   /// Returns the remote media stream associated with this session.
   Future<RealtimeMediaStream> connect({
@@ -133,6 +134,7 @@ final class XmaxRealtimeConnectionManager {
     required RealtimeVideoFormat videoFormat,
     required bool Function() isCurrent,
     required RealtimeConnectionHeartbeatFailureHandler onHeartbeatFailure,
+    Future<void>? cancellation,
   }) async {
     RealtimeSession? session;
     var activated = false;
@@ -141,7 +143,10 @@ final class XmaxRealtimeConnectionManager {
       timing.beginConnection();
       // Create the cloud session before joining RTC with its credentials.
       timing.beginSessionCreation();
-      session = await _sessionService.createSession(model: model);
+      session = await _sessionService.createSession(
+        model: model,
+        cancellation: cancellation,
+      );
       timing.finishSessionCreation();
       _ensureCurrent(isCurrent);
 

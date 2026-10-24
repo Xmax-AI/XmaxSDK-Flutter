@@ -1617,16 +1617,18 @@ final class _FakeSessions implements RealtimeSessionServicing {
   }
 
   @override
-  Future<RealtimeSession> createSession({required RealtimeModel model}) async =>
-      const RealtimeSession(
-        id: 'session-1',
-        connection: RealtimeSessionConnection(
-          roomID: 'room-1',
-          userID: 'user-1',
-          token: 'token-1',
-          botName: 'bot-1',
-        ),
-      );
+  Future<RealtimeSession> createSession({
+    required RealtimeModel model,
+    Future<void>? cancellation,
+  }) async => const RealtimeSession(
+    id: 'session-1',
+    connection: RealtimeSessionConnection(
+      roomID: 'room-1',
+      userID: 'user-1',
+      token: 'token-1',
+      botName: 'bot-1',
+    ),
+  );
   @override
   void startHeartbeat({
     required String sessionID,

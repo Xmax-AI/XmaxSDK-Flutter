@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
@@ -75,11 +76,11 @@ void main() {
         uplink: RealtimeNetworkQualityLevel.bad,
         downlink: RealtimeNetworkQualityLevel.good,
       );
-      rtc.listener!.onNetworkQuality!(sample);
+      rtc.quality!.onNetworkQuality(sample);
       expect(observed, [sample]);
       expect(internal, [sample]);
       actual.setAdaptiveQualityListener(null);
-      rtc.listener!.onNetworkQuality!(sample);
+      rtc.quality!.onNetworkQuality(sample);
       expect(observed, hasLength(2));
       expect(internal, hasLength(1));
     },
@@ -342,11 +343,11 @@ void main() {
           down = <DownlinkVideoStatistics?>[];
       stream.setUplinkVideoStatisticsListener(up.add);
       stream.setDownlinkVideoStatisticsListener(down.add);
-      rtc.listener!.onUplinkVideoStatistics!(
+      rtc.quality!.onUplinkVideoStatistics(
         const UplinkVideoStatistics(bitrateKbps: 123),
       );
       expect(up.single?.bitrateKbps, 123);
-      rtc.listener!.onDownlinkVideoStatistics!(
+      rtc.quality!.onDownlinkVideoStatistics(
         const DownlinkVideoStatistics(userID: 'other'),
       );
       expect(down, isEmpty);
@@ -357,7 +358,7 @@ void main() {
       );
       rtc.listener!.onRemoteVideoPublished!(_remote, true);
       await generation.value;
-      rtc.listener!.onDownlinkVideoStatistics!(
+      rtc.quality!.onDownlinkVideoStatistics(
         const DownlinkVideoStatistics(userID: 'bot', renderFrameRate: 24),
       );
       expect(down.last?.renderFrameRate, 24);
@@ -381,6 +382,9 @@ class _Rtc implements RtcManaging {
   }
 
   RtcEventListener? listener;
+  RtcQualityListener? quality;
+  @override
+  void setQualityListener(RtcQualityListener? value) => quality = value;
   Object? volumeError, videoError;
   Completer<void>? audioGate;
   final audioSubscriptions = <bool>[], audioVolumes = <int>[];

@@ -1,10 +1,43 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/service/network/ApiServicing.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeSessionService.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  test(
+    'stopping heartbeat aborts the in-flight request without reporting a stale failure',
+    () async {
+      final api = _RecordingApiService();
+      final started = Completer<void>();
+      final cancelled = Completer<void>();
+      api.onHeartbeat = (cancellation) async {
+        expect(cancellation, isNotNull);
+        started.complete();
+        await cancellation;
+        cancelled.complete();
+        throw const XmaxError(
+          code: XmaxErrorCode.cancelled,
+          message: 'cancelled',
+        );
+      };
+      final service = RealtimeSessionService(
+        apiService: api,
+        heartbeatInterval: const Duration(milliseconds: 5),
+      );
+      var failures = 0;
+      service.startHeartbeat(
+        sessionID: 'session',
+        onFailure: (_, _) async => failures++,
+      );
+      await started.future;
+      service.stopHeartbeat();
+      await cancelled.future.timeout(const Duration(seconds: 1));
+      await Future<void>.delayed(Duration.zero);
+      expect(failures, 0);
+    },
+  );
   test(
     'credentials require RTC identity, bot and matching application',
     () async {
@@ -66,6 +99,7 @@ void main() {
 }
 
 final class _RecordingApiService implements ApiServicing {
+  Future<void> Function(Future<void>?)? onHeartbeat;
   Object? modelExtra;
   ApiMethod? method;
   String? path;
@@ -77,7 +111,9 @@ final class _RecordingApiService implements ApiServicing {
     required String path,
     Object? body,
     required T Function(Object? json) decode,
+    Future<void>? cancellation,
   }) async {
+    if (path.endsWith('/heartbeat')) await onHeartbeat?.call(cancellation);
     this.method = method;
     this.path = path;
     this.body = body;

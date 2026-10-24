@@ -77,6 +77,7 @@ final class _FakeStorageService implements StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async {
     progress?.call(5, 10);
     return _stored;
@@ -87,6 +88,7 @@ final class _FakeStorageService implements StorageServicing {
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _stored;
 
   @override
@@ -94,6 +96,7 @@ final class _FakeStorageService implements StorageServicing {
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _stored;
 
   @override
@@ -102,6 +105,7 @@ final class _FakeStorageService implements StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _stored;
 
   @override
@@ -110,6 +114,7 @@ final class _FakeStorageService implements StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _stored;
 
   @override
@@ -117,6 +122,7 @@ final class _FakeStorageService implements StorageServicing {
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _stored;
 
   @override

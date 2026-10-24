@@ -21,6 +21,9 @@ import 'XmaxUploadedFile.dart';
 /// Byte-backed uploads require both fileName and contentType.
 /// File-backed uploads use the path's filename and infer contentType from its extension when
 /// omitted.
+///
+/// An optional cancellation token covers credential retrieval, transfer, and safety checking.
+/// Cancelled uploads may leave an object already accepted by storage; cancellation does not delete it.
 abstract interface class XmaxStorageManaging {
 
   /// Uploads an image to object storage; see [XmaxStorageManaging] for source constraints.
@@ -31,6 +34,7 @@ abstract interface class XmaxStorageManaging {
   /// - [fileName]: The filename including its extension for byte uploads; ignored for local files.
   /// - [contentType]: The MIME type stored as Content-Type, such as image/jpeg.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the object URL, key, and ETag when provided by storage.
   Future<XmaxUploadedFile> uploadImage({
@@ -39,6 +43,7 @@ abstract interface class XmaxStorageManaging {
     String? fileName,
     String? contentType,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads an image and performs a safety check, rejecting unsafe content with unsafeImage.
@@ -52,6 +57,7 @@ abstract interface class XmaxStorageManaging {
   /// - [fileName]: The filename for byte-backed uploads.
   /// - [contentType]: The image MIME type.
   /// - [progress]: The progress handler receiving uploaded and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the object URL and key, with a null ETag if storage does not provide one.
   Future<XmaxUploadedFile> uploadImageWithSafetyCheck({
@@ -60,6 +66,7 @@ abstract interface class XmaxStorageManaging {
     String? fileName,
     String? contentType,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads a video file without creating a realtime video input stream.
@@ -72,6 +79,7 @@ abstract interface class XmaxStorageManaging {
   /// - [fileName]: The filename for byte-backed uploads.
   /// - [contentType]: The video MIME type, such as video/mp4.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the object URL, key, and ETag when provided by storage.
   Future<XmaxUploadedFile> uploadVideo({
@@ -80,6 +88,7 @@ abstract interface class XmaxStorageManaging {
     String? fileName,
     String? contentType,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Downloads an image to a local file.

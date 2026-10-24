@@ -21,6 +21,7 @@ import 'RoomJoinConfiguration.dart';
 import 'RtcEngineManager.dart';
 import 'RtcEventListener.dart';
 import 'RtcManaging.dart';
+import 'RtcQualityListener.dart';
 import 'VideoEncodingConfiguration.dart';
 
 /// Coordinates a shared engine lease, camera preview, and one room lifecycle.
@@ -63,6 +64,9 @@ final class RtcManager implements RtcManaging {
 
   /// The current room and media event listener.
   RtcEventListener? _eventListener;
+
+  /// The quality and statistics receiver retained across room joins.
+  RtcQualityListener? _qualityListener;
 
   /// The native event handler for local capture.
   RtcEngineEventHandler? _handler;
@@ -448,6 +452,7 @@ final class RtcManager implements RtcManaging {
       engine: _engine,
       roomID: configuration.roomID,
       listener: () => _eventListener,
+      qualityListener: () => _qualityListener,
       leaveTimeout: cleanupTimeout,
     );
 
@@ -605,6 +610,17 @@ final class RtcManager implements RtcManaging {
   void setEventListener(
     RtcEventListener? listener,
   ) => _eventListener = listener;
+
+  /// Replaces the independent quality and statistics receiver.
+  ///
+  /// Parameters:
+  /// - [listener]: The quality receiver, or null to stop delivery.
+  @override
+  void setQualityListener(
+    RtcQualityListener? listener,
+  ) {
+    _qualityListener = listener;
+  }
 
   /// Sets the internal local camera first-frame callback.
   ///

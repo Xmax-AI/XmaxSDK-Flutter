@@ -25,6 +25,7 @@ abstract interface class StorageServicing {
   /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImage({
@@ -32,6 +33,7 @@ abstract interface class StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads a local image, inferring its MIME type from the extension if unspecified.
@@ -40,12 +42,14 @@ abstract interface class StorageServicing {
   /// - [fileURL]: The local file URI.
   /// - [contentType]: The image MIME type; inferred from the file extension if unspecified.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImageFile({
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads an image and checks content safety; throws unsafeImage if rejected.
@@ -55,6 +59,7 @@ abstract interface class StorageServicing {
   /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImageWithSafetyCheck({
@@ -62,6 +67,7 @@ abstract interface class StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads a local image and checks content safety; throws unsafeImage if rejected.
@@ -70,12 +76,14 @@ abstract interface class StorageServicing {
   /// - [fileURL]: The local file URI.
   /// - [contentType]: The image MIME type; inferred from the file extension if unspecified.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadImageFileWithSafetyCheck({
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads a video file without creating a realtime video input stream.
@@ -85,6 +93,7 @@ abstract interface class StorageServicing {
   /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadVideo({
@@ -92,6 +101,7 @@ abstract interface class StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Uploads a local video, inferring its MIME type from the extension if unspecified.
@@ -100,12 +110,14 @@ abstract interface class StorageServicing {
   /// - [fileURL]: The local file URI.
   /// - [contentType]: The video MIME type; inferred from the file extension if unspecified.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling credentials, upload, and safety checking.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> uploadVideoFile({
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Downloads an image to a local file.

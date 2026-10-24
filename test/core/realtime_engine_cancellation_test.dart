@@ -14,6 +14,8 @@ import 'package:xmax_sdk/src/media/camera/CameraControlling.dart';
 import 'package:xmax_sdk/src/render/RenderController.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeMediaStream.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeSessionServicing.dart';
+import 'package:xmax_sdk/src/service/realtime/RealtimeSessionService.dart';
+import 'package:xmax_sdk/src/service/network/ApiServicing.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 import 'package:xmax_sdk/src/stream/StreamController.dart' as transport;
 import 'package:xmax_sdk/xmax_sdk.dart';
@@ -29,6 +31,35 @@ Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+
+  test(
+    'close cancels HTTP session creation through the complete realtime stack',
+    () async {
+      final api = _PendingAPI();
+      final pool = RtcEngineManager.internal(
+        createEngine: () async => _Platform(),
+      );
+      final fixture = _Fixture(
+        pool,
+        sessions: RealtimeSessionService(apiService: api),
+      );
+      addTearDown(fixture.manager.close);
+      final local = await fixture.manager.createLocalCameraStream();
+      final failed = expectLater(
+        fixture.manager.connect(localStream: local),
+        _cancelled,
+      );
+      await api.started.future;
+      await fixture.manager.close().timeout(const Duration(seconds: 1));
+      await failed;
+      expect(api.cancelled, isTrue);
+      expect(fixture.camera.stops, 1);
+      expect(
+        (await fixture.manager.currentState).connectionState,
+        RealtimeConnectionState.idle,
+      );
+    },
+  );
 
   test(
     'closing a queued realtime manager preserves the current camera owner and can retry',
@@ -149,7 +180,7 @@ void main() {
 }
 
 class _Fixture {
-  _Fixture(RtcEngineManager pool) {
+  _Fixture(RtcEngineManager pool, {RealtimeSessionServicing? sessions}) {
     final rtc = RtcManager(engineManager: pool);
     media = MediaController(
       rtcManager: rtc,
@@ -161,11 +192,12 @@ class _Fixture {
     manager = XmaxRealtimeManager.internal(
       options: const RealtimeConfiguration(
         model: RealtimeModel.x2_1_1_preview_cn,
+        isAdaptiveQualityEnabled: false,
       ),
       mediaController: media,
       streamController: stream,
       connectionManager: XmaxRealtimeConnectionManager(
-        sessionService: _UnusedSessions(),
+        sessionService: sessions ?? _UnusedSessions(),
         interactionController: media,
         renderController: render,
         streamController: stream,
@@ -246,6 +278,10 @@ class _Platform implements RtcPlatform {
 
 class _Engine implements RtcEngineEx {
   @override
+  Future<void> setVideoEncoderConfiguration(
+    VideoEncoderConfiguration configuration,
+  ) async {}
+  @override
   void registerEventHandler(RtcEngineEventHandler handler) {}
   @override
   void unregisterEventHandler(RtcEngineEventHandler handler) {}
@@ -256,4 +292,24 @@ class _Engine implements RtcEngineEx {
 class _UnusedSessions implements RealtimeSessionServicing {
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
+}
+
+class _PendingAPI implements ApiServicing {
+  final started = Completer<void>();
+  bool cancelled = false;
+  @override
+  Future<T> request<T>(
+    ApiMethod method, {
+    required String path,
+    Object? body,
+    required T Function(Object?) decode,
+    Future<void>? cancellation,
+  }) async {
+    expect(path, '/session');
+    expect(cancellation, isNotNull);
+    started.complete();
+    await cancellation;
+    cancelled = true;
+    throw const XmaxError(code: XmaxErrorCode.cancelled, message: 'cancelled');
+  }
 }

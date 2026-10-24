@@ -21,6 +21,7 @@ import '../logging/XmaxLogger.dart';
 import 'RemoteStream.dart';
 import 'RoomJoinConfiguration.dart';
 import 'RtcEventListener.dart';
+import 'RtcQualityListener.dart';
 import 'RtcMessageQueue.dart';
 import 'RtcRoom.dart';
 import 'RtcStatsLogger.dart';
@@ -34,6 +35,7 @@ final class AgoraRtcRoom implements RtcRoom {
     required this.engine,
     required this.roomID,
     required this.listener,
+    this.qualityListener,
     this.leaveTimeout = const Duration(seconds: 2),
   });
 
@@ -45,6 +47,9 @@ final class AgoraRtcRoom implements RtcRoom {
 
   /// The current RTC event listener provider; null suppresses event delivery.
   final RtcEventListener? Function() listener;
+
+  /// The current quality receiver, independent of publication and signaling callbacks.
+  final RtcQualityListener? Function()? qualityListener;
 
   /// The deadline for native leave and its callback; defaults to 2 seconds.
   final Duration leaveTimeout;
@@ -339,7 +344,7 @@ final class AgoraRtcRoom implements RtcRoom {
         );
 
         RtcStatsLogger.logNetworkQuality(quality);
-        listener()?.onNetworkQuality?.call(quality);
+        qualityListener?.call()?.onNetworkQuality(quality);
       },
       onLocalVideoStats: (
         connection,
@@ -361,13 +366,13 @@ final class AgoraRtcRoom implements RtcRoom {
         );
 
         RtcStatsLogger.logUplinkVideoStatistics(value);
-        listener()?.onUplinkVideoStatistics?.call(value);
+        qualityListener?.call()?.onUplinkVideoStatistics(value);
 
         final adaptation = stats.qualityAdaptIndication;
 
         if (adaptation == QualityAdaptIndication.adaptDownBandwidth ||
             adaptation == QualityAdaptIndication.adaptUpBandwidth) {
-          listener()?.onPerformanceAlarm?.call(
+          qualityListener?.call()?.onPerformanceAlarm(
             RealtimePerformanceAlarm(
               status: adaptation == QualityAdaptIndication.adaptDownBandwidth
                   ? RealtimePerformanceStatus.limited
@@ -414,7 +419,7 @@ final class AgoraRtcRoom implements RtcRoom {
             );
 
             RtcStatsLogger.logDownlinkVideoStatistics(value);
-            listener()?.onDownlinkVideoStatistics?.call(value);
+            qualityListener?.call()?.onDownlinkVideoStatistics(value);
           },
           ),
         );

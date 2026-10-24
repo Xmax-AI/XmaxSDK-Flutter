@@ -7,8 +7,67 @@ import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
+import 'package:xmax_sdk/src/stream/quality/QualityController.dart';
 
 void main() {
+  test(
+    'native quality and statistics use an independent receiver and stop after leave',
+    () async {
+      final engine = _Engine();
+      final quality = QualityController();
+      var network = 0, statistics = 0, alarms = 0;
+      quality.setNetworkQualityListener((_) {
+        network++;
+        throw StateError('app failed');
+      });
+      quality.setUplinkVideoStatisticsListener((value) {
+        if (value != null) statistics++;
+      });
+      quality.setPerformanceAlarmListener((_) => alarms++);
+      quality.setUplinkVideoStatisticsEnabled(true);
+      final room = AgoraRtcRoom(
+        engine: engine,
+        roomID: 'room',
+        listener: () => const RtcEventListener(),
+        qualityListener: () => quality,
+      );
+      await room.join(
+        const RoomJoinConfiguration(
+          roomID: 'room',
+          userID: 'user',
+          token: 'token',
+        ),
+      );
+      final handler = engine.handler!;
+      handler.onNetworkQuality!(
+        room.connection,
+        0,
+        QualityType.qualityBad,
+        QualityType.qualityGood,
+      );
+      handler.onLocalVideoStats!(
+        room.connection,
+        VideoSourceType.videoSourceCameraPrimary,
+        const LocalVideoStats(
+          encodedFrameWidth: 1024,
+          encodedFrameHeight: 1920,
+          qualityAdaptIndication: QualityAdaptIndication.adaptDownBandwidth,
+        ),
+      );
+      expect(network, 1);
+      expect(statistics, 1);
+      expect(alarms, 1);
+      final connection = room.connection;
+      await room.destroy();
+      handler.onNetworkQuality!(
+        connection,
+        0,
+        QualityType.qualityBad,
+        QualityType.qualityGood,
+      );
+      expect(network, 1);
+    },
+  );
   test(
     'room traffic and account queries use the assigned local connection',
     () async {

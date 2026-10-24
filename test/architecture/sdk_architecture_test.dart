@@ -155,6 +155,7 @@ final class _RecordingApi implements ApiServicing {
     required String path,
     Object? body,
     required T Function(Object? json) decode,
+    Future<void>? cancellation,
   }) async {
     requests++;
     throw StateError('No API request is expected during component assembly');

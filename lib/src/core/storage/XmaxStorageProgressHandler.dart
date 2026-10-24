@@ -11,18 +11,18 @@
 /// The transferred byte counts and completion fraction for a file operation.
 final class XmaxStorageProgress {
 
-  /// Creates progress with nonnegative byte counts and completed bytes no greater than the total.
+  /// Creates nonnegative byte counts; a zero total permits incremental bytes of unknown total size.
   const XmaxStorageProgress({
     required this.completedBytes,
     required this.totalBytes,
   }) : assert(completedBytes >= 0),
        assert(totalBytes >= 0),
-       assert(completedBytes <= totalBytes);
+       assert(totalBytes == 0 || completedBytes <= totalBytes);
 
   /// The number of bytes transferred.
   final int completedBytes;
 
-  /// The total transfer size, in bytes.
+  /// The total transfer size, in bytes; zero means unknown until completion.
   final int totalBytes;
 
   /// The completion fraction from 0 to 1, or 0 when the total is zero.

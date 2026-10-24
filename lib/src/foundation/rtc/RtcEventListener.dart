@@ -8,12 +8,9 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import '../../service/realtime/RealtimeNetworkQuality.dart';
-import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import 'RemoteStream.dart';
-import 'VideoStatistics.dart';
 
-/// The internal RTC publication, first-frame, quality, statistics, and failure callbacks.
+/// The internal RTC publication, first-frame, and failure callbacks.
 final class RtcEventListener {
 
   /// Creates RTC event callbacks.
@@ -23,10 +20,6 @@ final class RtcEventListener {
     this.onFirstRemoteVideoFrameDecoded,
     this.onRemoteAudioPublished,
     this.onError,
-    this.onNetworkQuality,
-    this.onPerformanceAlarm,
-    this.onUplinkVideoStatistics,
-    this.onDownlinkVideoStatistics,
   });
 
   /// The remote video publication callback.
@@ -60,24 +53,4 @@ final class RtcEventListener {
     Object error,
   )?
   onError;
-
-  /// The local user's uplink and downlink quality callback.
-  final void Function(
-    RealtimeNetworkQuality quality,
-  )?
-  onNetworkQuality;
-
-  /// The performance limitation or recovery callback.
-  final void Function(
-    RealtimePerformanceAlarm alarm,
-  )?
-  onPerformanceAlarm;
-
-  /// The uplink statistics callback; see [UplinkVideoStatisticsListener] for sample and cleanup
-  /// semantics.
-  final UplinkVideoStatisticsListener? onUplinkVideoStatistics;
-
-  /// The downlink statistics callback; see [DownlinkVideoStatisticsListener] for sample and cleanup
-  /// semantics.
-  final DownlinkVideoStatisticsListener? onDownlinkVideoStatistics;
 }

@@ -5,6 +5,7 @@ import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/permissions/PermissionManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/media/camera/CameraController.dart';
@@ -374,6 +375,9 @@ final class _FakeRtc implements RtcManaging {
 
   @override
   Future<void> initialize({Future<void>? cancellation}) async {}
+
+  @override
+  void setQualityListener(RtcQualityListener? listener) {}
 
   @override
   Future<void> configureVideoEncoding(

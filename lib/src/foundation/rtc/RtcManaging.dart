@@ -11,6 +11,7 @@
 import '../media/camera/CameraPosition.dart';
 import 'RoomJoinConfiguration.dart';
 import 'RtcEventListener.dart';
+import 'RtcQualityListener.dart';
 import 'VideoEncodingConfiguration.dart';
 
 /// An interface for RTC capture, encoding, rooms, publication, subscriptions, and volume.
@@ -136,6 +137,14 @@ abstract interface class RtcManaging {
   /// - [listener]: The event listener, or null to remove it.
   void setEventListener(
     RtcEventListener? listener,
+  );
+
+  /// Sets the quality and statistics receiver independently of room lifecycle events.
+  ///
+  /// Parameters:
+  /// - [listener]: The quality receiver, or null to stop delivery.
+  void setQualityListener(
+    RtcQualityListener? listener,
   );
 
   /// Sets the internal local camera first-frame callback.

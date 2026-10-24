@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +12,7 @@ import 'package:xmax_sdk/src/foundation/storage/StoredFile.dart';
 import 'package:xmax_sdk/src/foundation/storage/DownloadedFile.dart';
 import 'package:xmax_sdk/src/service/network/ApiServicing.dart';
 import 'package:xmax_sdk/src/service/storage/StorageService.dart';
+import 'package:xmax_sdk/src/core/storage/XmaxStorageManager.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
@@ -33,6 +35,75 @@ void main() {
       identifierGenerator: () => 'ABC-123',
     );
   });
+
+  for (final stage in ['/cos/sts', '/cos/image/check']) {
+    test(
+      'public cancellation aborts $stage without continuing the upload workflow',
+      () async {
+        final started = Completer<void>();
+        apiService.beforeRequest = (path, cancellation) async {
+          if (path == stage) {
+            expect(cancellation, isNotNull);
+            started.complete();
+            await cancellation;
+            throw const XmaxError(
+              code: XmaxErrorCode.cancelled,
+              message: 'cancelled',
+            );
+          }
+        };
+        final public = XmaxStorageManager(storageService: service);
+        final token = XmaxStorageCancellationToken();
+        final failed = expectLater(
+          public.uploadImageWithSafetyCheck(
+            data: Uint8List.fromList([1, 2, 3]),
+            fileName: 'image.png',
+            contentType: 'image/png',
+            cancellationToken: token,
+          ),
+          throwsA(
+            isA<XmaxError>().having(
+              (error) => error.code,
+              'code',
+              XmaxErrorCode.cancelled,
+            ),
+          ),
+        );
+        await started.future;
+        token.cancel();
+        await failed.timeout(const Duration(seconds: 1));
+        expect(storageManager.uploads, stage == '/cos/sts' ? 0 : 1);
+        expect(
+          apiService.paths,
+          stage == '/cos/sts' ? ['/cos/sts'] : ['/cos/sts', '/cos/image/check'],
+        );
+      },
+    );
+  }
+
+  test(
+    'pre-cancelled public upload performs no credential or native upload work',
+    () async {
+      final public = XmaxStorageManager(storageService: service);
+      await expectLater(
+        public.uploadVideo(
+          data: Uint8List.fromList([1]),
+          fileName: 'video.mp4',
+          contentType: 'video/mp4',
+          cancellationToken: XmaxStorageCancellationToken()..cancel(),
+        ),
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.cancelled,
+          ),
+        ),
+      );
+      expect(apiService.paths, isEmpty);
+      expect(storageManager.uploads, 0);
+    },
+  );
 
   test(
     'global storage logs keep bilingual titles and English details',
@@ -224,6 +295,7 @@ void main() {
 }
 
 final class _FakeApiService implements ApiServicing {
+  Future<void> Function(String, Future<void>?)? beforeRequest;
   final List<String> paths = <String>[];
   Map<String, dynamic> safetyPayload = <String, dynamic>{
     'safe': true,
@@ -236,8 +308,10 @@ final class _FakeApiService implements ApiServicing {
     required String path,
     Object? body,
     required T Function(Object? json) decode,
+    Future<void>? cancellation,
   }) async {
     paths.add(path);
+    await beforeRequest?.call(path, cancellation);
     if (path == '/cos/sts') {
       return decode(<String, dynamic>{
         'bucket': 'bucket-123',
@@ -256,6 +330,7 @@ final class _FakeApiService implements ApiServicing {
 }
 
 final class _FakeStorageManager implements StorageManaging {
+  int uploads = 0;
   String objectKey = '';
   String contentType = '';
   Object? uploadError;
@@ -267,7 +342,9 @@ final class _FakeStorageManager implements StorageManaging {
     required String contentType,
     required StorageConfiguration configuration,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async {
+    uploads++;
     final error = uploadError;
     if (error != null) {
       throw error;

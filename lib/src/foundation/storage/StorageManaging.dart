@@ -27,6 +27,7 @@ abstract interface class StorageManaging {
   /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
   /// - [configuration]: The bucket, region, endpoint, and temporary credentials for this upload.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional signal cancelling only this native COS transfer.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> upload({
@@ -35,6 +36,7 @@ abstract interface class StorageManaging {
     required String contentType,
     required StorageConfiguration configuration,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Downloads a file and replaces the destination only after the transfer and file write succeed.

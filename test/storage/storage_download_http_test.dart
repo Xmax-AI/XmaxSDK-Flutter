@@ -46,6 +46,47 @@ void main() {
   Uri remote() => Uri.parse('http://127.0.0.1:${server.port}/file');
 
   test(
+    'public unknown-size progress preserves bytes and reports the actual total at completion',
+    () async {
+      final firstWritten = Completer<void>();
+      final release = Completer<void>();
+      final observed = <(int, int)>[];
+      handle = (request) async {
+        request.response.add(List.filled(8192, 1));
+        await request.response.flush();
+        await release.future;
+        request.response.add([2, 3]);
+        await request.response.close();
+      };
+      final storage = XmaxStorageManager(
+        storageService: StorageService(
+          apiService: _UnusedAPI(),
+          storageManager: manager,
+        ),
+      );
+      final download = storage.downloadImage(
+        from: remote(),
+        to: destination.uri,
+        progress: (value) {
+          observed.add((value.completedBytes, value.totalBytes));
+          if (value.totalBytes == 0 &&
+              value.completedBytes > 0 &&
+              !firstWritten.isCompleted) {
+            expect(value.fractionCompleted, 0);
+            firstWritten.complete();
+          }
+        },
+      );
+      await firstWritten.future.timeout(const Duration(seconds: 5));
+      release.complete();
+      final result = await download;
+      expect(result.byteCount, 8194);
+      expect(observed.first, (8192, 0));
+      expect(observed.last, (8194, 8194));
+    },
+  );
+
+  test(
     'public download cancellation interrupts a real response header wait',
     () async {
       await destination.writeAsString('previous');

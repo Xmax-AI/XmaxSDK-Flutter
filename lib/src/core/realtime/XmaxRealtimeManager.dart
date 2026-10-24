@@ -584,6 +584,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     final remote = await _connectionManager.connect(
       model: options.model,
       videoFormat: videoFormat,
+      cancellation: token.cancellation,
       isCurrent: () => token.isCurrent,
       onHeartbeatFailure: (
         sessionID,

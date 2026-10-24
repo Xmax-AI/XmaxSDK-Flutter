@@ -45,17 +45,22 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
   /// The timer for the next session heartbeat.
   Timer? _heartbeatTimer;
 
+  /// The signal aborting the current cycle's in-flight HTTP heartbeat.
+  Completer<void>? _heartbeatCancellation;
+
   /// Creates a model session and validates its RTC connection credentials.
   ///
   /// See [RealtimeSessionServicing.createSession] for the usage contract.
   @override
   Future<RealtimeSession> createSession({
     required RealtimeModel model,
+    Future<void>? cancellation,
   }) async {
     final payload = await _apiService.post<Map<String, dynamic>>(
       '/session',
       _map,
       body: <String, Object?>{'model': model.value},
+      cancellation: cancellation,
     );
 
     return _makeSession(
@@ -77,6 +82,7 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     // Invalidates cancelled timers and requests so stale completions cannot restart heartbeats.
     final version = ++_heartbeatVersion;
 
+    _heartbeatCancellation = Completer<void>();
     _heartbeatTimer = Timer(
       _heartbeatInterval,
       () {
@@ -95,6 +101,12 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     _heartbeatVersion += 1;
     _heartbeatTimer?.cancel();
     _heartbeatTimer = null;
+    final cancellation = _heartbeatCancellation;
+
+    _heartbeatCancellation = null;
+    if (cancellation != null && !cancellation.isCompleted) {
+      cancellation.complete();
+    }
   }
 
   /// Closes the specified server session.
@@ -130,6 +142,7 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
       final payload = await _apiService.put<Map<String, dynamic>>(
         '/session/$sessionID/heartbeat',
         _map,
+        cancellation: _heartbeatCancellation?.future,
       );
 
       if (version != _heartbeatVersion) {

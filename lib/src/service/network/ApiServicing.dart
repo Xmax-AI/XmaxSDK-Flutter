@@ -43,6 +43,7 @@ abstract interface class ApiServicing {
   /// - [path]: The relative API path.
   /// - [body]: The JSON-encodable request body; null sends no body.
   /// - [decode]: The function converting the application response into the target type.
+  /// - [cancellation]: Completes to abort this request without interrupting other requests.
   ///
   /// Returns the application response converted by [decode].
   Future<T> request<T>(
@@ -53,6 +54,7 @@ abstract interface class ApiServicing {
       Object? json,
     )
     decode,
+    Future<void>? cancellation,
   });
 }
 
@@ -64,6 +66,7 @@ extension ApiServicingConvenience on ApiServicing {
   /// Parameters:
   /// - [path]: The relative API path.
   /// - [decode]: The function converting the application response into the target type.
+  /// - [cancellation]: The cancellation signal for this request.
   ///
   /// Returns the application response converted by [decode].
   Future<T> get<T>(
@@ -71,11 +74,13 @@ extension ApiServicingConvenience on ApiServicing {
     T Function(
       Object? json,
     )
-    decode,
-  ) => request(
+    decode, {
+    Future<void>? cancellation,
+  }) => request(
     ApiMethod.get,
     path: path,
     decode: decode,
+    cancellation: cancellation,
   );
 
   /// Executes a POST request and decodes the result.
@@ -84,6 +89,7 @@ extension ApiServicingConvenience on ApiServicing {
   /// - [path]: The relative API path.
   /// - [decode]: The function converting the application response into the target type.
   /// - [body]: The JSON-encodable request body; null sends no body.
+  /// - [cancellation]: The cancellation signal for this request.
   ///
   /// Returns the application response converted by [decode].
   Future<T> post<T>(
@@ -93,11 +99,13 @@ extension ApiServicingConvenience on ApiServicing {
     )
     decode, {
     Object? body,
+    Future<void>? cancellation,
   }) => request(
     ApiMethod.post,
     path: path,
     body: body,
     decode: decode,
+    cancellation: cancellation,
   );
 
   /// Executes a PUT request and decodes the result.
@@ -106,6 +114,7 @@ extension ApiServicingConvenience on ApiServicing {
   /// - [path]: The relative API path.
   /// - [decode]: The function converting the application response into the target type.
   /// - [body]: The JSON-encodable request body; null sends no body.
+  /// - [cancellation]: The cancellation signal for this request.
   ///
   /// Returns the application response converted by [decode].
   Future<T> put<T>(
@@ -115,11 +124,13 @@ extension ApiServicingConvenience on ApiServicing {
     )
     decode, {
     Object? body,
+    Future<void>? cancellation,
   }) => request(
     ApiMethod.put,
     path: path,
     body: body,
     decode: decode,
+    cancellation: cancellation,
   );
 
   /// Executes a DELETE request and decodes the result.
@@ -127,6 +138,7 @@ extension ApiServicingConvenience on ApiServicing {
   /// Parameters:
   /// - [path]: The relative API path.
   /// - [decode]: The function converting the application response into the target type.
+  /// - [cancellation]: The cancellation signal for this request.
   ///
   /// Returns the application response converted by [decode].
   Future<T> delete<T>(
@@ -134,10 +146,12 @@ extension ApiServicingConvenience on ApiServicing {
     T Function(
       Object? json,
     )
-    decode,
-  ) => request(
+    decode, {
+    Future<void>? cancellation,
+  }) => request(
     ApiMethod.delete,
     path: path,
     decode: decode,
+    cancellation: cancellation,
   );
 }

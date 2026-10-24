@@ -135,6 +135,7 @@ final class _FailingTransport implements ApiTransport {
     required Map<String, String> headers,
     required List<int>? body,
     required Duration timeout,
+    Future<void>? cancellation,
   }) async => throw error;
 }
 
@@ -153,6 +154,7 @@ final class _FakeTransport implements ApiTransport {
     required Map<String, String> headers,
     required List<int>? body,
     required Duration timeout,
+    Future<void>? cancellation,
   }) async {
     this.url = url;
     this.headers = headers;

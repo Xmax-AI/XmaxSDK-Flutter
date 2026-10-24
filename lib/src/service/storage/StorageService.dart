@@ -26,6 +26,7 @@ import '../../foundation/storage/StorageProgressListener.dart';
 import '../../foundation/storage/StorageUploadSource.dart';
 import '../../foundation/storage/StoredFile.dart';
 import '../../foundation/storage/XmaxStorageCancellationToken.dart';
+import '../../foundation/tasks/OperationCancellation.dart';
 import '../network/ApiServicing.dart';
 import 'StorageServicing.dart';
 
@@ -99,6 +100,7 @@ final class StorageService implements StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _upload(
     source: StorageDataUploadSource(data),
     fileName: fileName,
@@ -106,6 +108,7 @@ final class StorageService implements StorageServicing {
     mediaType: _StorageMediaType.image,
     checksSafety: false,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Uploads a local image, inferring its MIME type from the extension if unspecified.
@@ -116,6 +119,7 @@ final class StorageService implements StorageServicing {
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _upload(
     source: StorageFileUploadSource(fileURL),
     fileName: _fileName(fileURL),
@@ -123,6 +127,7 @@ final class StorageService implements StorageServicing {
     mediaType: _StorageMediaType.image,
     checksSafety: false,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Uploads an image and checks content safety; throws unsafeImage if rejected.
@@ -134,6 +139,7 @@ final class StorageService implements StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _upload(
     source: StorageDataUploadSource(data),
     fileName: fileName,
@@ -141,6 +147,7 @@ final class StorageService implements StorageServicing {
     mediaType: _StorageMediaType.image,
     checksSafety: true,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Uploads a local image and checks content safety; throws unsafeImage if rejected.
@@ -151,6 +158,7 @@ final class StorageService implements StorageServicing {
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _upload(
     source: StorageFileUploadSource(fileURL),
     fileName: _fileName(fileURL),
@@ -158,6 +166,7 @@ final class StorageService implements StorageServicing {
     mediaType: _StorageMediaType.image,
     checksSafety: true,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Uploads a video file without creating a realtime video input stream.
@@ -169,6 +178,7 @@ final class StorageService implements StorageServicing {
     required String fileName,
     required String contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _upload(
     source: StorageDataUploadSource(data),
     fileName: fileName,
@@ -176,6 +186,7 @@ final class StorageService implements StorageServicing {
     mediaType: _StorageMediaType.video,
     checksSafety: false,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Uploads a local video, inferring its MIME type from the extension if unspecified.
@@ -186,6 +197,7 @@ final class StorageService implements StorageServicing {
     required Uri fileURL,
     String? contentType,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _upload(
     source: StorageFileUploadSource(fileURL),
     fileName: _fileName(fileURL),
@@ -193,6 +205,7 @@ final class StorageService implements StorageServicing {
     mediaType: _StorageMediaType.video,
     checksSafety: false,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Downloads an image to a local file.
@@ -236,6 +249,7 @@ final class StorageService implements StorageServicing {
   /// - [mediaType]: The upload media type: image or video.
   /// - [checksSafety]: Whether to check image safety after uploading.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional cancellation signal for the complete upload workflow.
   ///
   /// Returns the uploaded object's URL, key, and ETag when available.
   Future<StoredFile> _upload({
@@ -245,10 +259,19 @@ final class StorageService implements StorageServicing {
     required _StorageMediaType mediaType,
     required bool checksSafety,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async {
     final startedAt = DateTime.now();
+    final operation = OperationCancellation();
+    final detach = cancellationToken == null
+        ? null
+        : observeStorageCancellation(
+          cancellationToken,
+          operation.cancel,
+        );
 
     try {
+      operation.check();
       final safeName = _validateUpload(
         source: source,
         fileName: fileName,
@@ -257,9 +280,11 @@ final class StorageService implements StorageServicing {
       );
       final byteCount = _sourceByteCount(source);
       final resolution = XmaxLogger.isEnabled(XmaxLoggerOption.business)
-          ? await const MediaFileMetadataManager().readResolution(
-            source,
-            isVideo: mediaType == _StorageMediaType.video,
+          ? await operation.wait(
+            const MediaFileMetadataManager().readResolution(
+              source,
+              isVideo: mediaType == _StorageMediaType.video,
+            ),
           )
           : '--';
 
@@ -273,7 +298,11 @@ final class StorageService implements StorageServicing {
             '└─ ${XmaxLogger.localized('安全检测：', 'Safety Check: ')}$checksSafety',
       );
 
-      final temporary = await _fetchStorageConfiguration();
+      operation.check();
+      final temporary = await _fetchStorageConfiguration(
+        cancellation: operation.signal,
+      );
+      operation.check();
       final objectKey = _makeObjectKey(
         temporary.prefix,
         safeName,
@@ -285,13 +314,18 @@ final class StorageService implements StorageServicing {
         contentType: contentType.trim(),
         configuration: temporary.configuration,
         progress: progress,
+        cancellationToken: cancellationToken,
       );
 
+      operation.check();
       final StoredFile result;
 
       if (checksSafety) {
         // The safety endpoint requires an image URL; upload to COS before requesting the check.
-        final checkedURL = await _checkImage(stored.url);
+        final checkedURL = await _checkImage(
+          stored.url,
+          cancellation: operation.signal,
+        );
 
         result = StoredFile(
           url: checkedURL,
@@ -302,6 +336,8 @@ final class StorageService implements StorageServicing {
         result = stored;
       }
 
+      operation.check();
+      operation.finish();
       XmaxLogger.info(
         category: XmaxLoggerCategory.storage,
         message:
@@ -341,6 +377,9 @@ final class StorageService implements StorageServicing {
         startedAt,
       );
       throw uploadError;
+    } finally {
+      detach?.call();
+      operation.finish();
     }
   }
 
@@ -453,13 +492,19 @@ final class StorageService implements StorageServicing {
 
   /// Obtains the region, object prefix, and temporary credentials for this upload.
   ///
+  /// Parameters:
+  /// - [cancellation]: The upload operation's cancellation signal.
+  ///
   /// Returns the authorized object prefix and temporary storage configuration.
-  Future<_TemporaryStorageConfiguration> _fetchStorageConfiguration() async {
+  Future<_TemporaryStorageConfiguration> _fetchStorageConfiguration({
+    Future<void>? cancellation,
+  }) async {
     final payload = await _apiService.get<Map<String, dynamic>>(
       '/cos/sts',
       (
         json,
       ) => Map<String, dynamic>.from(json! as Map),
+      cancellation: cancellation,
     );
 
     const message = 'Invalid storage credential payload';
@@ -512,17 +557,20 @@ final class StorageService implements StorageServicing {
   ///
   /// Parameters:
   /// - [url]: The uploaded object's access URL.
+  /// - [cancellation]: The upload operation's cancellation signal.
   ///
   /// Returns the validated access URL or file URI.
   Future<Uri> _checkImage(
-    Uri url,
-  ) async {
+    Uri url, {
+    Future<void>? cancellation,
+  }) async {
     final payload = await _apiService.post<Map<String, dynamic>>(
       '/cos/image/check',
       (
         json,
       ) => Map<String, dynamic>.from(json! as Map),
       body: <String, Object?>{'url': url.toString()},
+      cancellation: cancellation,
     );
 
     const message = 'Invalid image safety check payload';

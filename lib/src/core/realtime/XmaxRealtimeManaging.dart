@@ -220,6 +220,7 @@ abstract interface class XmaxRealtimeManaging {
   /// Repeated calls await the same cleanup. The manager can create a new local stream after cleanup
   /// completes. Pending engine acquisition is cancelled without waiting for or stopping another
   /// manager's local preview.
+  /// Pending session creation requests are aborted before their lifecycle cleanup completes.
   Future<void> close();
 
   /// Starts generation, or updates active conditions without repeating first-frame readiness.

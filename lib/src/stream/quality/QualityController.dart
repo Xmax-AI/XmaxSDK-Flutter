@@ -11,14 +11,186 @@
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import '../../foundation/logging/XmaxLogger.dart';
+import '../../foundation/rtc/RtcManaging.dart';
+import '../../foundation/rtc/VideoStatistics.dart';
 import 'QualityConfiguration.dart';
 import 'QualityControlling.dart';
 import 'QualityDirection.dart';
 import 'QualityHistory.dart';
 import 'RealtimeQualityLevel.dart';
 
-/// Maintains independent link quality levels, proposes adjustments, and records successful updates.
+/// Routes RTC quality and statistics events and maintains independent link adaptation policies.
 final class QualityController implements QualityControlling {
+
+  /// Creates directional policies and registers an independent RTC quality receiver.
+  ///
+  /// Parameters:
+  /// - [rtcManager]: The event source; omit when exercising the policy without RTC.
+  /// - [monotonicTime]: The clock in seconds; defaults to a monotonic stopwatch.
+  QualityController({
+    RtcManaging? rtcManager,
+    double Function()? monotonicTime,
+  }) : _monotonicTime = monotonicTime {
+    rtcManager?.setQualityListener(this);
+  }
+
+  /// The injectable monotonic clock, in seconds.
+  final double Function()? _monotonicTime;
+
+  /// The default clock shared by sampling and adjustment deadlines.
+  final Stopwatch _clock = Stopwatch()..start();
+
+  /// The current monotonic time, in seconds.
+  @override
+  double get currentTime => _monotonicTime?.call() ?? _clock.elapsedMicroseconds / 1e6;
+
+  /// The internal adaptation receiver.
+  void Function(
+    RealtimeNetworkQuality quality,
+    double sampledAt,
+  )? _adaptiveListener;
+
+  /// The public uplink statistics receiver.
+  UplinkVideoStatisticsListener? _uplinkStatisticsListener;
+
+  /// The public downlink statistics receiver.
+  DownlinkVideoStatisticsListener? _downlinkStatisticsListener;
+
+  /// Whether uplink statistics describe currently published video.
+  bool _uplinkStatisticsEnabled = false;
+
+  /// The user providing the current result stream, or null when cleared.
+  String? _downlinkStatisticsUser;
+
+  /// Sets the internal adaptation receiver independently of public notifications.
+  ///
+  /// See [QualityControlling.setAdaptiveQualityListener] for the usage contract.
+  @override
+  void setAdaptiveQualityListener(
+    void Function(
+      RealtimeNetworkQuality quality,
+      double sampledAt,
+    )? listener,
+  ) {
+    _adaptiveListener = listener;
+  }
+
+  /// Sets the public uplink statistics receiver.
+  ///
+  /// See [QualityControlling.setUplinkVideoStatisticsListener] for the usage contract.
+  @override
+  void setUplinkVideoStatisticsListener(
+    UplinkVideoStatisticsListener? listener,
+  ) {
+    _uplinkStatisticsListener = listener;
+  }
+
+  /// Sets the public downlink statistics receiver.
+  ///
+  /// See [QualityControlling.setDownlinkVideoStatisticsListener] for the usage contract.
+  @override
+  void setDownlinkVideoStatisticsListener(
+    DownlinkVideoStatisticsListener? listener,
+  ) {
+    _downlinkStatisticsListener = listener;
+  }
+
+  /// Changes uplink statistics availability and clears the previous sample.
+  ///
+  /// See [QualityControlling.setUplinkVideoStatisticsEnabled] for the usage contract.
+  @override
+  void setUplinkVideoStatisticsEnabled(
+    bool enabled,
+  ) {
+    _uplinkStatisticsEnabled = enabled;
+    _notify(() => _uplinkStatisticsListener?.call(null));
+  }
+
+  /// Changes the result stream's statistics target and clears the previous sample.
+  ///
+  /// See [QualityControlling.setDownlinkVideoStatisticsUser] for the usage contract.
+  @override
+  void setDownlinkVideoStatisticsUser(
+    String? userID,
+  ) {
+    _downlinkStatisticsUser = userID;
+    _notify(() => _downlinkStatisticsListener?.call(null));
+  }
+
+  /// Delivers uplink statistics only while local video is published.
+  ///
+  /// Parameters:
+  /// - [statistics]: The local encoding and sending measurements.
+  @override
+  void onUplinkVideoStatistics(
+    UplinkVideoStatistics statistics,
+  ) {
+    if (_uplinkStatisticsEnabled) {
+      _notify(() => _uplinkStatisticsListener?.call(statistics));
+    }
+  }
+
+  /// Delivers statistics only for the user providing the current result.
+  ///
+  /// Parameters:
+  /// - [statistics]: The receiving and rendering measurements, including their remote user.
+  @override
+  void onDownlinkVideoStatistics(
+    DownlinkVideoStatistics statistics,
+  ) {
+    if (statistics.userID == _downlinkStatisticsUser) {
+      _notify(() => _downlinkStatisticsListener?.call(statistics));
+    }
+  }
+
+  /// Evaluates SDK adaptation before delivering the sample to your app.
+  ///
+  /// Parameters:
+  /// - [quality]: The directional measurements from the same RTC sample.
+  @override
+  void onNetworkQuality(
+    RealtimeNetworkQuality quality,
+  ) {
+    final sampledAt = currentTime;
+
+    _notify(() => _adaptiveListener?.call(
+      quality,
+      sampledAt,
+    ));
+    emitNetworkQuality(quality);
+  }
+
+  /// Delivers device limitation or recovery to your app.
+  ///
+  /// Parameters:
+  /// - [alarm]: The status and suggested format; does not change capture settings.
+  @override
+  void onPerformanceAlarm(
+    RealtimePerformanceAlarm alarm,
+  ) => emitPerformanceAlarm(alarm);
+
+  /// Contains observer failures without interrupting media, adaptation, or other notifications.
+  ///
+  /// Parameters:
+  /// - [notification]: The synchronous event delivery.
+  void _notify(
+    void Function() notification,
+  ) {
+    try {
+      notification();
+    } catch (_) {
+      try {
+        XmaxLogger.warn(
+          category: XmaxLoggerCategory.rtc,
+          message: XmaxLogger.localized(
+            '质量事件回调失败 (Quality Event Callback Failed)',
+            'Quality Event Callback Failed',
+          ),
+        );
+      } catch (_) {}
+    }
+  }
 
   /// The current uplink quality policy.
   QualityDirection? _up;
@@ -89,17 +261,18 @@ final class QualityController implements QualityControlling {
   @override
   QualityChange proposeQuality(
     RealtimeNetworkQuality quality,
-    double now,
-  ) => QualityChange(
+    double now, {
+    double? currentTime,
+  }) => QualityChange(
     uplink: _up?.observe(
       quality.uplink,
       sampledAt: now,
-      now: now,
+      now: currentTime ?? now,
     ),
     downlink: _down?.observe(
       quality.downlink,
       sampledAt: now,
-      now: now,
+      now: currentTime ?? now,
     ),
   );
 
@@ -139,6 +312,7 @@ final class QualityController implements QualityControlling {
   /// Clears link policies and history bindings, invalidating pending preparation.
   @override
   void resetQuality() {
+    _adaptiveListener = null;
     _version++;
     _up = null;
     _down = null;
@@ -181,7 +355,7 @@ final class QualityController implements QualityControlling {
   void emitNetworkQuality(
     RealtimeNetworkQuality quality,
   ) {
-    _networkQualityListener?.call(quality);
+    _notify(() => _networkQualityListener?.call(quality));
   }
 
   /// Notifies the listener of performance limitation or recovery.
@@ -192,6 +366,6 @@ final class QualityController implements QualityControlling {
   void emitPerformanceAlarm(
     RealtimePerformanceAlarm alarm,
   ) {
-    _performanceAlarmListener?.call(alarm);
+    _notify(() => _performanceAlarmListener?.call(alarm));
   }
 }

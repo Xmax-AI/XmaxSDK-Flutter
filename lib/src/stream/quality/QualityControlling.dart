@@ -11,12 +11,60 @@
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import '../../foundation/rtc/RtcQualityListener.dart';
+import '../../foundation/rtc/VideoStatistics.dart';
 import 'QualityConfiguration.dart';
 import 'RealtimeQualityLevel.dart';
 
 /// An interface for link policy preparation, level proposals, result commits, and quality
 /// notifications.
-abstract interface class QualityControlling {
+abstract interface class QualityControlling implements RtcQualityListener {
+
+  /// The current monotonic time, in seconds, used by sample and adjustment deadlines.
+  double get currentTime;
+
+  /// Sets the internal adaptation receiver independently of public quality notifications.
+  ///
+  /// Parameters:
+  /// - [listener]: The SDK sample and timestamp handler, or null to disable adaptation.
+  void setAdaptiveQualityListener(
+    void Function(
+      RealtimeNetworkQuality quality,
+      double sampledAt,
+    )? listener,
+  );
+
+  /// Sets the uplink statistics receiver; null removes it.
+  ///
+  /// Parameters:
+  /// - [listener]: The public handler, receiving null when uplink availability changes.
+  void setUplinkVideoStatisticsListener(
+    UplinkVideoStatisticsListener? listener,
+  );
+
+  /// Sets the current result stream's statistics receiver; null removes it.
+  ///
+  /// Parameters:
+  /// - [listener]: The public handler, receiving null when the target user changes or clears.
+  void setDownlinkVideoStatisticsListener(
+    DownlinkVideoStatisticsListener? listener,
+  );
+
+  /// Changes uplink statistics availability and clears the previous sample.
+  ///
+  /// Parameters:
+  /// - [enabled]: Whether local video is currently published.
+  void setUplinkVideoStatisticsEnabled(
+    bool enabled,
+  );
+
+  /// Changes the downlink statistics user and clears the previous sample.
+  ///
+  /// Parameters:
+  /// - [userID]: The result user to accept, or null to stop statistics delivery.
+  void setDownlinkVideoStatisticsUser(
+    String? userID,
+  );
 
   /// Prepares independent link policies from model history or L1.
   ///
@@ -42,12 +90,14 @@ abstract interface class QualityControlling {
   /// Parameters:
   /// - [quality]: The uplink and downlink measurements from the same sample.
   /// - [now]: The monotonic time, in seconds.
+  /// - [currentTime]: The processing time; defaults to [now] for immediate sample evaluation.
   ///
   /// Returns candidate link levels; null leaves that direction unchanged.
   QualityChange proposeQuality(
     RealtimeNetworkQuality quality,
-    double now,
-  );
+    double now, {
+    double? currentTime,
+  });
 
   /// Commits an adjustment result, saving the model's level history for successful updates.
   ///

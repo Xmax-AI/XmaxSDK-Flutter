@@ -89,36 +89,23 @@ final class StreamController implements StreamControlling {
            roomController ?? RoomController(rtcManager: rtcManager),
        _encodingController =
            encodingController ?? EncodingController(rtcManager: rtcManager),
-       _qualityController = qualityController ?? QualityController(),
-       _monotonicTime = monotonicTime,
+       _qualityController = qualityController ?? QualityController(
+         rtcManager: rtcManager,
+         monotonicTime: monotonicTime,
+       ),
        _errorListener = errorListener,
        _localMediaErrorListener = localMediaErrorListener,
        _remoteStreamListener = remoteStreamListener,
        _remoteFrameReadyListener = remoteFrameReadyListener,
        _remoteFrameRenderedListener = remoteFrameRenderedListener {
+    rtcManager.setQualityListener(_qualityController);
     rtcManager.setEventListener(
       RtcEventListener(
         onRemoteVideoPublished: _onRemoteVideoPublished,
         onFirstRemoteVideoFrameRendered: _onFirstRemoteVideoFrameRendered,
         onFirstRemoteVideoFrameDecoded: _onFirstRemoteVideoFrameDecoded,
         onRemoteAudioPublished: _onRemoteAudioPublished,
-        onUplinkVideoStatistics: (
-          value,
-        ) {
-          if (_localVideoPublished) {
-            _uplinkStatisticsListener?.call(value);
-          }
-        },
-        onDownlinkVideoStatistics: (
-          value,
-        ) {
-          if (value != null && _activeRemoteStream?.userID == value.userID) {
-            _downlinkStatisticsListener?.call(value);
-          }
-        },
         onError: _onError,
-        onNetworkQuality: _networkQualityDidChange,
-        onPerformanceAlarm: _qualityController.emitPerformanceAlarm,
       ),
     );
   }
@@ -134,21 +121,6 @@ final class StreamController implements StreamControlling {
 
   /// The controller for uplink and downlink quality policies.
   final QualityControlling _qualityController;
-
-  /// The monotonic clock used to timestamp network samples.
-  final _qualityClock = Stopwatch()..start();
-
-  /// An optional injected monotonic sample clock, in seconds.
-  final double Function()? _monotonicTime;
-
-  /// Reads monotonic seconds without using wall-clock time.
-  double _sampleTime() => _monotonicTime?.call() ?? _qualityClock.elapsedMicroseconds / 1e6;
-
-  /// The SDK listener for network samples, separate from your app's listener.
-  void Function(
-    RealtimeNetworkQuality quality,
-    double sampledAt,
-  )? _adaptiveQualityListener;
 
   /// The current connection's baseline and successfully applied quality levels.
   @override
@@ -182,7 +154,7 @@ final class StreamController implements StreamControlling {
       double sampledAt,
     )? listener,
   ) {
-    _adaptiveQualityListener = listener;
+    _qualityController.setAdaptiveQualityListener(listener);
   }
 
   /// Proposes directional levels without committing a transport update.
@@ -199,6 +171,7 @@ final class StreamController implements StreamControlling {
   ) => _qualityController.proposeQuality(
     quality,
     sampledAt,
+    currentTime: _qualityController.currentTime,
   );
 
   /// Records a successfully applied level or a failed adjustment.
@@ -216,26 +189,12 @@ final class StreamController implements StreamControlling {
     level,
     downlink: downlink,
     success: success,
-    now: _sampleTime(),
+    now: _qualityController.currentTime,
   );
 
   /// Discards consecutive samples collected while adaptation was unavailable.
   @override
   void resetQualitySamples() => _qualityController.resetQualitySamples();
-
-  /// Delivers public measurements and forwards samples for SDK operation admission.
-  ///
-  /// Parameters:
-  /// - [quality]: The directional measurements from the same network sample.
-  void _networkQualityDidChange(
-    RealtimeNetworkQuality quality,
-  ) {
-    _qualityController.emitNetworkQuality(quality);
-    _adaptiveQualityListener?.call(
-      quality,
-      _sampleTime(),
-    );
-  }
 
   /// The listener for remote connection and generation runtime errors.
   final RealtimeErrorListener? _errorListener;
@@ -315,12 +274,6 @@ final class StreamController implements StreamControlling {
   /// The identifiers of result video streams with subscriptions in progress.
   final _subscribingVideo = <String>{};
 
-  /// The uplink statistics listener used while local video is published.
-  UplinkVideoStatisticsListener? _uplinkStatisticsListener;
-
-  /// The downlink video statistics listener for the current result stream.
-  DownlinkVideoStatisticsListener? _downlinkStatisticsListener;
-
   /// Sets the uplink statistics listener; reports null when publication stops or the room
   /// disconnects.
   ///
@@ -329,7 +282,7 @@ final class StreamController implements StreamControlling {
   @override
   void setUplinkVideoStatisticsListener(
     UplinkVideoStatisticsListener? listener,
-  ) => _uplinkStatisticsListener = listener;
+  ) => _qualityController.setUplinkVideoStatisticsListener(listener);
 
   /// Sets the result-stream downlink statistics listener; reports null when the result is cleared.
   ///
@@ -338,7 +291,7 @@ final class StreamController implements StreamControlling {
   @override
   void setDownlinkVideoStatisticsListener(
     DownlinkVideoStatisticsListener? listener,
-  ) => _downlinkStatisticsListener = listener;
+  ) => _qualityController.setDownlinkVideoStatisticsListener(listener);
 
   /// Whether a generation task is starting or running.
   @override
@@ -539,7 +492,7 @@ final class StreamController implements StreamControlling {
       ensureActive();
       await _rtcManager.publishLocalVideo(publish: true);
       _localVideoPublished = true;
-      _uplinkStatisticsListener?.call(null);
+      _qualityController.setUplinkVideoStatisticsEnabled(_localVideoPublished);
     } catch (_) {
       _roomID = '';
       _botName = '';
@@ -553,8 +506,9 @@ final class StreamController implements StreamControlling {
   /// Ends generation and disconnects realtime while retaining the local camera preview.
   @override
   Future<void> disconnect() async {
-    _adaptiveQualityListener = null;
+    _qualityController.setAdaptiveQualityListener(null);
     _qualityController.resetQuality();
+    _qualityController.setUplinkVideoStatisticsEnabled(false);
     _connectionRevision += 1;
     // Cancel result-stream waits before changing RTC subscriptions.
     await _clearGeneration(notifyRemote: true);
@@ -581,8 +535,7 @@ final class StreamController implements StreamControlling {
     _decodedRemoteStreams.clear();
     _publishedRemoteAudioStreams.clear();
     _localVideoPublished = false;
-    _uplinkStatisticsListener?.call(null);
-    _downlinkStatisticsListener?.call(null);
+    _qualityController.setDownlinkVideoStatisticsUser(null);
     _publishedVideoStreams.clear();
     _subscribingVideo.clear();
     _roomID = '';
@@ -831,6 +784,7 @@ final class StreamController implements StreamControlling {
       ));
       if (_activeRemoteStream?.streamID == stream.streamID) {
         _activeRemoteStream = null;
+        _qualityController.setDownlinkVideoStatisticsUser(null);
         unawaited(_deactivateRemoteAudio());
         _clearRemoteStream();
       }
@@ -1016,6 +970,7 @@ final class StreamController implements StreamControlling {
           '生成结果流已确认 (Generation Stream Confirmed)\n└─ ${XmaxLogger.localized('taskID：', 'taskID: ')}$taskID',
     );
     _activeRemoteStream = stream;
+    _qualityController.setDownlinkVideoStatisticsUser(stream.userID);
     _remoteStreamListener?.call(stream);
     if (_decodedRemoteStreams.contains((
       stream.roomID,
@@ -1111,7 +1066,7 @@ final class StreamController implements StreamControlling {
 
     _generationTaskID = null;
     _startSignalSent = false;
-    _downlinkStatisticsListener?.call(null);
+    _qualityController.setDownlinkVideoStatisticsUser(null);
     _remoteAudioEnabled = false;
     _activeRemoteStream = null;
     await _deactivateRemoteAudio();

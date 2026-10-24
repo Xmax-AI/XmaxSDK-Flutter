@@ -19,10 +19,12 @@ abstract interface class RealtimeSessionServicing {
   ///
   /// Parameters:
   /// - [model]: The realtime generation model defining the supported media formats.
+  /// - [cancellation]: Completes to abort session creation for an invalidated lifecycle operation.
   ///
   /// Returns the decoded server session.
   Future<RealtimeSession> createSession({
     required RealtimeModel model,
+    Future<void>? cancellation,
   });
 
   /// Starts heartbeats for a session, replacing the previous heartbeat cycle.

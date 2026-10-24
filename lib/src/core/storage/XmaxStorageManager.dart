@@ -9,6 +9,7 @@
 //
 
 import 'dart:typed_data';
+import 'dart:math' as math;
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/storage/DownloadedFile.dart';
@@ -42,12 +43,14 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     String? fileName,
     String? contentType,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _upload(
     data: data,
     at: at,
     fileName: fileName,
     contentType: contentType,
     progress: progress,
+    cancellationToken: cancellationToken,
     dataOperation: _storageService.uploadImage,
     fileOperation: _storageService.uploadImageFile,
   );
@@ -62,12 +65,14 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     String? fileName,
     String? contentType,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _upload(
     data: data,
     at: at,
     fileName: fileName,
     contentType: contentType,
     progress: progress,
+    cancellationToken: cancellationToken,
     dataOperation: _storageService.uploadImageWithSafetyCheck,
     fileOperation: _storageService.uploadImageFileWithSafetyCheck,
   );
@@ -82,12 +87,14 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     String? fileName,
     String? contentType,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _upload(
     data: data,
     at: at,
     fileName: fileName,
     contentType: contentType,
     progress: progress,
+    cancellationToken: cancellationToken,
     dataOperation: _storageService.uploadVideo,
     fileOperation: _storageService.uploadVideoFile,
   );
@@ -136,6 +143,7 @@ final class XmaxStorageManager implements XmaxStorageManaging {
   /// - [fileName]: The filename including its extension; required for byte-backed uploads.
   /// - [contentType]: The object's MIME type, such as image/jpeg or video/mp4.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional cancellation signal for the complete upload workflow.
   /// - [dataOperation]: The upload operation for byte-backed sources.
   /// - [fileOperation]: The upload operation for local files.
   ///
@@ -146,17 +154,20 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     required String? fileName,
     required String? contentType,
     required XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
     required Future<StoredFile> Function({
       required Uint8List data,
       required String fileName,
       required String contentType,
       StorageProgressListener? progress,
+      XmaxStorageCancellationToken? cancellationToken,
     })
     dataOperation,
     required Future<StoredFile> Function({
       required Uri fileURL,
       String? contentType,
       StorageProgressListener? progress,
+      XmaxStorageCancellationToken? cancellationToken,
     })
     fileOperation,
   }) async {
@@ -185,12 +196,14 @@ final class XmaxStorageManager implements XmaxStorageManaging {
         fileName: resolvedFileName,
         contentType: resolvedContentType,
         progress: _progressListener(progress),
+        cancellationToken: cancellationToken,
       );
     } else {
       stored = await fileOperation(
         fileURL: at!,
         contentType: contentType,
         progress: _progressListener(progress),
+        cancellationToken: cancellationToken,
       );
     }
 
@@ -216,11 +229,13 @@ final class XmaxStorageManager implements XmaxStorageManaging {
         totalBytes,
       ) => handler(
           XmaxStorageProgress(
-            completedBytes: completedBytes.clamp(
-              0,
-              totalBytes,
-            ),
-            totalBytes: totalBytes,
+            completedBytes: totalBytes > 0
+                ? completedBytes.clamp(
+                  0,
+                  totalBytes,
+                )
+                : math.max(0, completedBytes),
+            totalBytes: math.max(0, totalBytes),
           ),
         );
 

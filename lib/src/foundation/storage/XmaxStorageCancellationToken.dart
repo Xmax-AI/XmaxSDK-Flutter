@@ -8,18 +8,20 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-/// A one-shot cancellation signal for image and video downloads.
+/// A one-shot cancellation signal for image and video uploads or downloads.
 ///
-/// Create one token per download and pass it as `cancellationToken`. Calling [cancel] before
-/// destination replacement aborts the transfer with `XmaxErrorCode.cancelled`, preserves an
-/// existing destination, and removes staged data before the download future completes.
+/// Create one token per transfer and pass it as `cancellationToken`.
+/// Upload cancellation covers credential retrieval, COS transfer, and optional image safety checks.
+/// It does not delete objects already accepted by storage or undo a completed upload.
+/// Download cancellation preserves existing files and removes staged data before completion.
 /// Cancellation cannot undo a committed file or interrupt replacement once it has started.
 ///
-/// A cancelled token cannot be reset. Sharing a token cancels all downloads using that token;
-/// unrelated transfers are unaffected. Use the token within the download's isolate.
+/// Cancelled transfers complete with `XmaxErrorCode.cancelled`. A cancelled token cannot be reset.
+/// Sharing a token cancels all transfers using it; unrelated transfers are unaffected.
+/// Use the token within the transfer's isolate.
 final class XmaxStorageCancellationToken {
 
-  /// Creates an uncancelled download token.
+  /// Creates an uncancelled file transfer token.
   XmaxStorageCancellationToken();
 
   /// Whether cancellation has been requested, including after a download has completed.
@@ -28,13 +30,13 @@ final class XmaxStorageCancellationToken {
   /// Whether this one-shot signal has been delivered.
   bool _isCancelled = false;
 
-  /// Active observers, removed when their downloads finish.
+  /// Active observers, removed when their transfers finish.
   final Set<void Function()> _listeners = {};
 
-  /// Requests cancellation of downloads using this token; repeated calls have no effect.
+  /// Requests cancellation of transfers using this token; repeated calls have no effect.
   ///
-  /// This method signals cancellation synchronously. Await the download future to observe the
-  /// cancellation error and completion of staged-file cleanup. Completed downloads are unchanged.
+  /// This method signals cancellation synchronously. Await the transfer future to observe the
+  /// cancellation error and resource cleanup. Completed transfers are unchanged.
   void cancel() {
     if (_isCancelled) {
       return;
@@ -53,10 +55,10 @@ final class XmaxStorageCancellationToken {
 /// Registers an internal observer, delivering an existing cancellation immediately.
 ///
 /// Parameters:
-/// - [token]: The cancellation signal associated with the download.
-/// - [listener]: The synchronous cancellation handler for that download.
+/// - [token]: The cancellation signal associated with the transfer.
+/// - [listener]: The synchronous cancellation handler for that transfer.
 ///
-/// Returns a function that detaches the observer when the download finishes.
+/// Returns a function that detaches the observer when the transfer finishes.
 void Function() observeStorageCancellation(
   XmaxStorageCancellationToken token,
   void Function() listener,

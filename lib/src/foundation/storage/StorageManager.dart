@@ -13,7 +13,6 @@ import 'dart:io';
 
 import 'package:tencentcloud_cos_sdk_plugin_nobeacon/cos.dart';
 import 'package:tencentcloud_cos_sdk_plugin_nobeacon/cos_transfer_manger.dart';
-import 'package:tencentcloud_cos_sdk_plugin_nobeacon/enums.dart';
 import 'package:tencentcloud_cos_sdk_plugin_nobeacon/fetch_credentials.dart';
 import 'package:tencentcloud_cos_sdk_plugin_nobeacon/pigeon.dart';
 
@@ -26,6 +25,7 @@ import 'StorageDownloadOperation.dart';
 import 'StorageManaging.dart';
 import 'StorageProgressListener.dart';
 import 'StorageUploadSource.dart';
+import 'StorageUploadOperation.dart';
 import 'StoredFile.dart';
 import 'XmaxStorageCancellationToken.dart';
 
@@ -61,6 +61,7 @@ final class StorageManager implements StorageManaging {
     required String contentType,
     required StorageConfiguration configuration,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async {
     _validateUpload(
       source: source,
@@ -69,131 +70,23 @@ final class StorageManager implements StorageManaging {
       configuration: configuration,
     );
 
-    final completer = Completer<StoredFile>();
-
-    try {
-      final transferManager = await _transferManager(configuration);
-      final credential = configuration.credential;
-      final now = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-
-      // Use the temporary session credentials obtained for this upload.
-      final sessionCredentials = SessionQCloudCredentials(
-        secretId: credential.accessKeyID,
-        secretKey: credential.secretAccessKey,
-        token: credential.sessionToken,
-        startTime: now - 60,
-        expiredTime: now + 25 * 60,
-      );
-
-      // Bridge plugin callbacks to a future that callers can await for the upload result.
-      final resultListener = ResultListener(
-        (
-          headers,
-          result,
-        ) {
-          if (completer.isCompleted) {
-            return;
-          }
-
-          try {
-            final candidate =
-                result?.accessUrl ??
-                headers?['location'] ??
-                headers?['Location'];
-
-            completer.complete(
-              StoredFile(
-                url: resolveObjectURL(
-                  candidate: candidate,
-                  configuration: configuration,
-                  objectKey: objectKey,
-                ),
-                objectKey: objectKey,
-                etag: result?.eTag ?? headers?['etag'] ?? headers?['ETag'],
-              ),
-            );
-          } catch (error, stackTrace) {
-            completer.completeError(
-              error,
-              stackTrace,
-            );
-          }
-        },
-        (
-          clientException,
-          serviceException,
-        ) {
-          if (!completer.isCompleted) {
-            final error = serviceException ?? clientException;
-
-            completer.completeError(
-              XmaxError(
-                code: XmaxErrorCode.uploadError,
-                message: error == null
-                    ? 'Storage upload failed'
-                    : ErrorMessageFormatter.format(error),
-              ),
-            );
-          }
-        },
-      );
-
-      void stateCallback(
-        TransferState state,
-      ) {
-        if (state == TransferState.CANCELED && !completer.isCompleted) {
-          completer.completeError(
-            const XmaxError(
-              code: XmaxErrorCode.cancelled,
-              message: 'Storage upload was cancelled',
-            ),
-          );
-        }
-      }
-
-      switch (source) {
-        case StorageDataUploadSource(:final data):
-          await transferManager.upload(
-            configuration.bucket,
-            objectKey,
-            region: configuration.region,
-            byteArr: data,
-            customHeaders: <String, String>{'Content-Type': contentType},
-            sessionCredentials: sessionCredentials,
-            resultListener: resultListener,
-            stateCallback: stateCallback,
-            progressCallBack: progress,
-          );
-        case StorageFileUploadSource(:final fileURL):
-          await transferManager.upload(
-            configuration.bucket,
-            objectKey,
-            region: configuration.region,
-            filePath: fileURL.toFilePath(),
-            customHeaders: <String, String>{'Content-Type': contentType},
-            sessionCredentials: sessionCredentials,
-            resultListener: resultListener,
-            stateCallback: stateCallback,
-            progressCallBack: progress,
-          );
-      }
-
-      return await completer.future;
-    } on XmaxError {
-      rethrow;
-    } catch (error) {
-      if (ErrorNormalizer.isCancellation(error)) {
-        throw const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Storage upload was cancelled',
-        );
-      }
-
-      throw XmaxError(
-        code: XmaxErrorCode.uploadError,
-        message: ErrorMessageFormatter.format(error),
-      );
-    }
+    return StorageUploadOperation(
+      progress: progress,
+      cancellationToken: cancellationToken,
+    ).value(
+      transferManager: () => _transferManager(configuration),
+      source: source,
+      objectKey: objectKey,
+      contentType: contentType,
+      configuration: configuration,
+      resolveURL: (
+        candidate,
+      ) => resolveObjectURL(
+        candidate: candidate,
+        configuration: configuration,
+        objectKey: objectKey,
+      ),
+    );
   }
 
   /// Downloads to a staged file and replaces the destination only after the transfer succeeds.
