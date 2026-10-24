@@ -8,10 +8,14 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import 'dart:ui';
+
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
 import '../../media/interaction/InteractionControlling.dart';
 import '../../render/RenderControlling.dart';
+import '../../service/media/MediaService.dart';
+import '../../service/media/MediaServicing.dart';
 import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeModel.dart';
 import '../../service/realtime/RealtimeSession.dart';
@@ -20,6 +24,9 @@ import '../../service/realtime/RealtimeTiming.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
 import '../../stream/StreamControlling.dart';
+import '../../stream/quality/QualityVideoFormat.dart';
+import '../../stream/quality/RealtimeQualityLevel.dart';
+import 'RealtimeConfiguration.dart';
 
 /// An asynchronous handler for a realtime session heartbeat failure.
 ///
@@ -41,10 +48,14 @@ final class XmaxRealtimeConnectionManager {
     required InteractionControlling interactionController,
     required RenderControlling renderController,
     required StreamControlling streamController,
+    MediaServicing? mediaService,
+    RealtimeTiming? timing,
   }) : _sessionService = sessionService,
        _interactionController = interactionController,
        _renderController = renderController,
-       _streamController = streamController;
+       _streamController = streamController,
+       _mediaService = mediaService ?? MediaService(),
+       timing = timing ?? RealtimeTiming();
 
   /// The service that creates, maintains, and closes server sessions.
   final RealtimeSessionServicing _sessionService;
@@ -58,6 +69,21 @@ final class XmaxRealtimeConnectionManager {
   /// The controller that manages RTC publishing, subscriptions, and signaling.
   final StreamControlling _streamController;
 
+  /// The model-aware sizing rules for transport output.
+  final MediaServicing _mediaService;
+
+  /// The shared startup duration recorder.
+  final RealtimeTiming timing;
+
+  /// The renderer shared with generation readiness and the public facade.
+  RenderControlling get renderController => _renderController;
+
+  /// The most recently committed result dimensions, in pixels.
+  Size? _currentTargetSize;
+
+  /// The committed result dimensions for this connection.
+  Size? get currentTargetSize => _currentTargetSize;
+
   /// The remote video track owned by the current connection.
   RealtimeVideoTrack? _activeRemoteTrack;
 
@@ -66,10 +92,6 @@ final class XmaxRealtimeConnectionManager {
 
   /// The active session identifier, or an empty string when disconnected.
   String get currentSessionID => _activeSession?.id ?? '';
-
-  /// Waits for the first decoded result frame without requiring a mounted remote view.
-  Future<void> waitUntilRemoteFrameReady() =>
-      _renderController.waitUntilRemoteFrameReady();
 
   /// Waits for mounted views to conceal remote video before releasing its rendering resources.
   Future<void> prepareForRemoteRemoval() async {
@@ -104,7 +126,6 @@ final class XmaxRealtimeConnectionManager {
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   /// - [isCurrent]: A check that the operation still belongs to the current lifecycle.
   /// - [onHeartbeatFailure]: The handler for heartbeat failures in the current session.
-  /// - [timing]: The startup duration recorder, or null to omit timing.
   ///
   /// Returns the remote media stream associated with this session.
   Future<RealtimeMediaStream> connect({
@@ -112,16 +133,16 @@ final class XmaxRealtimeConnectionManager {
     required RealtimeVideoFormat videoFormat,
     required bool Function() isCurrent,
     required RealtimeConnectionHeartbeatFailureHandler onHeartbeatFailure,
-    RealtimeTiming? timing,
   }) async {
     RealtimeSession? session;
     var activated = false;
 
     try {
+      timing.beginConnection();
       // Create the cloud session before joining RTC with its credentials.
-      timing?.beginSessionCreation();
+      timing.beginSessionCreation();
       session = await _sessionService.createSession(model: model);
-      timing?.finishSessionCreation();
+      timing.finishSessionCreation();
       _ensureCurrent(isCurrent);
 
       final connection = session.connection;
@@ -133,12 +154,12 @@ final class XmaxRealtimeConnectionManager {
         );
       }
 
-      timing?.beginRoomJoin();
+      timing.beginRoomJoin();
       await _streamController.connect(
         connection: connection,
         ensureActive: () => _ensureCurrent(isCurrent),
       );
-      timing?.finishRoomJoin();
+      timing.finishRoomJoin();
       _ensureCurrent(isCurrent);
 
       // Start the session heartbeat only after RTC connects.
@@ -149,7 +170,7 @@ final class XmaxRealtimeConnectionManager {
 
       final track = createRealtimeVideoTrack(
         id: connection.botName ?? 'video-remote',
-        videoFormat: videoFormat,
+        videoFormat: _remoteVideoFormat(videoFormat),
       );
 
       _renderController.registerRemoteTrack(
@@ -162,6 +183,7 @@ final class XmaxRealtimeConnectionManager {
       activated = true;
 
       _ensureCurrent(isCurrent);
+      timing.finishConnection();
 
       return createRealtimeMediaStream(
         id: 'stream-remote',
@@ -169,7 +191,7 @@ final class XmaxRealtimeConnectionManager {
       );
     } catch (error) {
       if (isCurrent()) {
-        timing?.finishFailure(error);
+        timing.finishFailure(error);
       }
       // Release local RTC and rendering state before closing the cloud session.
       if (isCurrent() || activated) {
@@ -191,6 +213,169 @@ final class XmaxRealtimeConnectionManager {
     }
   }
 
+  /// Prepares the initial encoder and returned dimensions without changing capture.
+  ///
+  /// Parameters:
+  /// - [baseline]: The resolved local format, unchanged by quality adaptation.
+  /// - [options]: The model and adaptive quality settings.
+  /// - [ensureCurrent]: The validity check for the admitted connection operation.
+  Future<void> prepareQuality({
+    required RealtimeVideoFormat baseline,
+    required RealtimeConfiguration options,
+    required void Function() ensureCurrent,
+  }) async {
+    ensureCurrent();
+    await _streamController.prepareQuality(
+      baseline: baseline,
+      model: options.model.value,
+      minimumInputPixels: options.model.minimumInputPixels,
+      isAdaptiveQualityEnabled: options.isAdaptiveQualityEnabled,
+    );
+    ensureCurrent();
+
+    final configuration = _streamController.qualityConfiguration;
+    if (configuration == null) {
+      throw const XmaxError(
+        code: XmaxErrorCode.internalError,
+        message: 'Transport quality configuration is unavailable',
+      );
+    }
+    await _streamController.setVideoEncoderConfig(configuration.uplink);
+    ensureCurrent();
+    _currentTargetSize = _resolveTargetSize(
+      configuration.baseline,
+      configuration.downlinkLevel,
+    );
+  }
+
+  /// Records initial levels after generation and audio startup succeed.
+  ///
+  /// Parameters:
+  /// - [ensureCurrent]: The validity check before each history commit.
+  Future<void> completeInitialQuality(
+    void Function() ensureCurrent,
+  ) async {
+    final configuration = _streamController.qualityConfiguration;
+    if (configuration == null) {
+      return;
+    }
+    for (final downlink in [false, true]) {
+      ensureCurrent();
+      await _streamController.completeQuality(
+        downlink ? configuration.downlinkLevel : configuration.uplinkLevel,
+        downlink: downlink,
+        success: true,
+      );
+    }
+    ensureCurrent();
+  }
+
+  /// Applies an uplink level or returned dimensions within an admitted operation.
+  ///
+  /// Parameters:
+  /// - [level]: The requested transport level.
+  /// - [downlink]: Whether to update returned dimensions rather than uplink encoding.
+  /// - [taskID]: The active generation task.
+  /// - [ensureCurrent]: The validity check across asynchronous boundaries.
+  Future<void> applyQualityLevel(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+    required String taskID,
+    required void Function() ensureCurrent,
+  }) async {
+    final configuration = _streamController.qualityConfiguration;
+    if (configuration == null) {
+      return;
+    }
+    try {
+      ensureCurrent();
+      if (downlink) {
+        final target = _resolveTargetSize(
+          configuration.baseline,
+          level,
+        );
+        if (target != _currentTargetSize) {
+          await _streamController.changeTargetSize(
+            taskID: taskID,
+            targetSize: target,
+            ensureActive: ensureCurrent,
+          );
+          ensureCurrent();
+          _currentTargetSize = target;
+          final track = _activeRemoteTrack;
+          if (track != null) {
+            updateRealtimeVideoTrack(
+              track: track,
+              videoFormat: _remoteVideoFormat(configuration.baseline),
+            );
+          }
+        }
+      } else {
+        await _streamController.setVideoEncoderConfig(
+          QualityVideoFormat.resolve(
+            configuration.baseline,
+            level,
+            downlink: false,
+            minimumInputPixels: configuration.minimumInputPixels,
+          ),
+        );
+      }
+
+      ensureCurrent();
+      await _streamController.completeQuality(
+        level,
+        downlink: downlink,
+        success: true,
+      );
+      ensureCurrent();
+    } catch (error) {
+      ensureCurrent();
+      await _streamController.completeQuality(
+        level,
+        downlink: downlink,
+        success: false,
+      );
+      rethrow;
+    }
+  }
+
+  /// Resolves aspect-preserving returned dimensions within a downlink level.
+  ///
+  /// Parameters:
+  /// - [baseline]: The resolved local media format.
+  /// - [level]: The downlink quality level.
+  ///
+  /// Returns dimensions aligned to 4 without imposing the uplink area floor.
+  Size _resolveTargetSize(
+    RealtimeVideoFormat baseline,
+    RealtimeQualityLevel level,
+  ) => _mediaService.resolveTargetSize(
+    Size(
+      baseline.width.toDouble(),
+      baseline.height.toDouble(),
+    ),
+    maximumSize: QualityVideoFormat.downlinkMaximumSize(
+      baseline,
+      level,
+    ),
+  );
+
+  /// Applies the current returned dimensions while retaining media encoding metadata.
+  ///
+  /// Parameters:
+  /// - [mediaFormat]: The resolved local media baseline.
+  ///
+  /// Returns the remote track's format without changing the local capture format.
+  RealtimeVideoFormat _remoteVideoFormat(
+    RealtimeVideoFormat mediaFormat,
+  ) {
+    final target = _currentTargetSize;
+    return target == null ? mediaFormat : mediaFormat.resized(
+      width: target.width.toInt(),
+      height: target.height.toInt(),
+    );
+  }
+
   /// Ends generation and disconnects realtime while retaining the local camera preview.
   ///
   /// Returns the closed session identifier, or null if no session was active.
@@ -202,6 +387,8 @@ final class XmaxRealtimeConnectionManager {
     _activeSession = null;
     _activeRemoteTrack = null;
 
+    _currentTargetSize = null;
+    _streamController.setAdaptiveQualityListener(null);
     _sessionService.stopHeartbeat();
     await prepareForRemoteRemoval();
     _resetRemoteRendering(track);

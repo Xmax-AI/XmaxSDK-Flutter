@@ -506,6 +506,17 @@ Subscribe to `setUplinkVideoStatisticsListener` and
 packet loss, and media delay. Statistics become `null` when their stream ends.
 These listeners work independently of logging and network-quality listeners.
 
+An unfinished `startGeneration()` request is replaced by a newer call, including
+while waiting for the first remote frame. The replaced future completes with
+`XmaxErrorCode.cancelled` after cleanup. During established generation, condition
+updates use the existing task without repeating first-frame loading. Other
+foreground operations, such as switching cameras or manually changing quality,
+are mutually exclusive and reject conflicting calls.
+
+State listeners receive the current snapshot on registration and subsequently
+only changed snapshots. Successful completion releases operation admission before
+notifying your app, so a listener can start the next operation immediately.
+
 For virtual try-on, pass `faceRestoration: true` to `startGeneration` to retain
 the original face. The default is `false`; every condition update sends the value
 provided for that call. Switching cameras automatically restores the cached

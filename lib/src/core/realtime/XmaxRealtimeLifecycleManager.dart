@@ -12,17 +12,58 @@ import 'dart:async';
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
-import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeState.dart';
 import 'XmaxRealtimeErrorManager.dart';
 
-/// The session identifier and local media availability after connection cleanup.
+/// The kinds of mutually coordinated media and realtime operations.
+enum RealtimeOperationKind {
+
+  /// Creates, stops, or reconfigures local media.
+  media,
+
+  /// Establishes a realtime connection.
+  connection,
+
+  /// Starts generation and waits for its first frame.
+  generation,
+
+  /// Switches cameras and resumes generation when needed.
+  cameraSwitch,
+
+  /// Changes conditions or transport settings without restarting generation.
+  configuration,
+}
+
+/// The resources released by termination, ordered from narrowest to broadest.
+enum RealtimeTerminationScope {
+
+  /// Releases the task while retaining the connection and local media.
+  generation,
+
+  /// Releases the connection and task while retaining local media.
+  connection,
+
+  /// Releases the connection, task, and local media.
+  all;
+
+  /// Whether this scope includes [kind]'s resources.
+  bool affects(
+    RealtimeOperationKind kind,
+  ) => switch (this) {
+    RealtimeTerminationScope.generation =>
+      kind != RealtimeOperationKind.media && kind != RealtimeOperationKind.connection,
+    RealtimeTerminationScope.connection => kind != RealtimeOperationKind.media,
+    RealtimeTerminationScope.all => true,
+  };
+}
+
+/// The session identifier and local media availability after cleanup.
 final class RealtimeCleanupResult {
 
   /// Creates a cleanup result.
   const RealtimeCleanupResult({
     this.sessionID,
-    required this.hasLocalMedia,
+    this.hasLocalMedia = false,
   });
 
   /// The session identifier involved in cleanup, if any.
@@ -32,125 +73,130 @@ final class RealtimeCleanupResult {
   final bool hasLocalMedia;
 }
 
-/// Owns lifecycle state, asynchronous operation validity, and scoped termination.
+/// Guards operation validity and defines its failure cleanup.
 ///
-/// Resource owners perform cleanup through injected handlers. This coordinator does not own
-/// capture, RTC, or rendering resources. Generation preparation is serialized independently of
-/// first-frame waiting so later conditions and stop requests remain responsive.
+/// Resource-changing futures must settle before checking ownership. [wait] is
+/// reserved for passive readiness waits whose producers are released by cleanup.
+final class RealtimeOperationToken {
+
+  /// Creates a token with optional failure cleanup.
+  RealtimeOperationToken._(
+    this._failureScope,
+  );
+
+  /// The resources released if this operation fails.
+  RealtimeTerminationScope? _failureScope;
+
+  /// The cancellation signal, completed once when ownership is invalidated.
+  final Completer<void> _cancelled = Completer<void>();
+
+  /// The first runtime failure associated with invalidation.
+  XmaxError? _failure;
+
+  /// Whether this operation still owns its resources.
+  bool get isCurrent => !_cancelled.isCompleted;
+
+  /// The cancellation signal supplied to cancellable signaling waits.
+  Future<void> get cancellation => _cancelled.future;
+
+  /// Sets the resources released if the operation fails or is cancelled.
+  ///
+  /// Parameters:
+  /// - [scope]: The failure cleanup scope.
+  void setFailureScope(
+    RealtimeTerminationScope scope,
+  ) {
+    ensureCurrent();
+    _failureScope = scope;
+  }
+
+  /// Rejects cancelled work, preserving its originating runtime failure.
+  void ensureCurrent() {
+    if (!isCurrent) {
+      throw _failure ?? XmaxRealtimeLifecycleManager.cancelledError();
+    }
+  }
+
+  /// Waits for [readiness] or cancellation and returns the validated result.
+  Future<T> wait<T>(
+    Future<T> readiness,
+  ) async {
+    // A producer may fail during cancellation cleanup before the race is installed.
+    readiness.ignore();
+    ensureCurrent();
+    final result = await Future.any<T>([
+      readiness,
+      _cancelled.future.then<T>((
+        _,
+      ) => throw _failure ?? XmaxRealtimeLifecycleManager.cancelledError()),
+    ]);
+    ensureCurrent();
+    return result;
+  }
+
+  /// Invalidates ownership while retaining the first supplied [error].
+  void _invalidate(
+    XmaxError? error,
+  ) {
+    _failure ??= error;
+    if (!_cancelled.isCompleted) {
+      _cancelled.complete();
+    }
+  }
+}
+
+/// Owns operation admission, lifecycle state, and scoped termination.
+///
+/// Foreground work takes priority over adaptation. Generation requests replace
+/// unfinished predecessors after their resource work and cleanup settle.
+/// Resource owners execute cleanup through the injected handler.
 final class XmaxRealtimeLifecycleManager {
 
-  /// Creates a lifecycle coordinator with resource cleanup handlers.
+  /// Creates a lifecycle coordinator.
   ///
   /// Parameters:
   /// - [errorManager]: The shared runtime failure manager.
-  /// - [cleanupConnection]: Releases generation and connection resources for the supplied task.
-  /// - [stopLocalMedia]: Releases local capture after connection cleanup and camera creation finish.
-  /// - [stopGeneration]: Conceals remote video and stops a task without leaving RTC.
-  /// - [cancelPendingStart]: Cancels result confirmation without leaving RTC.
-  /// - [currentSessionID]: Reads the active server session identifier, or an empty string.
+  /// - [cleanup]: Releases scoped resources after affected workers settle.
   XmaxRealtimeLifecycleManager({
     required XmaxRealtimeErrorManager errorManager,
     required Future<RealtimeCleanupResult> Function(
+      RealtimeTerminationScope scope,
       String taskID,
-    ) cleanupConnection,
-    required Future<void> Function() stopLocalMedia,
-    required Future<void> Function(
-      String taskID,
-    ) stopGeneration,
-    required void Function() cancelPendingStart,
-    required String Function() currentSessionID,
+    ) cleanup,
   }) : _errorManager = errorManager,
-       _cleanupConnection = cleanupConnection,
-       _stopLocalMedia = stopLocalMedia,
-       _stopGeneration = stopGeneration,
-       _cancelPendingStart = cancelPendingStart,
-       _currentSessionID = currentSessionID;
+       _cleanup = cleanup;
 
-  /// The manager that reports errors and invalidates failures from released resources.
+  /// The shared failure reporter.
   final XmaxRealtimeErrorManager _errorManager;
 
-  /// The handler releasing generation and connection resources.
+  /// The resource owners' scoped cleanup handler.
   final Future<RealtimeCleanupResult> Function(
+    RealtimeTerminationScope scope,
     String taskID,
-  ) _cleanupConnection;
+  ) _cleanup;
 
-  /// The handler releasing local capture resources.
-  final Future<void> Function() _stopLocalMedia;
+  /// The state exposed to your app.
+  RealtimeState _state = const RealtimeState(connectionState: RealtimeConnectionState.idle);
 
-  /// The handler stopping a generation task while retaining RTC.
-  final Future<void> Function(
-    String taskID,
-  ) _stopGeneration;
-
-  /// The handler cancelling pending result confirmation.
-  final void Function() _cancelPendingStart;
-
-  /// The active server session identifier provider.
-  final String Function() _currentSessionID;
-
-  /// The realtime state snapshot exposed to your app.
-  RealtimeState _state = const RealtimeState(
-    connectionState: RealtimeConnectionState.idle,
-  );
-
-  /// The listener for connection and generation state changes.
+  /// The current state listener.
   RealtimeStateListener? _stateListener;
 
-  /// The revision of connection and local media operations.
-  int _operationVersion = 0;
+  /// The operation currently owning resource admission.
+  _RealtimeOperation? _activeOperation;
 
-  /// The latest generation request revision.
-  int _generationRequestVersion = 0;
+  /// The latest generation request, including one awaiting its predecessor.
+  _GenerationRequest? _generationRequest;
 
-  /// The revision invalidating queued generation work on disconnection.
-  int _generationCancellationVersion = 0;
+  /// The merged cleanup request currently in progress.
+  _RealtimeTermination? _termination;
 
-  /// The completion barrier for serialized generation preparation.
-  Future<void> _generationOperation = Future<void>.value();
-
-  /// The task awaiting first-frame readiness.
-  String? _startingGenerationTaskID;
-
-  /// The pending generation readiness notification.
-  Completer<void>? _startingGenerationCompleter;
-
-  /// The shared full shutdown operation.
-  Future<void>? _closeFuture;
-
-  /// The shared connection cleanup operation.
-  Future<void>? _disconnectFuture;
-
-  /// The camera creation operation that shutdown must await.
-  Future<RealtimeMediaStream>? _cameraCreationFuture;
+  /// The number of pending or executing foreground calls.
+  int _foregroundRequests = 0;
 
   /// The current connection and generation state.
   RealtimeState get currentState => _state;
 
-  /// The current connection and local media revision.
-  int get operationVersion => _operationVersion;
-
-  /// The latest generation request revision.
-  int get generationRequestVersion => _generationRequestVersion;
-
-  /// The task awaiting generation readiness, if any.
-  String? get startingGenerationTaskID => _startingGenerationTaskID;
-
-  /// The pending first-frame readiness future, if any.
-  Future<void>? get generationReadiness => _startingGenerationCompleter?.future;
-
-  /// Whether full resource shutdown is in progress.
-  bool get isClosing => _closeFuture != null;
-
-  /// Whether connection cleanup is in progress.
-  bool get isDisconnecting => _disconnectFuture != null;
-
-  /// The connection cleanup to await before admitting generation, if any.
-  Future<void>? get disconnection => _disconnectFuture;
-
-  /// Replaces the state listener and immediately delivers the current state.
-  ///
-  /// Parameters:
-  /// - [listener]: The state listener, or null to remove it.
+  /// Replaces [listener] and immediately delivers the current state.
   void setStateListener(
     RealtimeStateListener? listener,
   ) {
@@ -158,400 +204,586 @@ final class XmaxRealtimeLifecycleManager {
     listener?.call(_state);
   }
 
-  /// Commits and delivers a realtime state snapshot.
+  /// Admits an operation or replaces an unfinished generation request.
   ///
   /// Parameters:
-  /// - [state]: The state to expose to your app.
-  void emit(
-    RealtimeState state,
-  ) {
-    final previous = _state.connectionState;
-
-    _state = state;
-    if (previous != state.connectionState) {
-      XmaxLogger.debug(
-        category: XmaxLoggerCategory.realtime,
-        message:
-            '实时状态 (Realtime State)\n'
-            '└─ ${previous.name} → ${state.connectionState.name}',
-      );
-    }
-
-    _stateListener?.call(state);
-  }
-
-  /// Advances and returns the revision guarding connection and media work.
-  int beginOperation() => ++_operationVersion;
-
-  /// Supersedes earlier generation requests and cancels pending result confirmation.
+  /// - [kind]: The requested operation kind.
+  /// - [failureScope]: The cleanup scope, or null to retain resources on failure.
+  /// - [operation]: The body, which validates ownership across asynchronous boundaries.
   ///
-  /// Returns the revision to validate before executing the new request.
-  int beginGenerationRequest() {
-    final version = ++_generationRequestVersion;
-
-    _cancelPendingStart();
-
-    return version;
-  }
-
-  /// Records camera creation so shutdown can wait for capture ownership to settle.
-  ///
-  /// Parameters:
-  /// - [creation]: The camera stream creation operation.
-  void trackCameraCreation(
-    Future<RealtimeMediaStream> creation,
-  ) {
-    _cameraCreationFuture = creation;
-  }
-
-  /// Clears camera creation bookkeeping only if the operation is still current.
-  ///
-  /// Parameters:
-  /// - [creation]: The completed camera creation operation.
-  void finishCameraCreation(
-    Future<RealtimeMediaStream> creation,
-  ) {
-    if (identical(
-      _cameraCreationFuture,
-      creation,
-    )) {
-      _cameraCreationFuture = null;
-    }
-  }
-
-  /// Creates the first-frame readiness notification for a confirmed generation task.
-  ///
-  /// Parameters:
-  /// - [taskID]: The confirmed generation task identifier.
-  ///
-  /// Returns the completer owned by this task until completion, failure, or cancellation.
-  Completer<void> beginGenerationWait(
-    String taskID,
-  ) {
-    final completer = Completer<void>();
-
-    // Attach a handler before returning the wait to prevent unhandled cancellation errors.
-    completer.future.ignore();
-    _startingGenerationTaskID = taskID;
-    _startingGenerationCompleter = completer;
-
-    return completer;
-  }
-
-  /// Detaches a failed wait so connection cleanup cannot replace its original error.
-  ///
-  /// Parameters:
-  /// - [completer]: The failed first-frame wait.
-  void detachGenerationWait(
-    Completer<void> completer,
-  ) {
-    if (identical(
-      _startingGenerationCompleter,
-      completer,
-    )) {
-      _startingGenerationCompleter = null;
-    }
-  }
-
-  /// Clears readiness bookkeeping only when it belongs to the completed wait.
-  ///
-  /// Parameters:
-  /// - [completer]: The completed first-frame wait.
-  void finishGenerationWait(
-    Completer<void> completer,
-  ) {
-    if (identical(
-      _startingGenerationCompleter,
-      completer,
-    )) {
-      _startingGenerationTaskID = null;
-      _startingGenerationCompleter = null;
-    }
-  }
-
-  /// Serializes generation preparation without holding the queue for first-frame readiness.
-  ///
-  /// Parameters:
-  /// - [operation]: The asynchronous generation control operation.
-  ///
-  /// Returns the operation's result, preserving its error on failure.
-  Future<T> enqueueGenerationOperation<T>(
-    Future<T> Function() operation,
-  ) {
-    final cancellationVersion = _generationCancellationVersion;
-    final previousOperation = _generationOperation;
-    final completion = Completer<void>();
-
-    _generationOperation = completion.future;
-
-    return () async {
-      await previousOperation;
-
-      try {
-        _ensureGenerationOperationCurrent(cancellationVersion);
-
-        final result = await operation();
-
-        _ensureGenerationOperationCurrent(cancellationVersion);
-
-        return result;
-      } finally {
-        completion.complete();
+  /// Returns the result after resource admission has been released.
+  Future<T> run<T>({
+    required RealtimeOperationKind kind,
+    RealtimeTerminationScope? failureScope,
+    required Future<T> Function(
+      RealtimeOperationToken token,
+    ) operation,
+  }) async {
+    _foregroundRequests++;
+    try {
+      if (kind == RealtimeOperationKind.generation) {
+        return await _runGeneration(
+          failureScope: failureScope,
+          operation: operation,
+        );
       }
-    }();
+      return await _runOperation(
+        kind: kind,
+        failureScope: failureScope,
+        operation: operation,
+      );
+    } finally {
+      _foregroundRequests--;
+    }
   }
 
-  /// Stops generation while retaining the connection and local media.
-  Future<void> stopGeneration() {
-    beginGenerationRequest();
-
-    return enqueueGenerationOperation(_performStopGeneration);
+  /// Runs [operation] only when no foreground call owns or awaits admission.
+  ///
+  /// Returns false when busy, or true after the admitted update finishes.
+  Future<bool> runAdaptiveConfiguration(
+    Future<void> Function(
+      RealtimeOperationToken token,
+    ) operation,
+  ) async {
+    if (_termination != null || _activeOperation != null ||
+        _generationRequest != null || _foregroundRequests > 0 ||
+        _state.connectionState != RealtimeConnectionState.generating) {
+      return false;
+    }
+    await _runOperation(
+      kind: RealtimeOperationKind.configuration,
+      operation: operation,
+      background: true,
+    );
+    return true;
   }
 
-  /// Stops the active task and invalidates its pending readiness notification.
-  Future<void> _performStopGeneration() async {
-    final sessionID = _currentSessionID();
+  /// Publishes intermediate state while retaining operation admission.
+  ///
+  /// Parameters:
+  /// - [state]: The intermediate snapshot.
+  /// - [token]: The operation owning this state.
+  void commit(
+    RealtimeState state, {
+    required RealtimeOperationToken token,
+  }) {
+    token.ensureCurrent();
+    final active = _activeOperation;
+    if (active?.token != token) {
+      throw cancelledError();
+    }
+    if (state.connectionState == RealtimeConnectionState.preparing &&
+        active!.kind == RealtimeOperationKind.media) {
+      active.didBeginMediaPreparation = true;
+    }
+    _setState(state);
+  }
 
-    if (sessionID.isEmpty ||
-        (_state.connectionState != RealtimeConnectionState.connected &&
-            _state.connectionState != RealtimeConnectionState.generating)) {
+  /// Stages final state for delivery after operation admission is released.
+  ///
+  /// Parameters:
+  /// - [state]: The successful completion state.
+  /// - [token]: The operation owning this completion.
+  void complete(
+    RealtimeState state, {
+    required RealtimeOperationToken token,
+  }) {
+    token.ensureCurrent();
+    final active = _activeOperation;
+    if (active?.token != token) {
+      throw cancelledError();
+    }
+    active!.completionState = state;
+  }
+
+  /// Marks current local media ready after capture and preview mounting complete.
+  void markPreviewReady() {
+    if (_state.connectionState != RealtimeConnectionState.preparing) {
       return;
     }
-
-    final taskID = _state.taskID ?? _startingGenerationTaskID ?? '';
-    final wasGenerating =
-        _state.connectionState == RealtimeConnectionState.generating ||
-        _startingGenerationTaskID != null;
-
-    _operationVersion += 1;
-    _generationRequestVersion += 1;
-    _cancelStartingGeneration();
-
-    try {
-      await _stopGeneration(taskID);
-    } catch (error) {
-      _errorManager.report(error);
-    }
-
-    if (wasGenerating) {
-      emit(
-        RealtimeState(
-          connectionState: RealtimeConnectionState.connected,
-          sessionID: sessionID,
-        ),
-      );
+    const ready = RealtimeState(connectionState: RealtimeConnectionState.ready);
+    final active = _activeOperation;
+    if (active?.kind == RealtimeOperationKind.media) {
+      active!.completionState = ready;
+    } else {
+      _setState(ready);
     }
   }
 
-  /// Releases connection resources while preserving local media, sharing pending cleanup.
+  /// Disconnects connection resources while preserving local media.
   ///
   /// Parameters:
-  /// - [reason]: The reason associated with the resulting state.
+  /// - [reason]: The reason delivered with the final state.
   Future<void> disconnect({
     RealtimeReason reason = RealtimeReason.normal,
   }) {
-    final active = _disconnectFuture;
-
-    if (active != null) {
-      return active;
-    }
-
-    if (_state.connectionState == RealtimeConnectionState.idle ||
-        _state.connectionState == RealtimeConnectionState.preparing ||
-        _state.connectionState == RealtimeConnectionState.ready) {
-      _generationRequestVersion += 1;
-      _generationCancellationVersion += 1;
-      _cancelPendingStart();
-
+    final active = _activeOperation;
+    if (_termination == null && _generationRequest == null &&
+        (active == null || !RealtimeTerminationScope.connection.affects(active.kind)) &&
+        (_state.connectionState == RealtimeConnectionState.idle ||
+            _state.connectionState == RealtimeConnectionState.preparing ||
+            _state.connectionState == RealtimeConnectionState.ready)) {
       return Future<void>.value();
     }
-
-    final future = _performDisconnect(reason);
-
-    _disconnectFuture = future;
-
-    return future.whenComplete(() => _disconnectFuture = null);
-  }
-
-  /// Invalidates connection work before invoking resource cleanup and committing its result.
-  ///
-  /// Parameters:
-  /// - [reason]: The disconnection reason.
-  Future<void> _performDisconnect(
-    RealtimeReason reason,
-  ) async {
-    _errorManager.invalidatePendingFailures(
-      scope: RealtimeFailureScope.connection,
-    );
-    _operationVersion += 1;
-    _generationRequestVersion += 1;
-    _generationCancellationVersion += 1;
-
-    final taskID = _state.taskID ?? _startingGenerationTaskID ?? '';
-
-    _cancelStartingGeneration();
-    emit(
-      const RealtimeState(
-        connectionState: RealtimeConnectionState.disconnecting,
-      ),
-    );
-
-    final result = await _cleanupConnection(taskID);
-
-    emit(
-      RealtimeState(
-        connectionState: result.hasLocalMedia
-            ? RealtimeConnectionState.ready
-            : RealtimeConnectionState.idle,
-        sessionID: result.sessionID,
-        reason: reason,
-      ),
+    return terminate(
+      RealtimeTerminationScope.connection,
+      reason: reason,
     );
   }
 
-  /// Releases connection and local media resources, sharing an existing shutdown operation.
+  /// Releases scoped resources, merging overlapping cleanup requests.
   ///
   /// Parameters:
-  /// - [reason]: The reason associated with the final idle state.
-  Future<void> close({
+  /// - [scope]: The resources to release.
+  /// - [reason]: The reason delivered with the terminal state.
+  Future<void> terminate(
+    RealtimeTerminationScope scope, {
     RealtimeReason reason = RealtimeReason.normal,
-  }) {
-    final active = _closeFuture;
+  }) => _requestTermination(
+    scope,
+    reason: reason,
+  );
 
-    if (active != null) {
-      return active;
-    }
-
-    final future = _performClose(reason);
-
-    _closeFuture = future;
-
-    return future.whenComplete(() => _closeFuture = null);
-  }
-
-  /// Waits for connection cleanup and camera creation before releasing local capture.
-  ///
-  /// Parameters:
-  /// - [reason]: The shutdown reason.
-  Future<void> _performClose(
-    RealtimeReason reason,
-  ) async {
-    _errorManager.invalidatePendingFailures();
-    _operationVersion += 1;
-    await disconnect(reason: reason);
-
-    try {
-      await _cameraCreationFuture;
-    } catch (_) {
-      // Creation reports its own failure; shutdown must still release local resources.
-    }
-
-    try {
-      await _stopLocalMedia();
-      emit(
-        RealtimeState(
-          connectionState: RealtimeConnectionState.idle,
-          reason: reason,
-        ),
-      );
-    } catch (error) {
-      _errorManager.report(error);
-    }
-  }
-
-  /// Routes a current runtime failure to connection or full resource cleanup.
+  /// Routes a current runtime failure to scoped cleanup.
   ///
   /// Parameters:
   /// - [error]: The runtime failure.
-  /// - [scope]: The resources affected by the failure.
-  /// - [isCurrent]: A check that the failure still belongs to the current lifecycle.
+  /// - [scope]: The affected resources.
+  /// - [isCurrent]: Verifies that the source still belongs to this lifecycle.
   Future<void> handleFailure(
     XmaxError error,
     RealtimeFailureScope scope,
     bool Function() isCurrent,
   ) async {
-    if (!isCurrent() ||
-        isClosing ||
-        _state.connectionState == RealtimeConnectionState.idle) {
+    if (!isCurrent() || _state.connectionState == RealtimeConnectionState.idle) {
       return;
     }
-
-    final reason = RealtimeReason.failure(error);
-
-    if (scope == RealtimeFailureScope.all) {
-      await close(reason: reason);
-    } else if (_state.connectionState != RealtimeConnectionState.disconnecting) {
-      await disconnect(reason: reason);
+    final pending = _termination;
+    if (pending != null && pending.scope != RealtimeTerminationScope.generation &&
+        scope != RealtimeFailureScope.all) {
+      return;
     }
+    await _requestTermination(
+      scope == RealtimeFailureScope.all
+          ? RealtimeTerminationScope.all : RealtimeTerminationScope.connection,
+      error: error,
+      reason: RealtimeReason.failure(error),
+    );
   }
 
-  /// Marks a preparing local stream ready after its resource owner confirms preview readiness.
-  void markPreviewReady() {
-    if (_state.connectionState == RealtimeConnectionState.preparing) {
-      emit(
-        const RealtimeState(connectionState: RealtimeConnectionState.ready),
+  /// Replaces a generation request and waits for its resource completion.
+  ///
+  /// Parameters:
+  /// - [failureScope]: The cleanup required on failure.
+  /// - [operation]: The generation body.
+  ///
+  /// Returns the latest request's result.
+  Future<T> _runGeneration<T>({
+    required RealtimeTerminationScope? failureScope,
+    required Future<T> Function(
+      RealtimeOperationToken token,
+    ) operation,
+  }) async {
+    final active = _activeOperation;
+    if ((_termination != null && _generationRequest == null) ||
+        (active != null && !active.background && active.request == null)) {
+      throw _conflict();
+    }
+    final previous = _generationRequest;
+    final request = _GenerationRequest();
+    _generationRequest = request;
+    if (previous != null) {
+      previous.cancelled = true;
+      if (active?.request == previous) {
+        active!.token._invalidate(null);
+      }
+    }
+
+    try {
+      await previous?.completion.future;
+      if (request.cancelled || _generationRequest != request) {
+        throw cancelledError();
+      }
+      return await _runOperation(
+        kind: RealtimeOperationKind.generation,
+        failureScope: failureScope,
+        request: request,
+        operation: operation,
       );
+    } finally {
+      request.finish();
+      if (_generationRequest == request) {
+        _generationRequest = null;
+      }
     }
   }
 
-  /// Cancels the first-frame wait and clears its task binding.
-  void _cancelStartingGeneration() {
-    final completer = _startingGenerationCompleter;
+  /// Executes an admitted body, settling resource writes before cleanup.
+  ///
+  /// Parameters:
+  /// - [kind]: The operation kind.
+  /// - [failureScope]: The optional failure cleanup scope.
+  /// - [request]: The owning generation request, if any.
+  /// - [operation]: The resource work.
+  /// - [background]: Whether foreground requests may wait for this configuration.
+  ///
+  /// Returns the completed body result.
+  Future<T> _runOperation<T>({
+    required RealtimeOperationKind kind,
+    RealtimeTerminationScope? failureScope,
+    _GenerationRequest? request,
+    required Future<T> Function(
+      RealtimeOperationToken token,
+    ) operation,
+    bool background = false,
+  }) async {
+    final preceding = _activeOperation;
+    if (preceding != null && preceding.background) {
+      await preceding.completion.future;
+    }
+    if (request != null && (request.cancelled || _generationRequest != request)) {
+      throw cancelledError();
+    }
+    if (_termination != null || _activeOperation != null ||
+        (request == null && _generationRequest != null)) {
+      throw _conflict();
+    }
 
-    _startingGenerationTaskID = null;
-    _startingGenerationCompleter = null;
-    if (completer != null && !completer.isCompleted) {
-      completer.completeError(
-        const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Realtime generation was cancelled',
+    final admitted = _RealtimeOperation(
+      kind: kind == RealtimeOperationKind.generation &&
+          _state.connectionState == RealtimeConnectionState.generating
+          ? RealtimeOperationKind.configuration : kind,
+      token: RealtimeOperationToken._(failureScope),
+      request: request,
+      background: background,
+    );
+    _activeOperation = admitted;
+    try {
+      late final T result;
+      try {
+        result = await operation(admitted.token);
+      } finally {
+        admitted.workerFinished.complete();
+      }
+      admitted.token.ensureCurrent();
+      final completionState = admitted.completionState;
+      _finish(admitted);
+      if (completionState != null) {
+        _setState(completionState);
+      }
+      return result;
+    } catch (error) {
+      return await _handleOperationFailure(
+        error,
+        admitted,
+      );
+    } finally {
+      _finish(admitted);
+    }
+  }
+
+  /// Performs failure cleanup and throws the preserved terminal error.
+  ///
+  /// Parameters:
+  /// - [error]: The body or ownership failure.
+  /// - [operation]: The operation whose worker has settled.
+  Future<Never> _handleOperationFailure(
+    Object error,
+    _RealtimeOperation operation,
+  ) async {
+    final token = operation.token;
+    final resolved = token._failure ?? XmaxError.from(error);
+    final cancelled = !token.isCurrent || resolved.code == XmaxErrorCode.cancelled;
+    final scope = token._failureScope;
+    final configuration = operation.kind == RealtimeOperationKind.configuration;
+
+    if (cancelled && (configuration || scope == null) &&
+        operation.termination == null && _termination == null) {
+      _finish(operation);
+      _restoreIdleAfterPreparation(operation);
+      throw token._failure ?? cancelledError();
+    }
+    if (cancelled || (!configuration && scope != null)) {
+      var cleanup = operation.termination?.completion.future ?? _termination?.completion.future;
+      if (cleanup == null) {
+        final replacement = operation.request != null && _generationRequest != null &&
+            operation.request != _generationRequest;
+        cleanup = _requestTermination(
+          cancelled && replacement && _state.connectionState == RealtimeConnectionState.connected
+              ? RealtimeTerminationScope.generation
+              : scope ?? RealtimeTerminationScope.connection,
+          error: cancelled ? null : resolved,
+          reason: cancelled ? RealtimeReason.normal : RealtimeReason.failure(resolved),
+          origin: operation,
+        );
+      }
+      await cleanup;
+      throw token._failure ?? (cancelled ? cancelledError() : resolved);
+    }
+
+    _finish(operation);
+    _restoreIdleAfterPreparation(operation);
+    throw _errorManager.report(resolved);
+  }
+
+  /// Rolls back an incomplete media preparation without altering newer state.
+  ///
+  /// Parameters:
+  /// - [operation]: The failed media operation.
+  void _restoreIdleAfterPreparation(
+    _RealtimeOperation operation,
+  ) {
+    if (operation.didBeginMediaPreparation &&
+        _state.connectionState == RealtimeConnectionState.preparing) {
+      _setState(const RealtimeState(connectionState: RealtimeConnectionState.idle));
+    }
+  }
+
+  /// Installs cleanup ownership before delivering disconnection callbacks.
+  ///
+  /// Parameters:
+  /// - [scope]: The required cleanup scope.
+  /// - [error]: The first runtime failure to retain.
+  /// - [reason]: The requested terminal reason.
+  /// - [origin]: A settled worker requesting its own cleanup.
+  ///
+  /// Returns the shared cleanup barrier.
+  Future<void> _requestTermination(
+    RealtimeTerminationScope scope, {
+    XmaxError? error,
+    RealtimeReason reason = RealtimeReason.normal,
+    _RealtimeOperation? origin,
+  }) {
+    if (origin == null) {
+      _generationRequest?.cancelled = true;
+      _generationRequest = null;
+    }
+    final pending = _termination ?? _RealtimeTermination(
+      scope: scope,
+      reason: reason,
+      error: error,
+    );
+    final fresh = _termination == null;
+    _termination = pending;
+    if (scope.index > pending.scope.index) {
+      pending.scope = scope;
+    }
+    pending.error ??= error;
+    if (pending.error != null) {
+      pending.reason = RealtimeReason.failure(pending.error!);
+    }
+    final active = _activeOperation;
+    if (active != null && (active == origin || pending.scope.affects(active.kind))) {
+      active.token._invalidate(pending.error);
+      if (active.termination != pending) {
+        active.termination = pending;
+        pending.workers.add(active.workerFinished.future);
+      }
+    }
+    if (fresh) {
+      unawaited(Future<void>.microtask(() => _performTermination(pending)));
+    }
+    if (pending.scope != RealtimeTerminationScope.generation) {
+      _setState(
+        RealtimeState(
+          connectionState: RealtimeConnectionState.disconnecting,
+          sessionID: _state.sessionID,
         ),
       );
     }
+    return pending.completion.future;
   }
 
-  /// Rejects connection or media work that no longer belongs to this lifecycle.
+  /// Settles affected workers, releases resources, then publishes terminal state.
   ///
   /// Parameters:
-  /// - [version]: The captured operation revision.
-  void ensureCurrent(
-    int version,
-  ) {
-    if (version != _operationVersion) {
-      throw const XmaxError(
-        code: XmaxErrorCode.cancelled,
-        message: 'Realtime connection was cancelled',
-      );
+  /// - [pending]: The shared cleanup record.
+  Future<void> _performTermination(
+    _RealtimeTermination pending,
+  ) async {
+    try {
+      while (_termination == pending) {
+        final workers = List<Future<void>>.of(pending.workers);
+        pending.workers.clear();
+        await Future.wait(workers);
+        final scope = pending.scope;
+        final result = await _cleanup(
+          scope,
+          _state.taskID ?? '',
+        );
+        pending.sessionID = result.sessionID ?? pending.sessionID;
+        if (pending.scope != scope || pending.workers.isNotEmpty) {
+          continue;
+        }
+
+        final active = _activeOperation;
+        if (active != null && scope.affects(active.kind)) {
+          _finish(active);
+        }
+        final finalState = RealtimeState(
+          connectionState: scope == RealtimeTerminationScope.generation
+              ? RealtimeConnectionState.connected
+              : scope == RealtimeTerminationScope.all || !result.hasLocalMedia
+                  ? RealtimeConnectionState.idle : RealtimeConnectionState.ready,
+          sessionID: pending.sessionID ?? _state.sessionID,
+          reason: scope == RealtimeTerminationScope.generation ? null : pending.reason,
+        );
+
+        // App callbacks may immediately start new work or request another cleanup.
+        _termination = null;
+        if (scope != RealtimeTerminationScope.generation) {
+          _errorManager.invalidatePendingFailures(
+            scope: scope == RealtimeTerminationScope.all
+                ? RealtimeFailureScope.all : RealtimeFailureScope.connection,
+          );
+        }
+        _setState(finalState);
+        if (pending.error != null) {
+          _errorManager.report(pending.error!);
+        }
+        break;
+      }
+    } catch (error) {
+      // Cleanup owners attempt every step; an unexpected failure must still release waiters.
+      _errorManager.report(error);
+      if (_termination == pending) {
+        _termination = null;
+      }
+    } finally {
+      pending.completion.complete();
     }
   }
 
-  /// Rejects generation requests superseded by later requests or termination.
-  ///
-  /// Parameters:
-  /// - [version]: The captured generation request revision.
-  void ensureGenerationRequestCurrent(
-    int version,
+  /// Releases admission and predecessor barriers only for [operation].
+  void _finish(
+    _RealtimeOperation operation,
   ) {
-    if (version != _generationRequestVersion) {
-      throw const XmaxError(
-        code: XmaxErrorCode.cancelled,
-        message: 'Realtime generation request was superseded',
-      );
+    if (_activeOperation == operation) {
+      _activeOperation = null;
+    }
+    if (_generationRequest == operation.request) {
+      _generationRequest = null;
+    }
+    operation.request?.finish();
+    if (!operation.completion.isCompleted) {
+      operation.completion.complete();
     }
   }
 
-  /// Rejects queued generation operations invalidated by disconnection.
-  ///
-  /// Parameters:
-  /// - [version]: The captured generation cancellation revision.
-  void _ensureGenerationOperationCurrent(
-    int version,
+  /// Publishes [state] only when the complete snapshot changes.
+  void _setState(
+    RealtimeState state,
   ) {
-    if (version != _generationCancellationVersion) {
-      throw const XmaxError(
-        code: XmaxErrorCode.cancelled,
-        message: 'Realtime generation operation was cancelled',
+    if (_state == state) {
+      return;
+    }
+    final previous = _state;
+    _state = state;
+    if (previous.connectionState != state.connectionState) {
+      XmaxLogger.debug(
+        category: XmaxLoggerCategory.realtime,
+        message: '实时状态 (Realtime State)\n└─ ${previous.connectionState.name} → ${state.connectionState.name}',
       );
     }
+    _stateListener?.call(state);
   }
+
+  /// Creates and reports an operation-admission error.
+  XmaxError _conflict() => _errorManager.report(
+    const XmaxError(
+      code: XmaxErrorCode.invalidConfiguration,
+      message: 'Another realtime operation is in progress; wait for it to finish',
+    ),
+  );
+
+  /// Creates an ownership cancellation error.
+  static XmaxError cancelledError() => const XmaxError(
+    code: XmaxErrorCode.cancelled,
+    message: 'Realtime operation was cancelled',
+  );
+}
+
+/// A generation request's replacement flag and resource-completion barrier.
+final class _GenerationRequest {
+
+  /// Whether a successor or explicit termination cancelled this request.
+  bool cancelled = false;
+
+  /// The barrier released after resource work and cleanup finish.
+  final Completer<void> completion = Completer<void>();
+
+  /// Releases successors once.
+  void finish() {
+    if (!completion.isCompleted) {
+      completion.complete();
+    }
+  }
+}
+
+/// An admitted worker and the resources its token protects.
+final class _RealtimeOperation {
+
+  /// Creates an operation record before invoking resource work.
+  _RealtimeOperation({
+    required this.kind,
+    required this.token,
+    required this.request,
+    required this.background,
+  });
+
+  /// The operation kind governing admission and cleanup.
+  final RealtimeOperationKind kind;
+
+  /// The token invalidated by replacement or termination.
+  final RealtimeOperationToken token;
+
+  /// The owning generation request, if any.
+  final _GenerationRequest? request;
+
+  /// Whether foreground requests may await this low-priority operation.
+  final bool background;
+
+  /// Whether this worker began local media preparation.
+  bool didBeginMediaPreparation = false;
+
+  /// The state delivered after successful admission release.
+  RealtimeState? completionState;
+
+  /// The body-completion barrier, excluding lifecycle cleanup.
+  final Completer<void> workerFinished = Completer<void>();
+
+  /// The admission-release barrier, including cleanup.
+  final Completer<void> completion = Completer<void>();
+
+  /// The merged cleanup assigned to this worker.
+  _RealtimeTermination? termination;
+}
+
+/// A cleanup request that can expand while resources are being released.
+final class _RealtimeTermination {
+
+  /// Creates a pending termination record.
+  _RealtimeTermination({
+    required this.scope,
+    required this.reason,
+    required this.error,
+  });
+
+  /// The broadest requested cleanup scope.
+  RealtimeTerminationScope scope;
+
+  /// The terminal reason, retaining the first runtime failure.
+  RealtimeReason reason;
+
+  /// The first runtime failure, if any.
+  XmaxError? error;
+
+  /// The session identifier retained across cleanup passes.
+  String? sessionID;
+
+  /// The workers that must settle before the next cleanup pass.
+  final List<Future<void>> workers = [];
+
+  /// The barrier shared by concurrent cleanup callers.
+  final Completer<void> completion = Completer<void>();
 }

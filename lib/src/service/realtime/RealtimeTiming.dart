@@ -37,7 +37,7 @@ final class RealtimeTiming {
   final int Function() _now;
 
   /// The generation startup time, in monotonic microseconds.
-  late final int _startedAt;
+  late int _startedAt;
 
   /// The connection start time, in monotonic microseconds.
   int? _connectionStart;
@@ -65,6 +65,20 @@ final class RealtimeTiming {
 
   /// Whether this startup attempt has already been finalized.
   bool _finished = false;
+
+  /// Starts a new admitted startup attempt without retaining earlier phase timestamps.
+  void reset() {
+    _startedAt = _now();
+    _connectionStart = null;
+    _connectionEnd = null;
+    _sessionStart = null;
+    _sessionEnd = null;
+    _roomStart = null;
+    _roomEnd = null;
+    _signalStart = null;
+    _streamConfirmed = null;
+    _finished = false;
+  }
 
   /// Records the connection start time.
   void beginConnection() => _connectionStart = _now();

@@ -10,13 +10,16 @@
 
 import 'dart:io';
 import 'dart:math';
+import 'dart:ui';
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../media/interaction/InteractionControlling.dart';
+import '../../render/RenderControlling.dart';
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimeTiming.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../stream/StreamControlling.dart';
+import 'XmaxRealtimeLifecycleManager.dart';
 
 /// A factory for unique generation task identifiers.
 ///
@@ -31,13 +34,19 @@ final class XmaxRealtimeGenerationManager {
   /// Parameters:
   /// - [interactionController]: The controller that binds touch input to a generation task.
   /// - [streamController]: The controller that sends generation signals.
+  /// - [renderController]: The owner of remote first-frame readiness and concealment.
+  /// - [timing]: The shared startup duration recorder.
   /// - [taskIDGenerator]: The task identifier factory; defaults to [createTaskID].
   XmaxRealtimeGenerationManager({
     required InteractionControlling interactionController,
     required StreamControlling streamController,
+    required RenderControlling renderController,
+    RealtimeTiming? timing,
     RealtimeTaskIDGenerator? taskIDGenerator,
   }) : _interactionController = interactionController,
        _streamController = streamController,
+       _renderController = renderController,
+       timing = timing ?? RealtimeTiming(),
        _taskIDGenerator = taskIDGenerator ?? createTaskID;
 
   /// The controller that samples and maps interactions for the generation task.
@@ -45,6 +54,12 @@ final class XmaxRealtimeGenerationManager {
 
   /// The controller that manages RTC publishing, subscriptions, and signaling.
   final StreamControlling _streamController;
+
+  /// The renderer providing first-frame readiness and concealment.
+  final RenderControlling _renderController;
+
+  /// The shared startup duration recorder.
+  final RealtimeTiming timing;
 
   /// The factory for generation task identifiers.
   final RealtimeTaskIDGenerator _taskIDGenerator;
@@ -75,25 +90,24 @@ final class XmaxRealtimeGenerationManager {
   ///
   /// Parameters:
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
+  /// - [targetSize]: The returned dimensions resolved for the current connection.
   /// - [context]: The generation conditions; null reuses cached conditions and is invalid on the
   ///   first start.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
   /// - [generationVideoFormat]: The server generation canvas; null uses the local media format.
   /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
-  /// - [ensureCurrent]: A lifecycle validity check that throws a cancellation error when
-  ///   invalidated.
-  /// - [timing]: The startup duration recorder, or null to omit timing.
+  /// - [token]: The admitted operation, including cancellation of passive readiness waits.
   ///
   /// Returns the new generation task identifier.
   Future<String> start({
     required RealtimeVideoFormat videoFormat,
+    Size? targetSize,
     required RealtimeContext? context,
     bool faceRestoration = false,
     RealtimeVideoFormat? generationVideoFormat,
     bool paddingContain = false,
-    required void Function() ensureCurrent,
-    RealtimeTiming? timing,
+    required RealtimeOperationToken token,
   }) async {
     final resolvedContext = validateContext(context);
 
@@ -102,7 +116,7 @@ final class XmaxRealtimeGenerationManager {
     GenerationStartConfirmation? ownedConfirmation;
 
     try {
-      timing?.beginSignal();
+      timing.beginSignal();
 
       final confirmation = await _streamController.beginGeneration(
         taskID: taskID,
@@ -110,7 +124,8 @@ final class XmaxRealtimeGenerationManager {
         context: resolvedContext,
         faceRestoration: faceRestoration,
         paddingContain: paddingContain,
-        targetSize: _streamController.targetSize,
+        targetSize: targetSize,
+        cancellation: token.cancellation,
       );
 
       ownedConfirmation = confirmation;
@@ -119,8 +134,8 @@ final class XmaxRealtimeGenerationManager {
         confirmation.cancel();
       }
 
-      await confirmation.value;
-      timing?.confirmRemoteStream();
+      await token.wait(confirmation.value);
+      timing.confirmRemoteStream();
       if (startVersion != _startVersion) {
         throw const XmaxError(
           code: XmaxErrorCode.cancelled,
@@ -128,13 +143,18 @@ final class XmaxRealtimeGenerationManager {
         );
       }
 
-      ensureCurrent();
+      token.ensureCurrent();
 
       _interactionController.startInteraction(
         taskID: taskID,
         videoFormat: videoFormat,
       );
 
+      token.ensureCurrent();
+      await token.wait(_renderController.waitUntilRemoteFrameReady());
+      token.ensureCurrent();
+      await _streamController.activateRemoteAudio();
+      token.ensureCurrent();
       _currentContext = resolvedContext;
       _currentFaceRestoration = faceRestoration;
 
@@ -142,7 +162,7 @@ final class XmaxRealtimeGenerationManager {
     } catch (error) {
       // The start message may already have arrived; stop the server task if a later step fails.
       try {
-        await _streamController.stopGeneration(taskID: taskID);
+        await stop(taskID: taskID);
       } catch (_) {
         // Preserve the start error; the connection coordinator remains responsible for room cleanup.
       }
@@ -183,25 +203,25 @@ final class XmaxRealtimeGenerationManager {
   ///
   /// Parameters:
   /// - [taskID]: The current generation task identifier.
-  /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
+  /// - [videoFormat]: The local dimensions used for interaction coordinates.
+  /// - [targetSize]: Explicit returned dimensions; omit to retain the current result size.
   /// - [context]: The updated conditions; null reuses the most recently submitted conditions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
   /// - [generationVideoFormat]: The server generation canvas; null uses the local media format.
   /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
+  /// - [ensureCurrent]: The operation validity check before committing interactions or conditions.
   Future<void> update({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
+    Size? targetSize,
     required RealtimeContext? context,
     bool faceRestoration = false,
     RealtimeVideoFormat? generationVideoFormat,
     bool paddingContain = false,
+    required void Function() ensureCurrent,
   }) async {
-    _interactionController.startInteraction(
-      taskID: taskID,
-      videoFormat: videoFormat,
-    );
-
+    ensureCurrent();
     final resolvedContext = validateContext(context);
 
     await _streamController.updateGeneration(
@@ -210,7 +230,14 @@ final class XmaxRealtimeGenerationManager {
       context: resolvedContext,
       faceRestoration: faceRestoration,
       paddingContain: paddingContain,
+      targetSize: targetSize,
     );
+    ensureCurrent();
+    _interactionController.startInteraction(
+      taskID: taskID,
+      videoFormat: videoFormat,
+    );
+    ensureCurrent();
 
     _currentContext = resolvedContext;
     _currentFaceRestoration = faceRestoration;
@@ -225,6 +252,7 @@ final class XmaxRealtimeGenerationManager {
   }) async {
     cancelPendingStart();
     _interactionController.stopInteraction();
+    await _renderController.prepareForRemoteRemoval();
     await _streamController.stopGeneration(taskID: taskID);
   }
 

@@ -15,6 +15,7 @@ import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/media/camera/CameraPosition.dart';
 import '../../foundation/rtc/VideoStatistics.dart';
 import '../../media/MediaControlling.dart';
+import '../../foundation/logging/XmaxLogger.dart';
 import '../../service/media/MediaService.dart';
 import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
@@ -99,7 +100,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
        _generationManager = components.generationManager,
        _errorManager = components.errorManager,
        _lifecycleManager = components.lifecycleManager,
-       _mediaService = components.mediaService;
+       _mediaService = components.mediaService,
+       _timing = components.timing;
 
   /// The realtime model configuration used by this manager.
   @override
@@ -129,8 +131,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
   /// The current realtime lifecycle state.
   RealtimeState get _state => _lifecycleManager.currentState;
 
-  /// Whether an in-place camera format update is active.
-  bool _isUpdatingCameraFormat = false;
+  /// The shared recorder for admitted startup attempts.
+  final RealtimeTiming _timing;
 
   /// The camera capture format, unchanged by transport quality levels.
   @override
@@ -199,70 +201,64 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     downlink: true,
   );
 
-  /// Validates generation state and delegates manual quality changes to transport.
+  /// Applies a manual quality change inside the shared configuration operation.
   ///
   /// Parameters:
   /// - [level]: The requested transport quality level.
-  /// - [downlink]: Whether to update downlink rather than uplink.
+  /// - [downlink]: Whether to change returned dimensions rather than uplink encoding.
   Future<void> _setQualityLevel(
     RealtimeQualityLevel level, {
     required bool downlink,
-  }) async {
-    if (_state.connectionState != RealtimeConnectionState.generating) {
-      throw const XmaxError(
-        code: XmaxErrorCode.invalidConfiguration,
-        message: 'Quality levels can only be changed while generating',
+  }) => _lifecycleManager.run(
+    kind: RealtimeOperationKind.configuration,
+    operation: (
+      token,
+    ) async {
+      final taskID = _state.taskID;
+      if (_state.connectionState != RealtimeConnectionState.generating || taskID == null) {
+        throw const XmaxError(
+          code: XmaxErrorCode.invalidConfiguration,
+          message: 'Quality levels can only be changed while generating',
+        );
+      }
+      await _connectionManager.applyQualityLevel(
+        level,
+        downlink: downlink,
+        taskID: taskID,
+        ensureCurrent: token.ensureCurrent,
       );
-    }
+    },
+  );
 
-    await _streamController.setQualityLevel(
-      level,
-      downlink: downlink,
-    );
-  }
-
-  /// Updates capture settings while retaining the local track and preview bindings.
+  /// Updates ready, disconnected capture while retaining the track and view.
   ///
   /// See [XmaxRealtimeManaging.updateCameraFormat] for the usage contract.
   @override
   Future<void> updateCameraFormat({
     RealtimeVideoFormat? videoFormat,
     RealtimeCameraPreset? preset,
-  }) async {
-    final current = _mediaController.currentVideoFormat;
-
-    if ((videoFormat == null) == (preset == null) ||
-        _isUpdatingCameraFormat ||
-        current == null ||
-        _state.connectionState != RealtimeConnectionState.ready ||
-        _connectionManager.currentSessionID.isNotEmpty ||
-        _lifecycleManager.isClosing ||
-        _lifecycleManager.isDisconnecting) {
-      throw const XmaxError(
-        code: XmaxErrorCode.invalidConfiguration,
-        message: 'Provide exactly one camera format or preset '
-            'while preview is ready and disconnected',
-      );
-    }
-
-    final format = videoFormat ??
-        current.resized(
-          width: preset!.size.width.toInt(),
-          height: preset.size.height.toInt(),
+  }) => _lifecycleManager.run(
+    kind: RealtimeOperationKind.media,
+    operation: (
+      token,
+    ) async {
+      final current = _mediaController.currentVideoFormat;
+      if ((videoFormat == null) == (preset == null) || current == null ||
+          _state.connectionState != RealtimeConnectionState.ready ||
+          _connectionManager.currentSessionID.isNotEmpty) {
+        throw const XmaxError(
+          code: XmaxErrorCode.invalidConfiguration,
+          message: 'Provide exactly one camera format or preset while preview is ready and disconnected',
         );
-    final version = _lifecycleManager.operationVersion;
-
-    _isUpdatingCameraFormat = true;
-
-    try {
+      }
+      final format = videoFormat ?? current.resized(
+        width: preset!.size.width.toInt(),
+        height: preset.size.height.toInt(),
+      );
       await _mediaController.updateCameraFormat(format);
-      _lifecycleManager.ensureCurrent(version);
-    } catch (error) {
-      throw XmaxError.from(error);
-    } finally {
-      _isUpdatingCameraFormat = false;
-    }
-  }
+      token.ensureCurrent();
+    },
+  );
 
   /// The current connection and generation state.
   ///
@@ -359,7 +355,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     }
   }
 
-  /// Creates a local camera stream and starts its preview.
+  /// Creates a camera stream inside exclusive media admission.
   ///
   /// See [XmaxRealtimeManaging.createLocalCameraStream] for the usage contract.
   @override
@@ -367,84 +363,47 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     RealtimeVideoFormat? videoFormat,
     CameraPosition position = CameraPosition.front,
     RealtimeCameraPreset? preset,
-  }) async {
-    if (_connectionManager.currentSessionID.isNotEmpty ||
-        _state.connectionState == RealtimeConnectionState.preparing ||
-        _state.connectionState == RealtimeConnectionState.connecting ||
-        _state.connectionState == RealtimeConnectionState.disconnecting) {
-      throw _report(
-        const XmaxError(
+  }) => _lifecycleManager.run(
+    kind: RealtimeOperationKind.media,
+    operation: (
+      token,
+    ) async {
+      if (_connectionManager.currentSessionID.isNotEmpty ||
+          _state.connectionState == RealtimeConnectionState.preparing ||
+          _state.connectionState == RealtimeConnectionState.connecting ||
+          _state.connectionState == RealtimeConnectionState.disconnecting) {
+        throw const XmaxError(
           code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'Local camera stream is unavailable during a realtime connection',
-        ),
-      );
-    }
-
-    if (_mediaController.currentTrack != null) {
-      throw _report(
-        const XmaxError(
+          message: 'Local camera stream is unavailable during a realtime connection',
+        );
+      }
+      if (_mediaController.currentTrack != null) {
+        throw const XmaxError(
           code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'Stop the current local media stream before creating another one',
-        ),
-      );
-    }
-
-    late final RealtimeVideoFormat format;
-
-    try {
-      format = _resolveCameraVideoFormat(
+          message: 'Stop the current local media stream before creating another one',
+        );
+      }
+      final format = _resolveCameraVideoFormat(
         videoFormat: videoFormat,
         preset: preset,
       );
-    } catch (error) {
-      throw _report(error);
-    }
-
-    _errorManager.invalidatePendingFailures();
-
-    final version = _lifecycleManager.beginOperation();
-
-    _lifecycleManager.emit(
-      const RealtimeState(connectionState: RealtimeConnectionState.preparing),
-    );
-
-    final creation = _mediaController.createLocalCameraStream(
-      videoFormat: format,
-      position: position,
-    );
-
-    _lifecycleManager.trackCameraCreation(creation);
-
-    try {
-      final stream = await creation;
-
-      _lifecycleManager.ensureCurrent(version);
-      // Apply defaults only after the media stream is created successfully.
-      // A stale creation request must not overwrite settings for a newer media stream.
-      await _streamController.setRemoteAudioVolume(0);
-      _lifecycleManager.ensureCurrent(version);
-
-      return stream;
-    } catch (error) {
-      if (version != _lifecycleManager.operationVersion) {
-        throw XmaxError.from(error);
-      }
-
-      final xmaxError = _report(error);
-
-      _lifecycleManager.emit(
-        RealtimeState(
-          connectionState: RealtimeConnectionState.idle,
-          reason: RealtimeReason.failure(xmaxError),
-        ),
+      _errorManager.invalidatePendingFailures();
+      _lifecycleManager.commit(
+        const RealtimeState(connectionState: RealtimeConnectionState.preparing),
+        token: token,
       );
-      throw xmaxError;
-    } finally {
-      _lifecycleManager.finishCameraCreation(creation);
-    }
-  }
+      token.ensureCurrent();
+
+      final stream = await _mediaController.createLocalCameraStream(
+        videoFormat: format,
+        position: position,
+      );
+      token.ensureCurrent();
+      await _streamController.setRemoteAudioVolume(0);
+      token.ensureCurrent();
+      return stream;
+    },
+  );
 
   /// Resolves a camera creation format without allocating capture resources.
   ///
@@ -484,221 +443,183 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     );
   }
 
-  /// Stops the camera and releases capture resources. Disconnect realtime before calling.
+  /// Stops disconnected capture inside exclusive media admission.
   ///
   /// See [XmaxRealtimeManaging.stopLocalCameraStream] for the usage contract.
   @override
-  Future<void> stopLocalCameraStream() async {
-    if (_isUpdatingCameraFormat ||
-        _connectionManager.currentSessionID.isNotEmpty ||
-        _state.connectionState == RealtimeConnectionState.connecting ||
-        _state.connectionState == RealtimeConnectionState.disconnecting) {
-      throw _report(
-        const XmaxError(
+  Future<void> stopLocalCameraStream() => _lifecycleManager.run(
+    kind: RealtimeOperationKind.media,
+    operation: (
+      token,
+    ) async {
+      if (_connectionManager.currentSessionID.isNotEmpty ||
+          _state.connectionState == RealtimeConnectionState.connecting ||
+          _state.connectionState == RealtimeConnectionState.disconnecting) {
+        throw const XmaxError(
           code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'Disconnect realtime before stopping the local camera stream',
-        ),
-      );
-    }
-
-    try {
+          message: 'Disconnect realtime before stopping the local camera stream',
+        );
+      }
       _errorManager.invalidatePendingFailures();
       await _mediaController.stopLocalCameraStream();
-      _lifecycleManager.emit(
+      token.ensureCurrent();
+      _lifecycleManager.complete(
         const RealtimeState(connectionState: RealtimeConnectionState.idle),
+        token: token,
       );
-    } catch (error) {
-      throw _report(error);
-    }
-  }
+    },
+  );
 
-  /// Switches between the front and rear cameras.
+  /// Switches capture and restores generation using the same admitted operation.
   ///
   /// See [XmaxRealtimeManaging.switchCamera] for the usage contract.
   @override
-  Future<RealtimeMediaStream> switchCamera() async {
-    if (_isUpdatingCameraFormat ||
-        _state.connectionState == RealtimeConnectionState.connecting ||
-        _state.connectionState == RealtimeConnectionState.disconnecting) {
-      throw _report(
-        const XmaxError(
+  Future<RealtimeMediaStream> switchCamera() => _lifecycleManager.run(
+    kind: RealtimeOperationKind.cameraSwitch,
+    operation: (
+      token,
+    ) async {
+      if (_state.connectionState == RealtimeConnectionState.connecting ||
+          _state.connectionState == RealtimeConnectionState.disconnecting ||
+          (_state.connectionState != RealtimeConnectionState.generating &&
+              _streamController.hasGenerationTask)) {
+        throw const XmaxError(
           code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'Camera switching is unavailable while realtime is transitioning',
-        ),
-      );
-    }
+          message: 'Camera switching is unavailable while realtime is transitioning',
+        );
+      }
+      final wasGenerating = _state.connectionState == RealtimeConnectionState.generating;
+      if (wasGenerating) {
+        token.setFailureScope(RealtimeTerminationScope.connection);
+        _streamController.setAdaptiveQualityListener(null);
+        await _generationManager.stop(taskID: _state.taskID ?? '');
+        token.ensureCurrent();
+        _lifecycleManager.commit(
+          RealtimeState(
+            connectionState: RealtimeConnectionState.connected,
+            sessionID: _state.sessionID,
+          ),
+          token: token,
+        );
+      }
 
-    final wasGenerating =
-        _state.connectionState == RealtimeConnectionState.generating;
+      final stream = await _mediaController.switchCamera();
+      token.ensureCurrent();
+      if (wasGenerating) {
+        await token.wait(Future<void>.delayed(const Duration(milliseconds: 500)));
+        await _performStartGeneration(
+          context: null,
+          faceRestoration: _generationManager.cachedFaceRestoration,
+          token: token,
+        );
+      }
+      return stream;
+    },
+  );
 
-    if (!wasGenerating && _streamController.hasGenerationTask) {
-      throw _report(
-        const XmaxError(
-          code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'Camera switching is unavailable while realtime generation is starting',
-        ),
-      );
-    }
-
-    if (wasGenerating) {
-      await stopGeneration();
-    }
-
-    late final RealtimeMediaStream stream;
-
-    try {
-      stream = await _mediaController.switchCamera();
-    } catch (error) {
-      throw _report(error);
-    }
-
-    // Wait for the new camera to publish frames before resuming generation.
-    // Let startGeneration handle generation failures to avoid duplicate camera error notifications.
-    if (wasGenerating) {
-      await Future<void>.delayed(const Duration(milliseconds: 500));
-      await startGeneration(
-        faceRestoration: _generationManager.cachedFaceRestoration,
-      );
-    }
-
-    return stream;
-  }
-
-  /// Creates a server session, joins RTC, and publishes local video.
+  /// Establishes a connection inside exclusive lifecycle admission.
   ///
   /// See [XmaxRealtimeManaging.connect] for the usage contract.
   @override
   Future<RealtimeMediaStream> connect({
     required RealtimeMediaStream localStream,
-  }) => _connect(localStream: localStream);
+  }) => _lifecycleManager.run(
+    kind: RealtimeOperationKind.connection,
+    operation: (
+      token,
+    ) async {
+      _timing.reset();
+      return _performConnect(
+        localStream: localStream,
+        token: token,
+        completesOperation: true,
+      );
+    },
+  );
 
-  /// Creates a session and joins RTC while checking operation validity.
+  /// Validates local ownership and establishes the session and transport.
   ///
   /// Parameters:
-  /// - [localStream]: The local stream created by this manager.
-  /// - [timing]: The startup duration recorder, or null to omit timing.
+  /// - [localStream]: The manager-owned local stream.
+  /// - [token]: The admitted connection or generation operation.
+  /// - [completesOperation]: Whether connected is the operation's final state.
   ///
-  /// Returns the remote media stream for this connection.
-  Future<RealtimeMediaStream> _connect({
+  /// Returns the connection's remote stream.
+  Future<RealtimeMediaStream> _performConnect({
     required RealtimeMediaStream localStream,
-    RealtimeTiming? timing,
+    required RealtimeOperationToken token,
+    bool completesOperation = false,
   }) async {
-    if (_isUpdatingCameraFormat ||
-        _connectionManager.currentSessionID.isNotEmpty ||
+    if (_connectionManager.currentSessionID.isNotEmpty ||
         _state.connectionState == RealtimeConnectionState.connecting ||
         _state.connectionState == RealtimeConnectionState.disconnecting) {
-      throw _report(
-        const XmaxError(
-          code: XmaxErrorCode.invalidConfiguration,
-          message: 'Realtime connection is already open',
-        ),
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Realtime connection is already open',
       );
     }
-
     final videoFormat = localStream.videoTrack?.videoFormat;
-
     if (videoFormat == null || !_mediaController.owns(localStream)) {
-      throw _report(
-        const XmaxError(
-          code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'The local stream must be created and started by this realtime manager',
-        ),
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'The local stream must be created and started by this realtime manager',
       );
     }
-
-    // Advance the version to invalidate callbacks from older connection requests.
-    _errorManager.invalidatePendingFailures(
-      scope: RealtimeFailureScope.connection,
-    );
-
-    final isConnectionCurrent = _errorManager.captureValidity(
-      RealtimeFailureScope.connection,
-    );
-
+    token.setFailureScope(RealtimeTerminationScope.connection);
+    _errorManager.invalidatePendingFailures(scope: RealtimeFailureScope.connection);
+    final isConnectionCurrent = _errorManager.captureValidity(RealtimeFailureScope.connection);
     await _generationManager.reset();
-
-    final version = _lifecycleManager.beginOperation();
-
-    _lifecycleManager.emit(
+    token.ensureCurrent();
+    _lifecycleManager.commit(
       const RealtimeState(connectionState: RealtimeConnectionState.connecting),
+      token: token,
     );
-
-    try {
-      timing?.beginConnection();
-      await _streamController.prepareQuality(
-        baseline: videoFormat,
-        model: options.model.value,
-        minimumInputPixels: options.model.minimumInputPixels,
-        isAdaptiveQualityEnabled: options.isAdaptiveQualityEnabled,
-      );
-
-      final remoteStream = await _connectionManager.connect(
-        timing: timing,
-        model: options.model,
-        videoFormat: videoFormat,
-        isCurrent: () => version == _lifecycleManager.operationVersion,
-        onHeartbeatFailure: (
-          sessionID,
-          error,
-        ) async {
-          if (isConnectionCurrent()) {
-            await _handleHeartbeatFailure(
-              sessionID,
-              error,
-            );
-          }
-        },
-      );
-
-      _lifecycleManager.ensureCurrent(version);
-
-      final sessionID = _connectionManager.currentSessionID;
-
-      if (sessionID.isEmpty) {
-        throw const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Realtime connection was cancelled',
-        );
-      }
-
-      _lifecycleManager.emit(
-        RealtimeState(
-          connectionState: RealtimeConnectionState.connected,
-          sessionID: sessionID,
-        ),
-      );
-
-      timing?.finishConnection();
-
-      return remoteStream;
-    } catch (error) {
-      // After invalidation, the pending disconnect or close operation owns state updates.
-      if (version != _lifecycleManager.operationVersion) {
-        throw const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Realtime connection was cancelled',
-        );
-      }
-
-      final xmaxError = _report(error);
-
-      _lifecycleManager.emit(
-        RealtimeState(
-          connectionState: _mediaController.currentTrack == null
-              ? RealtimeConnectionState.idle
-              : RealtimeConnectionState.ready,
-          reason: RealtimeReason.failure(xmaxError),
-        ),
-      );
-      throw xmaxError;
+    token.ensureCurrent();
+    await _connectionManager.prepareQuality(
+      baseline: videoFormat,
+      options: options,
+      ensureCurrent: token.ensureCurrent,
+    );
+    final remote = await _connectionManager.connect(
+      model: options.model,
+      videoFormat: videoFormat,
+      isCurrent: () => token.isCurrent,
+      onHeartbeatFailure: (
+        sessionID,
+        error,
+      ) async {
+        if (isConnectionCurrent()) {
+          await _handleHeartbeatFailure(
+            sessionID,
+            error,
+          );
+        }
+      },
+    );
+    token.ensureCurrent();
+    final sessionID = _connectionManager.currentSessionID;
+    if (sessionID.isEmpty) {
+      throw XmaxRealtimeLifecycleManager.cancelledError();
     }
+    final connected = RealtimeState(
+      connectionState: RealtimeConnectionState.connected,
+      sessionID: sessionID,
+    );
+    if (completesOperation) {
+      _lifecycleManager.complete(
+        connected,
+        token: token,
+      );
+    } else {
+      _lifecycleManager.commit(
+        connected,
+        token: token,
+      );
+    }
+    return remote;
   }
 
-  /// Disconnects realtime while preserving the local camera preview.
+  /// Disconnects while preserving the local camera preview.
   ///
   /// See [XmaxRealtimeManaging.disconnect] for the usage contract.
   @override
@@ -706,13 +627,13 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     RealtimeReason reason = RealtimeReason.normal,
   }) => _lifecycleManager.disconnect(reason: reason);
 
-  /// Closes realtime and releases connection and local capture resources.
+  /// Releases all resources after affected operations settle.
   ///
   /// See [XmaxRealtimeManaging.close] for the usage contract.
   @override
-  Future<void> close() => _lifecycleManager.close();
+  Future<void> close() => _lifecycleManager.terminate(RealtimeTerminationScope.all);
 
-  /// Starts generation, or updates active conditions without repeating first-frame readiness.
+  /// Starts generation or replaces an unfinished request through shared admission.
   ///
   /// See [XmaxRealtimeManaging.startGeneration] for the usage contract.
   @override
@@ -720,282 +641,199 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     RealtimeMediaStream? localStream,
     RealtimeContext? context,
     bool faceRestoration = false,
-  }) async {
-    final timing =
-        _state.connectionState != RealtimeConnectionState.generating &&
-            _lifecycleManager.startingGenerationTaskID == null
-        ? RealtimeTiming()
-        : null;
-    // A newer request supersedes one that is still connecting or awaiting a result stream.
-    final requestVersion = _lifecycleManager.beginGenerationRequest();
-
-    try {
-      final prepared = await _lifecycleManager.enqueueGenerationOperation(
-        () => _prepareGeneration(
-          localStream: localStream,
+  }) => _lifecycleManager.run(
+    kind: RealtimeOperationKind.generation,
+    operation: (
+      token,
+    ) async {
+      if (_state.connectionState != RealtimeConnectionState.generating) {
+        _timing.reset();
+      }
+      try {
+        if (localStream != null && !_mediaController.owns(localStream)) {
+          throw const XmaxError(
+            code: XmaxErrorCode.invalidConfiguration,
+            message: 'The local stream must be created and started by this realtime manager',
+          );
+        }
+        RealtimeMediaStream? remote;
+        if (localStream != null) {
+          remote = _state.connectionState == RealtimeConnectionState.connected ||
+              _state.connectionState == RealtimeConnectionState.generating
+              ? _connectionManager.currentRemoteStream
+              : await _performConnect(
+                localStream: localStream,
+                token: token,
+              );
+          token.ensureCurrent();
+        }
+        await _performStartGeneration(
           context: context,
           faceRestoration: faceRestoration,
-          requestVersion: requestVersion,
-          timing: timing,
-        ),
-      );
+          token: token,
+        );
+        return remote;
+      } catch (error) {
+        _timing.finishFailure(error);
+        rethrow;
+      }
+    },
+  );
 
-      // Keep first-frame waiting outside the operation queue so conditions can change during decoder startup.
-      await prepared.readiness;
-
-      return prepared.remoteStream;
-    } catch (error) {
-      timing?.finishFailure(error);
-      rethrow;
-    }
-  }
-
-  /// Prepares connection and generation without holding the operation queue during first-frame
-  /// waiting.
+  /// Starts a task or updates established generation without waiting for new video.
   ///
   /// Parameters:
-  /// - [localStream]: The local stream created by this manager.
-  /// - [context]: The requested conditions; null reuses cached conditions.
-  /// - [faceRestoration]: Whether to restore the original face; defaults to false.
-  /// - [requestVersion]: The revision of this generation request.
-  /// - [timing]: The startup duration recorder, or null to omit timing.
-  ///
-  /// Returns the remote stream and its independent readiness operation.
-  Future<_PreparedGeneration> _prepareGeneration({
-    required RealtimeMediaStream? localStream,
+  /// - [context]: The requested conditions, or null to reuse the successful context.
+  /// - [faceRestoration]: Whether to restore the original face.
+  /// - [token]: The admitted operation, retained through first-frame readiness.
+  Future<void> _performStartGeneration({
     required RealtimeContext? context,
     required bool faceRestoration,
-    required int requestVersion,
-    RealtimeTiming? timing,
+    required RealtimeOperationToken token,
   }) async {
-    // New generation requests wait for pending disconnect cleanup to finish.
-    await _lifecycleManager.disconnection;
-    _lifecycleManager.ensureGenerationRequestCurrent(requestVersion);
-
-    if (localStream != null && !_mediaController.owns(localStream)) {
-      throw _report(
-        const XmaxError(
-          code: XmaxErrorCode.invalidConfiguration,
-          message:
-              'The local stream must be created and started by this realtime manager',
-        ),
-      );
-    }
-
-    RealtimeMediaStream? remoteStream;
-
-    if (localStream != null) {
-      if (_state.connectionState == RealtimeConnectionState.connected ||
-          _state.connectionState == RealtimeConnectionState.generating) {
-        remoteStream = _connectionManager.currentRemoteStream;
-      } else {
-        remoteStream = await _connect(
-          localStream: localStream,
-          timing: timing,
-        );
-        _lifecycleManager.ensureGenerationRequestCurrent(requestVersion);
-      }
-    }
-
-    final task = await _prepareGenerationTask(
-      context,
-      faceRestoration: faceRestoration,
-      requestVersion: requestVersion,
-      timing: timing,
-    );
-
-    return _PreparedGeneration(
-      remoteStream: remoteStream,
-      readiness: task.readiness,
-    );
-  }
-
-  /// Starts generation or updates conditions according to connection state.
-  ///
-  /// Parameters:
-  /// - [context]: The requested conditions; null lets the generation manager reuse cached
-  ///   conditions.
-  /// - [requestVersion]: The generation request revision.
-  /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
-  ///   on every call.
-  /// - [timing]: The startup duration recorder, or null to omit timing.
-  ///
-  /// Returns the independent readiness operation for this generation.
-  Future<_PreparedGenerationTask> _prepareGenerationTask(
-    RealtimeContext? context, {
-    required int requestVersion,
-    required bool faceRestoration,
-    RealtimeTiming? timing,
-  }) async {
+    token.ensureCurrent();
     final sessionID = _connectionManager.currentSessionID;
     final videoFormat = _mediaController.currentVideoFormat;
-
-    if (sessionID.isEmpty ||
-        videoFormat == null ||
+    if (sessionID.isEmpty || videoFormat == null ||
         (_state.connectionState != RealtimeConnectionState.connected &&
             _state.connectionState != RealtimeConnectionState.generating)) {
-      throw _report(
-        const XmaxError(
-          code: XmaxErrorCode.rtcError,
-          message: 'Realtime connection is not open',
-        ),
+      throw const XmaxError(
+        code: XmaxErrorCode.rtcError,
+        message: 'Realtime connection is not open',
       );
     }
-
-    final generationSize = _mediaService.resolveGenerationSize(
+    final canvas = _mediaService.resolveGenerationSize(
       Size(
         videoFormat.width.toDouble(),
         videoFormat.height.toDouble(),
       ),
     );
     final generationFormat = videoFormat.resized(
-      width: generationSize.width.toInt(),
-      height: generationSize.height.toInt(),
+      width: canvas.width.toInt(),
+      height: canvas.height.toInt(),
     );
-    final paddingContain =
-        videoFormat.width * generationFormat.height !=
+    final paddingContain = videoFormat.width * generationFormat.height !=
         videoFormat.height * generationFormat.width;
+    token.ensureCurrent();
 
-    final activeTaskID =
-        _state.taskID ?? _lifecycleManager.startingGenerationTaskID;
-
-    if (activeTaskID != null) {
-      try {
-        await _generationManager.update(
-          taskID: activeTaskID,
-          videoFormat: videoFormat,
-          context: context,
-          faceRestoration: faceRestoration,
-          generationVideoFormat: generationFormat,
-          paddingContain: paddingContain,
-        );
-
-        return _PreparedGenerationTask(
-          readiness:
-              _lifecycleManager.generationReadiness ?? Future<void>.value(),
-        );
-      } catch (error) {
-        if (requestVersion != _lifecycleManager.generationRequestVersion) {
-          throw XmaxError.from(error);
-        }
-
-        throw _report(error);
-      }
-    }
-
-    // Reject invalid arguments without disconnecting; runtime failures after remote startup require cleanup.
-    try {
-      _generationManager.validateContext(context);
-    } catch (error) {
-      throw _report(error);
-    }
-
-    final version = _lifecycleManager.operationVersion;
-
-    try {
-      final taskID = await _generationManager.start(
-        timing: timing,
+    final activeTaskID = _state.taskID;
+    if (_state.connectionState == RealtimeConnectionState.generating && activeTaskID != null) {
+      await _generationManager.update(
+        taskID: activeTaskID,
         videoFormat: videoFormat,
         context: context,
         faceRestoration: faceRestoration,
         generationVideoFormat: generationFormat,
         paddingContain: paddingContain,
-        ensureCurrent: () => _lifecycleManager.ensureCurrent(version),
+        ensureCurrent: token.ensureCurrent,
       );
-
-      final completer = _lifecycleManager.beginGenerationWait(taskID);
-      unawaited(
-        _completeGenerationStart(
-          sessionID: sessionID,
-          taskID: taskID,
-          operationVersion: version,
-          completer: completer,
-          timing: timing,
-        ),
-      );
-
-      return _PreparedGenerationTask(readiness: completer.future);
-    } catch (error) {
-      // Superseding a request is normal cancellation, not a runtime error.
-      if (requestVersion != _lifecycleManager.generationRequestVersion ||
-          version != _lifecycleManager.operationVersion) {
-        throw XmaxError.from(error);
-      }
-
-      final xmaxError = _report(error);
-
-      timing?.finishFailure(xmaxError);
-      await disconnect(reason: RealtimeReason.failure(xmaxError));
-      throw xmaxError;
+      return;
     }
+
+    _generationManager.validateContext(context);
+    token.setFailureScope(RealtimeTerminationScope.connection);
+    final taskID = await _generationManager.start(
+      videoFormat: videoFormat,
+      targetSize: _connectionManager.currentTargetSize,
+      context: context,
+      faceRestoration: faceRestoration,
+      generationVideoFormat: generationFormat,
+      paddingContain: paddingContain,
+      token: token,
+    );
+    token.ensureCurrent();
+    if (_connectionManager.currentSessionID != sessionID) {
+      throw XmaxRealtimeLifecycleManager.cancelledError();
+    }
+    await _connectionManager.completeInitialQuality(token.ensureCurrent);
+    token.ensureCurrent();
+    if (options.isAdaptiveQualityEnabled) {
+      _streamController.setAdaptiveQualityListener((
+        quality,
+        sampledAt,
+      ) => unawaited(
+        _adaptQuality(
+          quality,
+          sampledAt: sampledAt,
+          taskID: taskID,
+        ),
+      ));
+    }
+    _lifecycleManager.complete(
+      RealtimeState(
+        connectionState: RealtimeConnectionState.generating,
+        sessionID: sessionID,
+        taskID: taskID,
+      ),
+      token: token,
+    );
+    _timing.finish();
   }
 
-  /// Waits for stream confirmation, first-frame decoding, and audio activation before committing
-  /// generating.
+  /// Applies independent automatic adjustments only while shared admission is idle.
   ///
   /// Parameters:
-  /// - [sessionID]: The server session identifier.
-  /// - [taskID]: The current generation task identifier.
-  /// - [operationVersion]: The revision of this connection or local media operation.
-  /// - [completer]: The completer receiving startup readiness or failure.
-  /// - [timing]: The startup duration recorder, or null to omit timing.
-  Future<void> _completeGenerationStart({
-    required String sessionID,
+  /// - [quality]: The current network measurements.
+  /// - [sampledAt]: The monotonic sample time, in seconds.
+  /// - [taskID]: The task whose listener delivered this sample.
+  Future<void> _adaptQuality(
+    RealtimeNetworkQuality quality, {
+    required double sampledAt,
     required String taskID,
-    required int operationVersion,
-    required Completer<void> completer,
-    RealtimeTiming? timing,
   }) async {
     try {
-      await _connectionManager.waitUntilRemoteFrameReady();
-      _lifecycleManager.ensureCurrent(operationVersion);
-      await _streamController.activateRemoteAudio();
-      _lifecycleManager.ensureCurrent(operationVersion);
-      if (_connectionManager.currentSessionID != sessionID) {
-        throw const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Realtime connection was cancelled',
+      final accepted = await _lifecycleManager.runAdaptiveConfiguration((
+        token,
+      ) async {
+        if (_state.taskID != taskID) {
+          return;
+        }
+        final change = _streamController.proposeQuality(
+          quality,
+          sampledAt,
         );
+        for (final downlink in [false, true]) {
+          token.ensureCurrent();
+          final level = downlink ? change.downlink : change.uplink;
+          if (level == null) {
+            continue;
+          }
+          try {
+            await _connectionManager.applyQualityLevel(
+              level,
+              downlink: downlink,
+              taskID: taskID,
+              ensureCurrent: token.ensureCurrent,
+            );
+          } catch (error) {
+            token.ensureCurrent();
+            XmaxLogger.warn(
+              category: XmaxLoggerCategory.realtime,
+              message: '网络档位调整失败 (Quality Adjustment Failed)\n└─ $error',
+            );
+          }
+        }
+      });
+      if (!accepted && _state.taskID == taskID) {
+        _streamController.resetQualitySamples();
       }
-
-      _lifecycleManager.emit(
-        RealtimeState(
-          connectionState: RealtimeConnectionState.generating,
-          sessionID: sessionID,
-          taskID: taskID,
-        ),
-      );
-
-      if (!completer.isCompleted) {
-        timing?.finish();
-        completer.complete();
+    } catch (_) {
+      if (_state.taskID == taskID) {
+        _streamController.resetQualitySamples();
       }
-    } catch (error) {
-      if (!completer.isCompleted &&
-          operationVersion == _lifecycleManager.operationVersion) {
-        final xmaxError = _report(error);
-
-        timing?.finishFailure(xmaxError);
-        // Remove the failed wait before disconnecting so cancellation cannot replace its original error.
-        // Complete the caller's future only after session cleanup finishes.
-        _lifecycleManager.detachGenerationWait(completer);
-
-        await disconnect(reason: RealtimeReason.failure(xmaxError));
-        completer.completeError(xmaxError);
-      }
-    } finally {
-      _lifecycleManager.finishGenerationWait(completer);
     }
   }
 
-  /// Stops generation and interactions while retaining the RTC connection.
-  Future<void> stopGeneration() => _lifecycleManager.stopGeneration();
+  /// Stops only generation through scoped lifecycle cleanup.
+  Future<void> stopGeneration() => _connectionManager.currentSessionID.isEmpty
+      ? Future<void>.value()
+      : _lifecycleManager.terminate(RealtimeTerminationScope.generation);
 
-  /// Cleans up and reports a failed connection only while its session remains current.
+  /// Terminates only the session that reported a current heartbeat failure.
   ///
   /// Parameters:
-  /// - [sessionID]: The server session identifier.
-  /// - [error]: The operation error.
+  /// - [sessionID]: The failed session identifier.
+  /// - [error]: The heartbeat failure.
   Future<void> _handleHeartbeatFailure(
     String sessionID,
     Object error,
@@ -1003,21 +841,12 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     if (_connectionManager.currentSessionID != sessionID) {
       return;
     }
-
-    final xmaxError = _report(error);
-
-    await disconnect(reason: RealtimeReason.failure(xmaxError));
+    await _lifecycleManager.handleFailure(
+      XmaxError.from(error),
+      RealtimeFailureScope.connection,
+      () => _connectionManager.currentSessionID == sessionID,
+    );
   }
-
-  /// Normalizes and logs the current operation error.
-  ///
-  /// Parameters:
-  /// - [error]: The operation error.
-  ///
-  /// Returns the normalized SDK error.
-  XmaxError _report(
-    Object error,
-  ) => _errorManager.report(error);
 
   /// Validates a finite volume from 0 to 1, throwing for invalid values.
   ///
@@ -1033,32 +862,4 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       );
     }
   }
-}
-
-/// A prepared remote stream and its generation readiness operation.
-final class _PreparedGeneration {
-
-  /// Creates a prepared generation result.
-  const _PreparedGeneration({
-    required this.remoteStream,
-    required this.readiness,
-  });
-
-  /// The remote media stream for this generation result.
-  final RealtimeMediaStream? remoteStream;
-
-  /// The readiness future, which completes with an error on failure or cancellation.
-  final Future<void> readiness;
-}
-
-/// A generation startup readiness operation.
-final class _PreparedGenerationTask {
-
-  /// Creates a generation startup readiness result.
-  const _PreparedGenerationTask({
-    required this.readiness,
-  });
-
-  /// The readiness future, which completes with an error on failure or cancellation.
-  final Future<void> readiness;
 }

@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/XmaxSDK.dart' as compatibility;
 import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeFactory.dart';
+import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeLifecycleManager.dart';
 import 'package:xmax_sdk/src/service/media/RealtimeMediaSource.dart' as media;
 import 'package:xmax_sdk/src/service/network/ApiServicing.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeCameraPreset.dart'
@@ -132,8 +133,14 @@ void main() {
       );
       expect(components.mediaController.currentTrack, isNull);
       expect(components.connectionManager.currentSessionID, isEmpty);
+      expect(
+        components.renderController,
+        same(components.connectionManager.renderController),
+      );
+      expect(components.timing, same(components.connectionManager.timing));
+      expect(components.timing, same(components.generationManager.timing));
       expect(api.requests, 0);
-      await components.lifecycleManager.close();
+      await components.lifecycleManager.terminate(RealtimeTerminationScope.all);
       expect(api.requests, 0);
     },
   );

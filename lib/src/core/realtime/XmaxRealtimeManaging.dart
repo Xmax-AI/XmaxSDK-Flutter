@@ -93,6 +93,10 @@ abstract interface class XmaxRealtimeManaging {
 
   /// Sets the state listener and immediately delivers the current state.
   ///
+  /// Subsequent notifications contain changed snapshots only. Completion states
+  /// are delivered after operation admission is released, allowing your app to
+  /// start the next operation from the listener.
+  ///
   /// Runtime failures are reported through the state's reason.
   ///
   /// Parameters:
@@ -219,8 +223,10 @@ abstract interface class XmaxRealtimeManaging {
 
   /// Starts generation, or updates active conditions without repeating first-frame readiness.
   ///
-  /// The first generation requires conditions. Startup can be replaced by a new request or
-  /// interrupted by disconnection.
+  /// The first generation requires conditions. A newer call replaces an unfinished
+  /// request; the replaced call fails with cancellation after its required cleanup.
+  /// Requests do not replace other operation kinds. Disconnecting or closing
+  /// cancels pending requests without restarting generation afterward.
   ///
   /// Parameters:
   /// - [localStream]: The local stream for automatic connection; may be omitted when already
@@ -231,8 +237,9 @@ abstract interface class XmaxRealtimeManaging {
   ///   on every call.
   ///
   /// Returns the connection's remote stream when [localStream] is supplied, or null otherwise.
-  /// Initial startup waits for stream confirmation, frame decoding, and audio activation. Condition
-  /// updates wait only for signaling.
+  /// Initial startup waits for stream confirmation, frame decoding, and audio activation.
+  /// Established condition updates wait only for signaling. Conflicting media or
+  /// manual configuration operations cause the returned future to fail.
   Future<RealtimeMediaStream?> startGeneration({
     RealtimeMediaStream? localStream,
     RealtimeContext? context,

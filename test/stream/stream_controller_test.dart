@@ -43,204 +43,77 @@ Future<StreamController> _controller(
 
 void main() {
   test(
-    'disabled adaptation keeps network callbacks and permits manual changes',
+    'quality preparation leaves encoder and returned dimensions to Core',
     () async {
-      final rtc = _Rtc(), room = _Room();
-      final stream = await _controller(rtc, room: room);
+      final rtc = _Rtc();
+      final stream = await _controller(rtc);
       addTearDown(stream.disconnect);
-      final observed = <RealtimeNetworkQuality>[];
-      stream.setNetworkQualityListener(observed.add);
       await stream.prepareQuality(
         baseline: _format,
-        model: 'x2.1.1-preview-cn',
-        minimumInputPixels: 500000,
+        model: 'preview',
         isAdaptiveQualityEnabled: false,
       );
       expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l1);
-      expect(
-        stream.qualityConfiguration!.downlinkLevel,
-        RealtimeQualityLevel.l1,
+      expect(rtc.configurations, isEmpty);
+    },
+  );
+
+  test(
+    'internal and public network listeners receive independent samples',
+    () async {
+      final rtc = _Rtc();
+      final actual = await _controller(rtc);
+      addTearDown(actual.disconnect);
+      final observed = <RealtimeNetworkQuality>[],
+          internal = <RealtimeNetworkQuality>[];
+      actual.setNetworkQualityListener(observed.add);
+      actual.setAdaptiveQualityListener((value, time) {
+        expect(time, greaterThanOrEqualTo(0));
+        internal.add(value);
+      });
+      const sample = RealtimeNetworkQuality(
+        uplink: RealtimeNetworkQualityLevel.bad,
+        downlink: RealtimeNetworkQualityLevel.good,
       );
-      final confirmation = await stream.beginGeneration(
+      rtc.listener!.onNetworkQuality!(sample);
+      expect(observed, [sample]);
+      expect(internal, [sample]);
+      actual.setAdaptiveQualityListener(null);
+      rtc.listener!.onNetworkQuality!(sample);
+      expect(observed, hasLength(2));
+      expect(internal, hasLength(1));
+    },
+  );
+
+  test(
+    'operation cancellation interrupts a pending generation signaling wait',
+    () async {
+      final rtc = _Rtc(), room = _Room()..startGate = Completer<void>();
+      final stream = await _controller(rtc, room: room);
+      addTearDown(stream.disconnect);
+      final cancelled = Completer<void>();
+      final pending = stream.beginGeneration(
         taskID: 'task',
         videoFormat: _format,
-        context: RealtimeContext(prompt: 'start'),
-        paddingContain: true,
-      );
-      expect(room.startPadding, isTrue);
-      rtc.listener!.onRemoteVideoPublished!(_remote, true);
-      await confirmation.value;
-      await stream.activateRemoteAudio();
-      final count = rtc.configurations.length;
-      for (var i = 0; i < 10; i++) {
-        rtc.listener!.onNetworkQuality!(
-          const RealtimeNetworkQuality(
-            uplink: RealtimeNetworkQualityLevel.veryBad,
-            downlink: RealtimeNetworkQualityLevel.veryBad,
-          ),
-        );
-        await _settle();
-      }
-      expect(observed, hasLength(10));
-      expect(rtc.configurations, hasLength(count));
-      expect(room.targetStarted.isCompleted, isFalse);
-      await stream.setQualityLevel(RealtimeQualityLevel.l5, downlink: false);
-      final last = rtc.configurations.last;
-      expect((last.width, last.height, last.frameRate), (544, 1020, 16));
-      await stream.setQualityLevel(RealtimeQualityLevel.l5, downlink: true);
-      expect(stream.targetSize, const Size(512, 960));
-      await stream.updateGeneration(
-        taskID: 'task',
-        videoFormat: _format,
-        context: RealtimeContext(prompt: 'next'),
-        paddingContain: true,
-      );
-      expect(room.conditionPadding, isTrue);
-      expect(room.conditionTarget, isNull);
-      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l5);
-    },
-  );
-
-  Future<StreamController> generating(_Rtc rtc, _Room room) async {
-    final stream = await _controller(rtc, room: room);
-    await stream.prepareQuality(baseline: _format, model: 'x2.1');
-    final generation = await stream.beginGeneration(
-      taskID: 'task',
-      videoFormat: _format,
-      context: RealtimeContext(prompt: 'a'),
-    );
-    rtc.listener!.onRemoteVideoPublished!(_remote, true);
-    await generation.value;
-    await stream.activateRemoteAudio();
-    return stream;
-  }
-
-  test(
-    'manual quality applies independent directions and retains the source baseline',
-    () async {
-      final rtc = _Rtc(), room = _Room();
-      final stream = await generating(rtc, room);
-      addTearDown(stream.disconnect);
-      await stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false);
-      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l1);
-      expect(
-        stream.qualityConfiguration!.downlinkLevel,
-        RealtimeQualityLevel.l2,
-      );
-      expect(
-        (
-          rtc.configurations.last.width,
-          rtc.configurations.last.height,
-          rtc.configurations.last.frameRate,
-        ),
-        (1024, 1920, 30),
-      );
-      await stream.setQualityLevel(RealtimeQualityLevel.l4, downlink: true);
-      expect(
-        stream.qualityConfiguration!.downlinkLevel,
-        RealtimeQualityLevel.l4,
-      );
-      expect(stream.targetSize, const Size(608, 1140));
-      expect(stream.qualityConfiguration!.baseline, _format);
-      await stream.stopGeneration(taskID: 'task');
-      await expectLater(
-        stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false),
-        throwsA(isA<XmaxError>()),
-      );
-    },
-  );
-
-  test(
-    'rejected quality changes do not commit levels or block later updates',
-    () async {
-      final rtc = _Rtc(), room = _Room();
-      final stream = await generating(rtc, room);
-      addTearDown(stream.disconnect);
-      rtc.encodingError = StateError('encoder rejected');
-      await expectLater(
-        stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false),
-        throwsStateError,
-      );
-      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l2);
-      rtc.encodingError = null;
-      room.targetError = StateError('send rejected');
-      final previous = stream.targetSize;
-      await expectLater(
-        stream.setQualityLevel(RealtimeQualityLevel.l5, downlink: true),
-        throwsStateError,
-      );
-      expect(
-        stream.qualityConfiguration!.downlinkLevel,
-        RealtimeQualityLevel.l2,
-      );
-      expect(stream.targetSize, previous);
-      room.targetError = null;
-      await stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false);
-      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l1);
-    },
-  );
-
-  test(
-    'manual changes serialize condition signaling and reject overlapping quality writes',
-    () async {
-      final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
-      final stream = await generating(rtc, room);
-      addTearDown(stream.disconnect);
-      final manual = stream.setQualityLevel(
-        RealtimeQualityLevel.l4,
-        downlink: true,
-      );
-      await room.targetStarted.future;
-      await expectLater(
-        stream.setQualityLevel(RealtimeQualityLevel.l1, downlink: false),
-        throwsA(isA<XmaxError>()),
-      );
-      final update = stream.updateGeneration(
-        taskID: 'task',
-        videoFormat: _format,
-        context: RealtimeContext(prompt: 'b'),
-      );
-      await _settle();
-      expect(room.conditionTarget, isNull);
-      room.targetGate!.complete();
-      await manual;
-      await update;
-      expect(room.conditionTarget, isNull);
-    },
-  );
-
-  test(
-    'stop cancels a pending manual change without committing its target',
-    () async {
-      final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
-      final stream = await generating(rtc, room);
-      addTearDown(stream.disconnect);
-      final previous = stream.targetSize;
-      final manual = stream.setQualityLevel(
-        RealtimeQualityLevel.l4,
-        downlink: true,
+        context: RealtimeContext(prompt: 'a'),
+        cancellation: cancelled.future,
       );
       final rejected = expectLater(
-        manual,
+        pending,
         throwsA(
           isA<XmaxError>().having(
-            (error) => error.code,
+            (e) => e.code,
             'code',
             XmaxErrorCode.cancelled,
           ),
         ),
       );
-      await room.targetStarted.future;
-      final stop = stream.stopGeneration(taskID: 'task');
       await _settle();
-      room.targetGate!.complete();
+      cancelled.complete();
       await rejected;
-      await stop;
-      expect(
-        stream.qualityConfiguration!.downlinkLevel,
-        RealtimeQualityLevel.l2,
-      );
-      expect(stream.targetSize, previous);
+      room.startGate!.complete();
+      rtc.listener!.onRemoteVideoPublished!(_remote, true);
+      await _settle();
       expect(stream.hasGenerationTask, isFalse);
     },
   );
@@ -271,57 +144,6 @@ void main() {
     expect(rendered.whereType<RemoteStream>(), isEmpty);
     expect(stream.hasGenerationTask, false);
   });
-  test(
-    'condition updates wait for quality writes without overriding the return size',
-    () async {
-      final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
-      final stream = await _controller(rtc, room: room);
-      addTearDown(stream.disconnect);
-      await stream.prepareQuality(baseline: _format, model: 'x2.1');
-      expect(stream.targetSize, const Size(896, 1680));
-      final generation = await stream.beginGeneration(
-        taskID: 'task',
-        videoFormat: _format,
-        context: RealtimeContext(prompt: 'a'),
-      );
-      rtc.listener!.onRemoteVideoPublished!(_remote, true);
-      await generation.value;
-      await stream.activateRemoteAudio();
-      for (var i = 0; i < 3; i++) {
-        rtc.listener!.onNetworkQuality!(
-          const RealtimeNetworkQuality(
-            uplink: RealtimeNetworkQualityLevel.bad,
-            downlink: RealtimeNetworkQualityLevel.bad,
-          ),
-        );
-        await _settle();
-      }
-      await room.targetStarted.future.timeout(const Duration(seconds: 2));
-      var updated = false;
-      final update = stream
-          .updateGeneration(
-            taskID: 'task',
-            videoFormat: _format,
-            context: RealtimeContext(prompt: 'b'),
-          )
-          .then((_) => updated = true);
-      await _settle();
-      expect(updated, false);
-      room.targetGate!.complete();
-      await update;
-      expect(stream.targetSize, const Size(768, 1440));
-      expect(room.conditionTarget, isNull);
-      expect(
-        (
-          rtc.configurations.last.width,
-          rtc.configurations.last.height,
-          rtc.configurations.last.frameRate,
-        ),
-        (768, 1440, 24),
-      );
-      expect(_format.width, 1024);
-    },
-  );
   test('published video waits for completed start signaling', () async {
     final rtc = _Rtc(), room = _Room()..startGate = Completer<void>();
     final rendered = <RemoteStream?>[];

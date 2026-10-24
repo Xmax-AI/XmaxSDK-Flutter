@@ -17,8 +17,6 @@ import '../foundation/rtc/RemoteStream.dart';
 import '../foundation/rtc/RtcEventListener.dart';
 import '../foundation/rtc/RtcManaging.dart';
 import '../foundation/rtc/VideoStatistics.dart';
-import '../service/media/MediaService.dart';
-import '../service/media/MediaServicing.dart';
 import '../service/realtime/RealtimeContext.dart';
 import '../service/realtime/RealtimeError.dart';
 import '../service/realtime/RealtimeNetworkQuality.dart';
@@ -32,7 +30,6 @@ import 'encoding/EncodingControlling.dart';
 import 'quality/QualityConfiguration.dart';
 import 'quality/QualityController.dart';
 import 'quality/QualityControlling.dart';
-import 'quality/QualityVideoFormat.dart';
 import 'quality/RealtimeQualityLevel.dart';
 import 'room/RoomController.dart';
 import 'room/RoomControlling.dart';
@@ -66,8 +63,6 @@ final class StreamController implements StreamControlling {
   /// - [roomController]: The signaling controller; defaults to one using the same RTC manager.
   /// - [encodingController]: The encoding controller; defaults to one using the same RTC manager.
   /// - [qualityController]: The quality controller; defaults to an independent policy instance.
-  /// - [mediaService]: The dimension resolver; defaults to the model configuration in
-  ///   [MediaService].
   /// - [errorListener]: The callback for remote connection or generation failures.
   /// - [localMediaErrorListener]: The callback for local media failures while disconnected;
   ///   defaults to [errorListener].
@@ -76,25 +71,26 @@ final class StreamController implements StreamControlling {
   /// - [remoteFrameReadyListener]: The callback for the first decoded result frame.
   /// - [generationTimeout]: The timeout for generation signaling and result confirmation; defaults
   ///   to 15 seconds.
+  /// - [monotonicTime]: The sample clock in seconds; defaults to the process monotonic clock.
   StreamController({
     required RtcManaging rtcManager,
     RoomControlling? roomController,
     EncodingControlling? encodingController,
     QualityControlling? qualityController,
-    MediaServicing? mediaService,
     RealtimeErrorListener? errorListener,
     RealtimeErrorListener? localMediaErrorListener,
     RemoteStreamListener? remoteStreamListener,
     RemoteFrameRenderedListener? remoteFrameRenderedListener,
     RemoteFrameRenderedListener? remoteFrameReadyListener,
     this.generationTimeout = const Duration(seconds: 15),
+    double Function()? monotonicTime,
   }) : _rtcManager = rtcManager,
        _roomController =
            roomController ?? RoomController(rtcManager: rtcManager),
        _encodingController =
            encodingController ?? EncodingController(rtcManager: rtcManager),
        _qualityController = qualityController ?? QualityController(),
-       _mediaService = mediaService ?? MediaService(),
+       _monotonicTime = monotonicTime,
        _errorListener = errorListener,
        _localMediaErrorListener = localMediaErrorListener,
        _remoteStreamListener = remoteStreamListener,
@@ -139,100 +135,27 @@ final class StreamController implements StreamControlling {
   /// The controller for uplink and downlink quality policies.
   final QualityControlling _qualityController;
 
-  /// The service that resolves capture, generation, and result dimensions.
-  final MediaServicing _mediaService;
-
-  /// The monotonic clock used for network quality samples.
+  /// The monotonic clock used to timestamp network samples.
   final _qualityClock = Stopwatch()..start();
 
-  /// The result-stream width and height, in pixels.
-  Size? _targetSize;
+  /// An optional injected monotonic sample clock, in seconds.
+  final double Function()? _monotonicTime;
 
-  /// The quality-level update currently being applied.
-  Future<void>? _adaptation;
+  /// Reads monotonic seconds without using wall-clock time.
+  double _sampleTime() => _monotonicTime?.call() ?? _qualityClock.elapsedMicroseconds / 1e6;
 
-  /// Whether the current task permits manual or automatic quality changes.
-  bool _canAdapt = false;
+  /// The SDK listener for network samples, separate from your app's listener.
+  void Function(
+    RealtimeNetworkQuality quality,
+    double sampledAt,
+  )? _adaptiveQualityListener;
 
-  /// Whether network samples may automatically adjust this connection's quality.
-  bool _isAdaptiveQualityEnabled = true;
-
-  /// The number of queued or in-flight generation condition updates.
-  int _conditionUpdates = 0;
-
-  /// The connection version that owns the quality configuration.
-  int _qualityVersion = 0;
-
-  /// The result-stream width and height, in pixels.
-  @override
-  Size? get targetSize => _targetSize;
-
-  /// The fixed media baseline and successfully applied levels for the current connection.
+  /// The current connection's baseline and successfully applied quality levels.
   @override
   QualityConfiguration? get qualityConfiguration =>
       _qualityController.qualityConfiguration;
 
-  /// Applies a manual quality level without disabling subsequent automatic adjustments.
-  ///
-  /// See [StreamControlling.setQualityLevel] for the usage contract.
-  @override
-  Future<void> setQualityLevel(
-    RealtimeQualityLevel level, {
-    required bool downlink,
-  }) async {
-    final configuration = qualityConfiguration;
-    final taskID = _generationTaskID;
-
-    if (!_canAdapt ||
-        taskID == null ||
-        configuration == null ||
-        _generationCompleter != null ||
-        _conditionUpdates > 0 ||
-        _adaptation != null) {
-      throw const XmaxError(
-        code: XmaxErrorCode.invalidConfiguration,
-        message: 'Quality adjustment requires an active, available generation',
-      );
-    }
-
-    final future = _applyQuality(
-      QualityChange(
-        uplink: downlink ? null : level,
-        downlink: downlink ? level : null,
-      ),
-      configuration.baseline,
-      taskID,
-      _qualityVersion,
-      propagateErrors: true,
-    );
-
-    // Cleanup awaits a non-throwing barrier; callers still receive failures through the original task.
-    final barrier = future.then<void>(
-      (
-        _,
-      ) {},
-      onError: (
-        Object _,
-        StackTrace _,
-      ) {},
-    );
-
-    _adaptation = barrier;
-
-    try {
-      await future;
-    } finally {
-      if (identical(
-        _adaptation,
-        barrier,
-      )) {
-        _adaptation = null;
-      }
-    }
-  }
-
-  /// Loads valid model history, prepares independent link policies, and applies the initial
-  /// transport format.
+  /// Prepares directional policies without configuring capture or returned dimensions.
   ///
   /// See [StreamControlling.prepareQuality] for the usage contract.
   @override
@@ -241,224 +164,77 @@ final class StreamController implements StreamControlling {
     required String model,
     int minimumInputPixels = 0,
     bool isAdaptiveQualityEnabled = true,
-  }) async {
-    final version = ++_qualityVersion;
-
-    await _qualityController.prepareQuality(
-      baseline: baseline,
-      model: model,
-      minimumInputPixels: minimumInputPixels,
-      isAdaptiveQualityEnabled: isAdaptiveQualityEnabled,
-    );
-    if (version != _qualityVersion) {
-      return;
-    }
-
-    _isAdaptiveQualityEnabled = isAdaptiveQualityEnabled;
-
-    final configuration = qualityConfiguration;
-
-    if (configuration == null) {
-      return;
-    }
-
-    _targetSize = _resolveTargetSize(
-      configuration.baseline,
-      configuration.downlinkLevel,
-    );
-    await _encodingController.configure(configuration.uplink);
-  }
-
-  /// Computes aligned result dimensions within the downlink level's limits.
-  ///
-  /// Parameters:
-  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
-  ///   updates.
-  /// - [level]: The target quality level, from 1 to 5.
-  ///
-  /// Returns aligned result dimensions within the current downlink level's limits.
-  Size _resolveTargetSize(
-    RealtimeVideoFormat baseline,
-    RealtimeQualityLevel level,
-  ) => _mediaService.resolveTargetSize(
-    Size(
-      baseline.width.toDouble(),
-      baseline.height.toDouble(),
-    ),
-    maximumSize: QualityVideoFormat.downlinkMaximumSize(
-      baseline,
-      level,
-    ),
+  }) => _qualityController.prepareQuality(
+    baseline: baseline,
+    model: model,
+    minimumInputPixels: minimumInputPixels,
+    isAdaptiveQualityEnabled: isAdaptiveQualityEnabled,
   );
 
-  /// Dispatches quality events and collects consecutive link samples while adaptation is enabled.
+  /// Sets the internal adaptation listener without replacing your app's listener.
   ///
   /// Parameters:
-  /// - [quality]: The uplink and downlink measurements from the same sample.
+  /// - [listener]: The SDK sample handler, or null to disable adaptation.
+  @override
+  void setAdaptiveQualityListener(
+    void Function(
+      RealtimeNetworkQuality quality,
+      double sampledAt,
+    )? listener,
+  ) {
+    _adaptiveQualityListener = listener;
+  }
+
+  /// Proposes directional levels without committing a transport update.
+  ///
+  /// Parameters:
+  /// - [quality]: The current directional network measurements.
+  /// - [sampledAt]: The sample's monotonic timestamp, in seconds.
+  ///
+  /// Returns independent candidates; null leaves that direction unchanged.
+  @override
+  QualityChange proposeQuality(
+    RealtimeNetworkQuality quality,
+    double sampledAt,
+  ) => _qualityController.proposeQuality(
+    quality,
+    sampledAt,
+  );
+
+  /// Records a successfully applied level or a failed adjustment.
+  ///
+  /// Parameters:
+  /// - [level]: The attempted level.
+  /// - [downlink]: Whether this is the result-stream direction.
+  /// - [success]: Whether configuration completed successfully.
+  @override
+  Future<void> completeQuality(
+    RealtimeQualityLevel level, {
+    required bool downlink,
+    required bool success,
+  }) => _qualityController.completeQuality(
+    level,
+    downlink: downlink,
+    success: success,
+    now: _sampleTime(),
+  );
+
+  /// Discards consecutive samples collected while adaptation was unavailable.
+  @override
+  void resetQualitySamples() => _qualityController.resetQualitySamples();
+
+  /// Delivers public measurements and forwards samples for SDK operation admission.
+  ///
+  /// Parameters:
+  /// - [quality]: The directional measurements from the same network sample.
   void _networkQualityDidChange(
     RealtimeNetworkQuality quality,
   ) {
     _qualityController.emitNetworkQuality(quality);
-    if (!_isAdaptiveQualityEnabled ||
-        _conditionUpdates > 0 ||
-        !_canAdapt ||
-        _generationTaskID == null ||
-        _generationCompleter != null ||
-        _adaptation != null) {
-      _qualityController.resetQualitySamples();
-
-      return;
-    }
-
-    final baseline = qualityConfiguration?.baseline;
-
-    if (baseline == null) {
-      return;
-    }
-
-    final changes = _qualityController.proposeQuality(
+    _adaptiveQualityListener?.call(
       quality,
-      _qualityClock.elapsedMicroseconds / 1e6,
+      _sampleTime(),
     );
-
-    if (changes.uplink == null && changes.downlink == null) {
-      return;
-    }
-
-    final taskID = _generationTaskID!;
-    final version = _qualityVersion;
-    final future = _applyQuality(
-      changes,
-      baseline,
-      taskID,
-      version,
-    );
-
-    _adaptation = future;
-    unawaited(
-      future.whenComplete(() {
-        if (identical(
-          _adaptation,
-          future,
-        )) {
-          _adaptation = null;
-        }
-      }),
-    );
-  }
-
-  /// Applies uplink and downlink candidates independently, recording only successful updates.
-  ///
-  /// Parameters:
-  /// - [changes]: The proposed uplink and downlink levels; null leaves that direction unchanged.
-  /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
-  ///   updates.
-  /// - [taskID]: The current generation task identifier.
-  /// - [version]: The asynchronous operation revision.
-  /// - [propagateErrors]: Whether to propagate failures to the caller; automatic adjustments only
-  ///   log failures.
-  Future<void> _applyQuality(
-    QualityChange changes,
-    RealtimeVideoFormat baseline,
-    String taskID,
-    int version, {
-    bool propagateErrors = false,
-  }) async {
-    bool current() =>
-        version == _qualityVersion && taskID == _generationTaskID && _canAdapt;
-
-    for (final downlink in [false, true]) {
-      final level = downlink ? changes.downlink : changes.uplink;
-
-      if (level == null) {
-        continue;
-      }
-
-      if (!current()) {
-        if (propagateErrors) {
-          throw const XmaxError(
-            code: XmaxErrorCode.cancelled,
-            message: 'Quality adjustment cancelled',
-          );
-        }
-        continue;
-      }
-
-      var success = false;
-
-      try {
-        if (downlink) {
-          final target = _resolveTargetSize(
-            baseline,
-            level,
-          );
-
-          if (target != _targetSize) {
-            await changeTargetSize(
-              taskID: taskID,
-              targetSize: target,
-              ensureActive: () {
-                if (!current()) {
-                  throw const XmaxError(
-                    code: XmaxErrorCode.cancelled,
-                    message: 'Quality adjustment cancelled',
-                  );
-                }
-              },
-            );
-          }
-
-          if (current()) {
-            _targetSize = target;
-            success = true;
-          }
-        } else {
-          await _encodingController.configure(
-            QualityVideoFormat.resolve(
-              baseline,
-              level,
-              downlink: false,
-              minimumInputPixels: qualityConfiguration?.minimumInputPixels ?? 0,
-            ),
-          );
-          success = current();
-        }
-      } catch (error) {
-        if (current()) {
-          XmaxLogger.warn(
-            category: XmaxLoggerCategory.stream,
-            message: '网络档位调整失败 (Quality Adjustment Failed)\n└─ $error',
-          );
-        }
-        if (propagateErrors) {
-          if (current()) {
-            await _qualityController.completeQuality(
-              level,
-              downlink: downlink,
-              success: false,
-              now: _qualityClock.elapsedMicroseconds / 1e6,
-            );
-          }
-          rethrow;
-        }
-      }
-
-      // Record applied levels only if the configuration still belongs to the current task.
-      if (current()) {
-        await _qualityController.completeQuality(
-          level,
-          downlink: downlink,
-          success: success,
-          now: _qualityClock.elapsedMicroseconds / 1e6,
-        );
-      }
-      if (propagateErrors && !success) {
-        throw const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Quality adjustment cancelled',
-        );
-      }
-    }
   }
 
   /// The listener for remote connection and generation runtime errors.
@@ -646,7 +422,6 @@ final class StreamController implements StreamControlling {
     }
 
     _remoteAudioEnabled = true;
-    _canAdapt = true;
     // Audio may be published after video; subscribe when its publication event arrives.
     final streamID = _publishedRemoteAudioStreams[stream.userID];
 
@@ -778,11 +553,8 @@ final class StreamController implements StreamControlling {
   /// Ends generation and disconnects realtime while retaining the local camera preview.
   @override
   Future<void> disconnect() async {
-    _canAdapt = false;
-    _qualityVersion++;
-    await _adaptation;
+    _adaptiveQualityListener = null;
     _qualityController.resetQuality();
-    _targetSize = null;
     _connectionRevision += 1;
     // Cancel result-stream waits before changing RTC subscriptions.
     await _clearGeneration(notifyRemote: true);
@@ -830,6 +602,7 @@ final class StreamController implements StreamControlling {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
+    Future<void>? cancellation,
   }) async {
     if (taskID.trim().isEmpty) {
       throw const XmaxError(
@@ -860,6 +633,21 @@ final class StreamController implements StreamControlling {
     _generationTaskID = taskID;
     _generationCompleter = completer;
     _startSignalSent = false;
+    cancellation?.then((
+      _,
+    ) {
+      if (_generationTaskID == taskID && identical(
+        _generationCompleter,
+        completer,
+      )) {
+        _rejectGeneration(
+          const XmaxError(
+            code: XmaxErrorCode.cancelled,
+            message: 'Realtime generation start cancelled',
+          ),
+        );
+      }
+    });
     _generationTimer = Timer(
       generationTimeout,
       () {
@@ -934,12 +722,15 @@ final class StreamController implements StreamControlling {
       }
 
       // Stop the server task because the generation request may already have arrived.
-      await _clearGeneration(notifyRemote: true);
+      await _safe(
+        '停止取消的生成失败 (Failed to Stop Cancelled Generation)',
+        () => stopGeneration(taskID: taskID),
+      );
       rethrow;
     }
   }
 
-  /// Waits for quality updates before submitting new generation conditions.
+  /// Submits conditions within the caller's admitted configuration operation.
   ///
   /// See [StreamControlling.updateGeneration] for the usage contract.
   @override
@@ -950,32 +741,14 @@ final class StreamController implements StreamControlling {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
-  }) async {
-    _conditionUpdates++;
-
-    final revision = _connectionRevision;
-
-    try {
-      await _adaptation;
-      if (revision != _connectionRevision || _generationTaskID != taskID) {
-        throw const XmaxError(
-          code: XmaxErrorCode.cancelled,
-          message: 'Generation condition update cancelled',
-        );
-      }
-
-      await _roomController.changeGenerationCondition(
-        taskID: taskID,
-        videoFormat: videoFormat,
-        context: context,
-        targetSize: targetSize,
-        faceRestoration: faceRestoration,
-        paddingContain: paddingContain,
-      );
-    } finally {
-      _conditionUpdates--;
-    }
-  }
+  }) => _roomController.changeGenerationCondition(
+    taskID: taskID,
+    videoFormat: videoFormat,
+    context: context,
+    targetSize: targetSize,
+    faceRestoration: faceRestoration,
+    paddingContain: paddingContain,
+  );
 
   /// Submits result dimensions and the downlink bitrate budget for the current task.
   ///
@@ -1337,8 +1110,6 @@ final class StreamController implements StreamControlling {
     );
 
     _generationTaskID = null;
-    _canAdapt = false;
-    await _adaptation;
     _startSignalSent = false;
     _downlinkStatisticsListener?.call(null);
     _remoteAudioEnabled = false;

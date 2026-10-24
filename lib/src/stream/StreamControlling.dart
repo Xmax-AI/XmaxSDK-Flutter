@@ -46,8 +46,7 @@ final class GenerationStartConfirmation {
 /// The transport interface used by Core.
 abstract interface class StreamControlling {
 
-  /// Loads valid model history, prepares independent link policies, and applies the initial
-  /// transport format.
+  /// Prepares directional quality policies from model history or L1.
   ///
   /// Parameters:
   /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
@@ -63,22 +62,46 @@ abstract interface class StreamControlling {
     bool isAdaptiveQualityEnabled = true,
   });
 
-  /// The result-stream width and height, in pixels.
-  Size? get targetSize;
-
-  /// The fixed media baseline and successfully applied levels for the current connection.
+  /// The fixed media baseline and successfully applied levels for the connection.
   QualityConfiguration? get qualityConfiguration;
 
-  /// Applies a manual level for one direction, excluding concurrent adaptation and condition
-  /// updates.
+  /// Sets the internal sample listener independently of your app's network listener.
   ///
   /// Parameters:
-  /// - [level]: The requested transport quality level.
-  /// - [downlink]: True to update result dimensions; false to update uplink encoding.
-  Future<void> setQualityLevel(
+  /// - [listener]: The SDK handler and monotonic sample time, or null to remove it.
+  void setAdaptiveQualityListener(
+    void Function(
+      RealtimeNetworkQuality quality,
+      double sampledAt,
+    )? listener,
+  );
+
+  /// Proposes independent directional levels without changing transport settings.
+  ///
+  /// Parameters:
+  /// - [quality]: The current directional measurements.
+  /// - [sampledAt]: The sample's monotonic timestamp, in seconds.
+  ///
+  /// Returns candidate levels; null leaves that direction unchanged.
+  QualityChange proposeQuality(
+    RealtimeNetworkQuality quality,
+    double sampledAt,
+  );
+
+  /// Commits the result of a transport adjustment.
+  ///
+  /// Parameters:
+  /// - [level]: The attempted quality level.
+  /// - [downlink]: Whether the adjustment affects returned video.
+  /// - [success]: Whether transport configuration succeeded.
+  Future<void> completeQuality(
     RealtimeQualityLevel level, {
     required bool downlink,
+    required bool success,
   });
+
+  /// Clears consecutive samples while retaining the applied levels.
+  void resetQualitySamples();
 
   /// Sets the uplink statistics listener; reports null when publication stops or the room
   /// disconnects.
@@ -136,8 +159,7 @@ abstract interface class StreamControlling {
     double volume,
   );
 
-  /// Applies volume and subscribes to remote audio after result confirmation, then enables
-  /// adaptation.
+  /// Applies volume and subscribes to remote audio after result confirmation.
   Future<void> activateRemoteAudio();
 
   /// Joins the RTC room with existing session credentials and publishes local video.
@@ -166,6 +188,7 @@ abstract interface class StreamControlling {
   ///   dimensions are used.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false.
   /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
+  /// - [cancellation]: The operation cancellation signal, or null for no external signal.
   Future<GenerationStartConfirmation> beginGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
@@ -173,9 +196,10 @@ abstract interface class StreamControlling {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
+    Future<void>? cancellation,
   });
 
-  /// Waits for quality updates before submitting new generation conditions.
+  /// Submits generation conditions within the caller's admitted configuration operation.
   ///
   /// Parameters:
   /// - [taskID]: The current generation task identifier.

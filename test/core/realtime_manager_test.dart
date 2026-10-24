@@ -47,7 +47,6 @@ void main() {
         final local = await deps.manager.createLocalCameraStream(
           videoFormat: source,
         );
-        deps.stream.resultTarget = const Size(512, 960);
         await deps.manager.startGeneration(
           localStream: local,
           context: RealtimeContext(prompt: 'first'),
@@ -56,7 +55,9 @@ void main() {
         final padded = source.width * 1920 != source.height * 1024;
         expect(deps.stream.generationFormats, [expected]);
         expect(deps.stream.generationPadding, [padded]);
-        expect(deps.stream.generationTargets, [const Size(512, 960)]);
+        expect(deps.stream.generationTargets, [
+          deps.connection.currentTargetSize,
+        ]);
         expect(deps.media.interactionFormat, source);
         expect(local.videoTrack!.videoFormat, source);
         await deps.manager.startGeneration(
@@ -64,7 +65,10 @@ void main() {
         );
         expect(deps.stream.generationFormats, [expected, expected]);
         expect(deps.stream.generationPadding, [padded, padded]);
-        expect(deps.stream.generationTargets, [const Size(512, 960), null]);
+        expect(deps.stream.generationTargets, [
+          deps.connection.currentTargetSize,
+          null,
+        ]);
         expect(deps.media.interactionFormat, source);
       },
     );
@@ -324,41 +328,40 @@ void main() {
   }
 
   test(
-    'startup waits for decoded frame while condition changes stay responsive',
+    'replacement while waiting for the first frame cancels the old caller',
     () async {
       final deps = _Dependencies();
       deps.render.readyGate = Completer<void>();
       final local = await deps.manager.createLocalCameraStream(
         videoFormat: _Dependencies.format,
       );
-      var completed = false;
-      final start = deps.manager
-          .startGeneration(
-            localStream: local,
-            context: RealtimeContext(prompt: 'first'),
-          )
-          .then((stream) {
-            completed = true;
-            return stream;
-          });
-      await deps.render.waiting.future;
-      expect(
-        (await deps.manager.currentState).connectionState,
-        RealtimeConnectionState.connected,
+      final first = deps.manager.startGeneration(
+        localStream: local,
+        context: RealtimeContext(prompt: 'first'),
       );
-      expect(completed, isFalse);
-      expect(deps.stream.audioActivations, 0);
-
-      deps.stream.firstUpdateStarted = Completer<void>();
-      final update = deps.manager.startGeneration(
+      final rejected = expectLater(
+        first,
+        throwsA(
+          isA<XmaxError>().having(
+            (e) => e.code,
+            'code',
+            XmaxErrorCode.cancelled,
+          ),
+        ),
+      );
+      await deps.render.waiting.future;
+      deps.stream.secondGenerationStarted = Completer<void>();
+      final second = deps.manager.startGeneration(
         context: RealtimeContext(prompt: 'second'),
       );
-      await deps.stream.firstUpdateStarted!.future;
-      expect(deps.stream.updatedPrompts, ['second']);
-      expect(deps.stream.startedPrompts, ['first']);
+      await deps.stream.secondGenerationStarted!.future;
+      expect(deps.stream.startedPrompts, ['first', 'second']);
+      expect(deps.stream.updatedPrompts, isEmpty);
+      expect(deps.stream.disconnectCount, 0);
+      expect(deps.stream.audioActivations, 0);
       deps.render.readyGate!.complete();
-      expect(await start, isNotNull);
-      await update;
+      await second;
+      await rejected;
       expect(
         (await deps.manager.currentState).connectionState,
         RealtimeConnectionState.generating,
@@ -733,6 +736,7 @@ void main() {
       await manager.currentState,
       const RealtimeState(
         connectionState: RealtimeConnectionState.idle,
+        sessionID: 'session-1',
         reason: RealtimeReason.normal,
       ),
     );
@@ -809,29 +813,31 @@ void main() {
     },
   );
 
-  test('camera creation failure returns idle with a failure reason', () async {
-    final dependencies = _Dependencies();
-    final manager = dependencies.manager;
-    dependencies.media.createError = StateError('camera unavailable');
-    final states = <RealtimeState>[];
-    await manager.setStateListener(states.add);
+  test(
+    'camera creation failure returns idle and reports the method error',
+    () async {
+      final dependencies = _Dependencies();
+      final manager = dependencies.manager;
+      dependencies.media.createError = StateError('camera unavailable');
+      final states = <RealtimeState>[];
+      await manager.setStateListener(states.add);
 
-    await expectLater(
-      manager.createLocalCameraStream(videoFormat: _Dependencies.format),
-      throwsA(isA<XmaxError>()),
-    );
+      await expectLater(
+        manager.createLocalCameraStream(videoFormat: _Dependencies.format),
+        throwsA(isA<XmaxError>()),
+      );
 
-    expect(
-      states.map((state) => state.connectionState),
-      <RealtimeConnectionState>[
-        RealtimeConnectionState.idle,
-        RealtimeConnectionState.preparing,
-        RealtimeConnectionState.idle,
-      ],
-    );
-    expect(states.last.reason?.error?.message, contains('camera unavailable'));
-    expect(states.last.reason, isNot(RealtimeReason.normal));
-  });
+      expect(
+        states.map((state) => state.connectionState),
+        <RealtimeConnectionState>[
+          RealtimeConnectionState.idle,
+          RealtimeConnectionState.preparing,
+          RealtimeConnectionState.idle,
+        ],
+      );
+      expect(states.last.reason, isNull);
+    },
+  );
 
   test('late preview callback never regresses a connected state', () async {
     final dependencies = _Dependencies();
@@ -1126,6 +1132,12 @@ void main() {
     final firstUpdate = manager.startGeneration(
       context: RealtimeContext(prompt: 'reference-a'),
     );
+    final firstCancelled = expectLater(
+      firstUpdate,
+      throwsA(
+        isA<XmaxError>().having((e) => e.code, 'code', XmaxErrorCode.cancelled),
+      ),
+    );
     await firstUpdateStarted.future;
 
     final secondUpdate = manager.startGeneration(
@@ -1136,10 +1148,8 @@ void main() {
     expect(dependencies.stream.updatedPrompts, <String>['reference-a']);
 
     releaseFirstUpdate.complete();
-    await Future.wait(<Future<RealtimeMediaStream?>>[
-      firstUpdate,
-      secondUpdate,
-    ]);
+    await secondUpdate;
+    await firstCancelled;
 
     expect(dependencies.stream.updatedPrompts, <String>[
       'reference-a',
@@ -1153,61 +1163,64 @@ void main() {
     );
   });
 
-  test('a newer request supersedes a generation waiting for SEI', () async {
-    final dependencies = _Dependencies();
-    final manager = dependencies.manager;
-    final reportedErrors = <XmaxError>[];
-    await manager.setStateListener((state) {
-      final error = state.reason?.error;
-      if (error != null) reportedErrors.add(error);
-    });
-    final localStream = await manager.createLocalCameraStream(
-      videoFormat: _Dependencies.format,
-    );
-    final firstStarted = Completer<void>();
-    final secondStarted = Completer<void>();
-    dependencies.stream
-      ..autoConfirmGeneration = false
-      ..firstGenerationStarted = firstStarted
-      ..secondGenerationStarted = secondStarted;
+  test(
+    'a newer request supersedes a generation waiting for stream confirmation',
+    () async {
+      final dependencies = _Dependencies();
+      final manager = dependencies.manager;
+      final reportedErrors = <XmaxError>[];
+      await manager.setStateListener((state) {
+        final error = state.reason?.error;
+        if (error != null) reportedErrors.add(error);
+      });
+      final localStream = await manager.createLocalCameraStream(
+        videoFormat: _Dependencies.format,
+      );
+      final firstStarted = Completer<void>();
+      final secondStarted = Completer<void>();
+      dependencies.stream
+        ..autoConfirmGeneration = false
+        ..firstGenerationStarted = firstStarted
+        ..secondGenerationStarted = secondStarted;
 
-    final firstGeneration = manager.startGeneration(
-      localStream: localStream,
-      context: RealtimeContext(prompt: 'reference-a'),
-    );
-    final firstExpectation = expectLater(
-      firstGeneration,
-      throwsA(
-        isA<XmaxError>().having(
-          (error) => error.code,
-          'code',
-          XmaxErrorCode.cancelled,
+      final firstGeneration = manager.startGeneration(
+        localStream: localStream,
+        context: RealtimeContext(prompt: 'reference-a'),
+      );
+      final firstExpectation = expectLater(
+        firstGeneration,
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.cancelled,
+          ),
         ),
-      ),
-    );
-    await firstStarted.future;
+      );
+      await firstStarted.future;
 
-    final secondGeneration = manager.startGeneration(
-      context: RealtimeContext(prompt: 'reference-b'),
-    );
-    await secondStarted.future;
+      final secondGeneration = manager.startGeneration(
+        context: RealtimeContext(prompt: 'reference-b'),
+      );
+      await secondStarted.future;
 
-    expect(dependencies.stream.startedPrompts, <String>[
-      'reference-a',
-      'reference-b',
-    ]);
-    expect(dependencies.stream.disconnectCount, 0);
-    expect(reportedErrors, isEmpty);
+      expect(dependencies.stream.startedPrompts, <String>[
+        'reference-a',
+        'reference-b',
+      ]);
+      expect(dependencies.stream.disconnectCount, 0);
+      expect(reportedErrors, isEmpty);
 
-    dependencies.stream.confirmGeneration();
-    await secondGeneration;
-    await firstExpectation;
+      dependencies.stream.confirmGeneration();
+      await secondGeneration;
+      await firstExpectation;
 
-    expect(
-      (await manager.currentState).connectionState,
-      RealtimeConnectionState.generating,
-    );
-  });
+      expect(
+        (await manager.currentState).connectionState,
+        RealtimeConnectionState.generating,
+      );
+    },
+  );
 }
 
 final class _Dependencies {
@@ -1221,6 +1234,7 @@ final class _Dependencies {
     generation = XmaxRealtimeGenerationManager(
       interactionController: media,
       streamController: stream,
+      renderController: render,
       taskIDGenerator: () => 'task-test',
     );
     manager = XmaxRealtimeManager.internal(
@@ -1350,15 +1364,18 @@ final class _FakeStream implements StreamControlling {
   QualityConfiguration? get qualityConfiguration => configuration;
 
   @override
-  Future<void> setQualityLevel(
+  Future<void> completeQuality(
     RealtimeQualityLevel level, {
     required bool downlink,
+    required bool success,
   }) async {
+    if (!success) return;
     final current = configuration!;
     configuration = QualityConfiguration(
       baseline: current.baseline,
       uplinkLevel: downlink ? current.uplinkLevel : level,
       downlinkLevel: downlink ? level : current.downlinkLevel,
+      minimumInputPixels: current.minimumInputPixels,
     );
   }
 
@@ -1369,7 +1386,16 @@ final class _FakeStream implements StreamControlling {
   Size? resultTarget;
   bool? preparedAdaptiveQuality;
   @override
-  Size? get targetSize => resultTarget;
+  void setAdaptiveQualityListener(
+    void Function(RealtimeNetworkQuality, double)? listener,
+  ) {}
+  @override
+  QualityChange proposeQuality(
+    RealtimeNetworkQuality quality,
+    double sampledAt,
+  ) => const QualityChange();
+  @override
+  void resetQualitySamples() {}
   @override
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
@@ -1384,7 +1410,6 @@ final class _FakeStream implements StreamControlling {
       downlinkLevel: RealtimeQualityLevel.l2,
       minimumInputPixels: minimumInputPixels,
     );
-    await setVideoEncoderConfig(baseline);
   }
 
   @override
@@ -1430,6 +1455,7 @@ final class _FakeStream implements StreamControlling {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
+    Future<void>? cancellation,
   }) async {
     final startError = generationStartError;
     if (startError != null) throw startError;

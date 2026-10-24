@@ -13,10 +13,12 @@ import '../../media/MediaController.dart';
 import '../../media/MediaControlling.dart';
 import '../../media/camera/CameraController.dart';
 import '../../render/RenderController.dart';
+import '../../render/RenderControlling.dart';
 import '../../service/media/MediaService.dart';
 import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
 import '../../service/realtime/RealtimeSessionService.dart';
+import '../../service/realtime/RealtimeTiming.dart';
 import '../../stream/StreamController.dart';
 import '../../stream/StreamControlling.dart';
 import 'RealtimeConfiguration.dart';
@@ -37,6 +39,8 @@ final class XmaxRealtimeComponents {
     required this.mediaController,
     required this.streamController,
     required this.mediaService,
+    required this.renderController,
+    required this.timing,
   });
 
   /// The manager coordinating operation validity, state, and resource cleanup.
@@ -59,6 +63,12 @@ final class XmaxRealtimeComponents {
 
   /// The shared model-aware sizing service for capture, generation, and returned media.
   final MediaServicing mediaService;
+
+  /// The renderer shared by generation readiness and remote cleanup.
+  final RenderControlling renderController;
+
+  /// The recorder shared by connection and generation startup.
+  final RealtimeTiming timing;
 }
 
 /// Creates realtime components and wires their readiness, failure, and cleanup callbacks.
@@ -79,9 +89,9 @@ abstract final class XmaxRealtimeFactory {
     final rtcManager = RtcManager();
     final mediaService = MediaService(model: options.model);
     final renderController = RenderController();
+    final timing = RealtimeTiming();
     final streamController = StreamController(
       rtcManager: rtcManager,
-      mediaService: mediaService,
       errorListener: errorManager.forward,
       localMediaErrorListener: (
         error,
@@ -112,10 +122,14 @@ abstract final class XmaxRealtimeFactory {
       interactionController: mediaController,
       renderController: renderController,
       streamController: streamController,
+      mediaService: mediaService,
+      timing: timing,
     );
     final generationManager = XmaxRealtimeGenerationManager(
       interactionController: mediaController,
       streamController: streamController,
+      renderController: renderController,
+      timing: timing,
     );
 
     return assemble(
@@ -149,46 +163,43 @@ abstract final class XmaxRealtimeFactory {
   }) {
     final lifecycleManager = XmaxRealtimeLifecycleManager(
       errorManager: errorManager,
-      cleanupConnection: (
+      cleanup: (
+        scope,
         taskID,
       ) async {
-        // Conceal the result before releasing native video resources.
-        // Each cleanup step must run even when another resource owner fails.
-        try {
-          await connectionManager.prepareForRemoteRemoval();
-        } catch (error) {
-          errorManager.report(error);
-        }
-
-        try {
-          await generationManager.reset(taskID: taskID);
-        } catch (error) {
-          errorManager.report(error);
-        }
-
+        streamController.setAdaptiveQualityListener(null);
         final activeSessionID = connectionManager.currentSessionID;
         String? sessionID = activeSessionID.isEmpty ? null : activeSessionID;
 
+        // Every resource owner is given a cleanup opportunity even if another fails.
         try {
-          sessionID = await connectionManager.disconnect() ?? sessionID;
+          if (scope == RealtimeTerminationScope.generation) {
+            await generationManager.stop(taskID: taskID);
+          } else {
+            await generationManager.reset(taskID: taskID);
+          }
         } catch (error) {
           errorManager.report(error);
         }
-
+        if (scope != RealtimeTerminationScope.generation) {
+          try {
+            sessionID = await connectionManager.disconnect() ?? sessionID;
+          } catch (error) {
+            errorManager.report(error);
+          }
+        }
+        if (scope == RealtimeTerminationScope.all) {
+          try {
+            await mediaController.stopLocalStream();
+          } catch (error) {
+            errorManager.report(error);
+          }
+        }
         return RealtimeCleanupResult(
           sessionID: sessionID,
           hasLocalMedia: mediaController.currentTrack != null,
         );
       },
-      stopLocalMedia: mediaController.stopLocalStream,
-      stopGeneration: (
-        taskID,
-      ) async {
-        await connectionManager.prepareForRemoteRemoval();
-        await generationManager.stop(taskID: taskID);
-      },
-      cancelPendingStart: generationManager.cancelPendingStart,
-      currentSessionID: () => connectionManager.currentSessionID,
     );
 
     mediaController.setCameraPreviewReadyListener(() {
@@ -206,6 +217,8 @@ abstract final class XmaxRealtimeFactory {
       mediaController: mediaController,
       streamController: streamController,
       mediaService: mediaService ?? MediaService(),
+      renderController: connectionManager.renderController,
+      timing: generationManager.timing,
     );
   }
 }
