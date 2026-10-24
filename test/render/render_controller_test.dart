@@ -148,4 +148,58 @@ void main() {
 
     expect(VideoRenderRegistry.handleFor(track)?.value, isNull);
   });
+
+  test(
+    'texture submission reveals the result without a native render event',
+    () {
+      final controller = RenderController();
+      final track = createRealtimeVideoTrack(id: 'texture-remote');
+      controller.registerRemoteTrack(track, interactionListener: (_) {});
+      addTearDown(() => controller.resetRemoteTrack(track));
+      controller.setRemoteStream(stream);
+      final binding =
+          VideoRenderRegistry.handleFor(track)!.value
+              as RemoteVideoRenderBinding;
+
+      binding.onFirstFrameRendered!();
+
+      final rendered =
+          VideoRenderRegistry.handleFor(track)!.value
+              as RemoteVideoRenderBinding;
+      expect(rendered.firstFrameRendered, isTrue);
+      rendered.onFirstFrameRendered!();
+      expect(VideoRenderRegistry.handleFor(track)!.value, same(rendered));
+    },
+  );
+
+  test(
+    'old texture callback cannot reveal a rebound stream with the same ID',
+    () {
+      final controller = RenderController();
+      final track = createRealtimeVideoTrack(id: 'texture-remote');
+      controller.registerRemoteTrack(track, interactionListener: (_) {});
+      addTearDown(() => controller.resetRemoteTrack(track));
+      controller.setRemoteStream(stream);
+      final oldBinding =
+          VideoRenderRegistry.handleFor(track)!.value
+              as RemoteVideoRenderBinding;
+
+      controller.setRemoteStream(null);
+      controller.setRemoteStream(stream);
+      final current =
+          VideoRenderRegistry.handleFor(track)!.value
+              as RemoteVideoRenderBinding;
+      oldBinding.onFirstFrameRendered!();
+      expect(current.firstFrameRendered, isFalse);
+      expect(VideoRenderRegistry.handleFor(track)!.value, same(current));
+
+      current.onFirstFrameRendered!();
+      expect(
+        (VideoRenderRegistry.handleFor(track)!.value
+                as RemoteVideoRenderBinding)
+            .firstFrameRendered,
+        isTrue,
+      );
+    },
+  );
 }

@@ -96,8 +96,78 @@ void main() {
       expect(find.text('800 × 1500'), findsOneWidget);
       expect(find.text('30 fps'), findsOneWidget);
       expect(find.text('Good'), findsOneWidget);
-      expect(find.text('--'), findsWidgets);
+      expect(find.text('—'), findsWidgets);
+      expect(tester.getSize(find.byType(RealtimeStatisticsPanel)).width, 184);
+      expect(
+        tester.getTopLeft(find.text('L1').first).dy,
+        lessThan(tester.getTopLeft(find.text('Resolution').first).dy),
+      );
+      expect(find.text('Quality level'), findsNothing);
+      expect(
+        find.text(
+          'L1 highest · L5 lowest. Automatic adaptation remains active.',
+        ),
+        findsOneWidget,
+      );
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets(
+    'selected quality is not submitted again and buttons are 28 high',
+    (tester) async {
+      SharedPreferencesAsyncPlatform.instance =
+          InMemorySharedPreferencesAsync.withData({});
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await XLabLocalization.shared.setLanguage(XLabLanguage.english);
+      var changes = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Align(
+            alignment: Alignment.topLeft,
+            child: RealtimeStatisticsPanel(
+              uplinkLevel: RealtimeQualityLevel.l2,
+              canAdjustQuality: true,
+              onUplinkLevelChanged: (_) => changes++,
+            ),
+          ),
+        ),
+      );
+      final selected = find.ancestor(
+        of: find.text('L2').first,
+        matching: find.byType(GestureDetector),
+      );
+      expect(tester.getSize(selected).height, 28);
+      await tester.tap(find.text('L2').first);
+      expect(changes, 0);
+      await tester.tap(find.text('L1').first);
+      expect(changes, 1);
+    },
+  );
+
+  testWidgets('panel fits available height and scrolls to its localized hint', (
+    tester,
+  ) async {
+    SharedPreferencesAsyncPlatform.instance =
+        InMemorySharedPreferencesAsync.withData({});
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+    await XLabLocalization.shared.setLanguage(XLabLanguage.simplifiedChinese);
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Align(
+          alignment: Alignment.topLeft,
+          child: SizedBox(height: 220, child: RealtimeStatisticsPanel()),
+        ),
+      ),
+    );
+    expect(
+      tester.getSize(find.byType(RealtimeStatisticsPanel)),
+      const Size(184, 220),
+    );
+    final hint = find.text('L1 最高 · L5 最低，手动调整后仍会自动调档。');
+    await tester.ensureVisible(hint);
+    await tester.pumpAndSettle();
+    expect(hint.hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

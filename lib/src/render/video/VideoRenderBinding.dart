@@ -9,6 +9,7 @@
 //
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
+import 'package:flutter/foundation.dart';
 
 import '../../foundation/rtc/RemoteStream.dart';
 
@@ -42,6 +43,7 @@ final class RemoteVideoRenderBinding extends VideoRenderBinding {
   const RemoteVideoRenderBinding(
     this.stream, {
     this.firstFrameRendered = false,
+    this.onFirstFrameRendered,
   });
 
   /// The currently bound remote result stream.
@@ -49,4 +51,7 @@ final class RemoteVideoRenderBinding extends VideoRenderBinding {
 
   /// Whether the remote stream has rendered its first frame; initially false.
   final bool firstFrameRendered;
+
+  /// Reports the first submitted Flutter texture frame for this exact binding.
+  final VoidCallback? onFirstFrameRendered;
 }

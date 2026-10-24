@@ -8,7 +8,6 @@ class RealtimeCameraActionBar extends StatelessWidget {
     required this.statisticsVisible,
     required this.onSwitchCamera,
     required this.onToggleStatistics,
-    this.onSelectFormat,
     super.key,
   });
 
@@ -16,18 +15,11 @@ class RealtimeCameraActionBar extends StatelessWidget {
   final bool statisticsVisible;
   final VoidCallback onSwitchCamera;
   final VoidCallback onToggleStatistics;
-  final VoidCallback? onSelectFormat;
 
   @override
   Widget build(BuildContext context) => Column(
     mainAxisSize: MainAxisSize.min,
     children: <Widget>[
-      _CameraActionButton(
-        icon: Icons.aspect_ratio_rounded,
-        label: XLabLocalization.shared.text('realtime.cameraFormat'),
-        tooltip: XLabLocalization.shared.text('realtime.cameraFormat'),
-        onPressed: onSelectFormat,
-      ),
       _CameraActionButton(
         icon: Icons.sync_rounded,
         label: XLabLocalization.shared.text('realtime.flip'),

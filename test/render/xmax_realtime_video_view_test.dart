@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
+import 'package:xmax_sdk/src/render/RenderController.dart';
+import 'package:xmax_sdk/src/render/video/VideoTextureFrameObserver.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/media/interaction/InteractionFrame.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryBinding.dart';
@@ -13,6 +15,52 @@ import 'package:xmax_sdk/src/render/video/XmaxVideoView.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 
 void main() {
+  testWidgets(
+    'submitted texture dismisses loading without a native frame event',
+    (tester) async {
+      final controller = RenderController();
+      final remote = createRealtimeVideoTrack(id: 'texture-result');
+      controller.registerRemoteTrack(remote, interactionListener: (_) {});
+      controller.setRemoteStream(
+        const RemoteStream(roomID: 'room', userID: 'bot', streamID: 'one'),
+      );
+      addTearDown(() => controller.resetRemoteTrack(remote));
+      final binding =
+          VideoRenderRegistry.handleFor(remote)!.value
+              as RemoteVideoRenderBinding;
+      var loading = true;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) => Stack(
+              fit: StackFit.expand,
+              children: [
+                XmaxRealtimeVideoView(
+                  remoteTrack: remote,
+                  onRemoteVideoReady: () => setState(() => loading = false),
+                ),
+                // Simulate the RTC renderer inserting its first nonempty texture.
+                VideoTextureFrameObserver(
+                  binding: binding.stream,
+                  onFirstFrameRendered: binding.onFirstFrameRendered,
+                  child: const Texture(textureId: 1),
+                ),
+                if (loading) const Text('Loading'),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Loading'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(_remoteOpacity(tester), 1);
+    },
+  );
+
   testWidgets(
     'ready callback waits for rendering and repeats only on rebinding',
     (tester) async {

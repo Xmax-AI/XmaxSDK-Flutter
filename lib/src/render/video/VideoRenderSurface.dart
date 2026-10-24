@@ -14,6 +14,7 @@ import '../../foundation/media/camera/CameraPosition.dart';
 import '../../foundation/media/video/VideoContentMode.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
 import 'VideoRenderBinding.dart';
+import 'VideoTextureFrameObserver.dart';
 
 /// Retains the native texture mount point while the parent view manages binding and visibility
 /// separately.
@@ -85,11 +86,23 @@ final class VideoRenderSurface extends StatelessWidget {
           useFlutterTexture: true,
         );
 
-    return AgoraVideoView(
+    final view = AgoraVideoView(
       controller: controller,
       onAgoraVideoViewCreated: (
         _,
       ) => local?.onPreviewAttached?.call(),
     );
+
+    if (binding case RemoteVideoRenderBinding remoteBinding) {
+      // Agora's texture renderer inserts a Texture only after receiving a nonempty frame.
+      // Native renderer callbacks do not cover this custom-rendering path.
+      return VideoTextureFrameObserver(
+        binding: remoteBinding.stream,
+        onFirstFrameRendered: remoteBinding.onFirstFrameRendered,
+        child: view,
+      );
+    }
+
+    return view;
   }
 }

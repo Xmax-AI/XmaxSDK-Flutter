@@ -68,7 +68,6 @@ class _RealtimePageState extends State<RealtimePage>
   bool _isAdjustingQuality = false;
   String? _qualityError;
   int _qualityReadVersion = 0;
-  bool _isUpdatingCameraFormat = false;
   late XLabRealtimePanelMode _panelMode;
   XLabRealtimeReference? _selectedReference;
   XLabRealtimeReference? _promptReference;
@@ -284,63 +283,6 @@ class _RealtimePageState extends State<RealtimePage>
       }
     } finally {
       if (mounted) setState(() => _isAdjustingQuality = false);
-    }
-  }
-
-  Future<void> _selectCameraFormat() async {
-    if (_busy ||
-        !_cameraReady ||
-        _isUpdatingCameraFormat ||
-        _state.connectionState != RealtimeConnectionState.ready) {
-      return;
-    }
-    final operation = _realtimeOperationVersion;
-    setState(() => _isUpdatingCameraFormat = true);
-    try {
-      final current = await _manager.currentCameraVideoFormat;
-      if (!mounted) return;
-      final t = XLabLocalization.shared.text;
-      final selected = await showModalBottomSheet<RealtimeVideoFormat>(
-        context: context,
-        builder: (context) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(title: Text(t('realtime.selectCameraFormat'))),
-              for (final format in widget.model.supportedVideoFormats)
-                ListTile(
-                  title: Text('${format.width} × ${format.height}'),
-                  trailing:
-                      current?.width == format.width &&
-                          current?.height == format.height
-                      ? const Icon(Icons.check, color: Color(0xFF007AFF))
-                      : null,
-                  onTap: () => Navigator.pop(context, format),
-                ),
-              ListTile(
-                title: Text(t('realtime.cancelFormat')),
-                onTap: () => Navigator.pop(context),
-              ),
-            ],
-          ),
-        ),
-      );
-      if (selected == null ||
-          !mounted ||
-          _isSuspendedForBackground ||
-          operation != _realtimeOperationVersion) {
-        return;
-      }
-      await _manager.updateCameraFormat(
-        videoFormat:
-            current?.resized(width: selected.width, height: selected.height) ??
-            selected,
-      );
-      if (mounted) setState(() {});
-    } catch (error) {
-      if (mounted && !_isSuspendedForBackground) _showError(error);
-    } finally {
-      if (mounted) setState(() => _isUpdatingCameraFormat = false);
     }
   }
 
@@ -840,7 +782,7 @@ class _RealtimePageState extends State<RealtimePage>
                         child: Align(
                           alignment: Alignment.topLeft,
                           child: Padding(
-                            padding: const EdgeInsets.fromLTRB(12, 64, 12, 12),
+                            padding: const EdgeInsets.fromLTRB(12, 64, 12, 8),
                             child: RealtimeStatisticsPanel(
                               uplink: _uplinkStatistics,
                               downlink: _downlinkStatistics,
@@ -867,7 +809,7 @@ class _RealtimePageState extends State<RealtimePage>
                 mode: _panelMode,
                 generating: generating,
                 busy: _busy,
-                enabled: _cameraReady && !_isUpdatingCameraFormat,
+                enabled: _cameraReady,
                 promptController: _promptController,
                 referencesByCategory: _referencesByCategory,
                 selectedReference: _selectedReference,
@@ -919,18 +861,7 @@ class _RealtimePageState extends State<RealtimePage>
                     right: 8,
                     top: 6,
                     child: RealtimeCameraActionBar(
-                      cameraEnabled:
-                          !_busy &&
-                          !_isUpdatingCameraFormat &&
-                          _localStream != null,
-                      onSelectFormat:
-                          !_busy &&
-                              _cameraReady &&
-                              !_isUpdatingCameraFormat &&
-                              _state.connectionState ==
-                                  RealtimeConnectionState.ready
-                          ? _selectCameraFormat
-                          : null,
+                      cameraEnabled: !_busy && _localStream != null,
                       statisticsVisible: _isStatisticsVisible,
                       onSwitchCamera: _switchCamera,
                       onToggleStatistics: () => setState(

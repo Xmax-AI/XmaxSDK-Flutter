@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 import '../../localization/xlab_localization.dart';
 
-/// 展示 SDK 统计与档位，档位切换由 SDK 负责执行。
+/// Displays SDK statistics and transport quality controls.
 class RealtimeStatisticsPanel extends StatelessWidget {
   const RealtimeStatisticsPanel({
     super.key,
@@ -28,51 +28,60 @@ class RealtimeStatisticsPanel extends StatelessWidget {
   final ValueChanged<RealtimeQualityLevel>? onUplinkLevelChanged;
   final ValueChanged<RealtimeQualityLevel>? onDownlinkLevelChanged;
   String _value(int? value, [String unit = '']) =>
-      value == null ? '--' : '$value${unit.isEmpty ? '' : ' $unit'}';
+      value == null ? '—' : '$value${unit.isEmpty ? '' : ' $unit'}';
   String _size(int? width, int? height) =>
-      width == null || height == null ? '--' : '$width × $height';
-  String _quality(RealtimeNetworkQualityLevel? value) => XLabLocalization.shared
-      .text('statistics.quality.${value?.name ?? 'unknown'}');
+      width == null || height == null ? '—' : '$width × $height';
+  String _quality(RealtimeNetworkQualityLevel? value) =>
+      value == null || value == RealtimeNetworkQualityLevel.unknown
+      ? '—'
+      : XLabLocalization.shared.text('statistics.quality.${value.name}');
 
   @override
   Widget build(BuildContext context) {
     final t = XLabLocalization.shared.text;
     Widget levels(
+      String direction,
       RealtimeQualityLevel? selected,
       ValueChanged<RealtimeQualityLevel>? onChanged,
-    ) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+    ) => Opacity(
+      opacity: canAdjustQuality && !isAdjustingQuality ? 1 : 0.5,
       child: Row(
+        spacing: 3,
         children: [
           for (final level in RealtimeQualityLevel.values)
             Expanded(
               child: Semantics(
                 button: true,
                 selected: selected == level,
-                enabled: canAdjustQuality && !isAdjustingQuality,
+                label: '${t('statistics.$direction')} L${level.value}',
+                enabled:
+                    canAdjustQuality &&
+                    !isAdjustingQuality &&
+                    selected != level,
                 child: GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap:
                       canAdjustQuality &&
                           !isAdjustingQuality &&
+                          selected != level &&
                           onChanged != null
                       ? () => onChanged(level)
                       : null,
                   child: Container(
                     alignment: Alignment.center,
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    height: 26,
+                    height: 28,
                     decoration: BoxDecoration(
                       color: selected == level
                           ? const Color(0xFF007AFF)
                           : const Color(0x26FFFFFF),
-                      borderRadius: BorderRadius.circular(5),
+                      borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       'L${level.value}',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 10,
-                        color: canAdjustQuality ? Colors.white : Colors.white38,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -82,8 +91,8 @@ class RealtimeStatisticsPanel extends StatelessWidget {
         ],
       ),
     );
-    Widget heading(String key) => Padding(
-      padding: const EdgeInsets.only(top: 4, bottom: 3),
+    Widget heading(String key) => ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 15),
       child: Text(
         t('statistics.$key'),
         style: const TextStyle(
@@ -93,8 +102,8 @@ class RealtimeStatisticsPanel extends StatelessWidget {
         ),
       ),
     );
-    Widget row(String key, String value) => Padding(
-      padding: const EdgeInsets.symmetric(vertical: 1.5),
+    Widget row(String key, String value) => ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 14),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -106,7 +115,7 @@ class RealtimeStatisticsPanel extends StatelessWidget {
               style: const TextStyle(fontSize: 10, color: Color(0xB3FFFFFF)),
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 4),
           Flexible(
             child: Text(
               value,
@@ -115,7 +124,7 @@ class RealtimeStatisticsPanel extends StatelessWidget {
               textAlign: TextAlign.right,
               style: const TextStyle(
                 fontSize: 10,
-                fontFamily: 'monospace',
+                fontFeatures: [FontFeature.tabularFigures()],
                 color: Colors.white,
               ),
             ),
@@ -124,10 +133,7 @@ class RealtimeStatisticsPanel extends StatelessWidget {
       ),
     );
     return Container(
-      width: 216,
-      constraints: BoxConstraints(
-        maxHeight: MediaQuery.sizeOf(context).height * 0.48,
-      ),
+      width: 184,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: const Color(0xA3000000),
@@ -137,8 +143,10 @@ class RealtimeStatisticsPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
+          spacing: 3,
           children: [
             heading('uplink'),
+            levels('uplink', uplinkLevel, onUplinkLevelChanged),
             row('resolution', _size(uplink?.width, uplink?.height)),
             row('captureFPS', _value(uplink?.captureFrameRate, 'fps')),
             row('encodeFPS', _value(uplink?.encodeFrameRate, 'fps')),
@@ -146,10 +154,11 @@ class RealtimeStatisticsPanel extends StatelessWidget {
             row('bitrate', _value(uplink?.bitrateKbps, 'kbps')),
             row('loss', _value(uplink?.packetLossPercent, '%')),
             row('quality', _quality(networkQuality?.uplink)),
-            row('level', uplinkLevel == null ? '--' : 'L${uplinkLevel!.value}'),
-            levels(uplinkLevel, onUplinkLevelChanged),
-            const SizedBox(height: 6),
-            heading('downlink'),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: heading('downlink'),
+            ),
+            levels('downlink', downlinkLevel, onDownlinkLevelChanged),
             row('resolution', _size(downlink?.width, downlink?.height)),
             row('decodeFPS', _value(downlink?.decodeFrameRate, 'fps')),
             row('renderFPS', _value(downlink?.renderFrameRate, 'fps')),
@@ -157,23 +166,17 @@ class RealtimeStatisticsPanel extends StatelessWidget {
             row('loss', _value(downlink?.packetLossPercent, '%')),
             row('quality', _quality(networkQuality?.downlink)),
             row('delay', _value(downlink?.endToEndDelayMs, 'ms')),
-            row(
-              'level',
-              downlinkLevel == null ? '--' : 'L${downlinkLevel!.value}',
-            ),
-            levels(downlinkLevel, onDownlinkLevelChanged),
-            if (isAdjustingQuality)
-              Text(
-                t('statistics.adjusting'),
-                style: const TextStyle(fontSize: 10, color: Colors.white70),
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                t('statistics.level.hint'),
+                style: const TextStyle(fontSize: 9, color: Color(0x99FFFFFF)),
               ),
+            ),
             if (qualityError != null)
               Text(
                 qualityError!,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Colors.orangeAccent,
-                ),
+                style: const TextStyle(fontSize: 10, color: Colors.red),
               ),
           ],
         ),

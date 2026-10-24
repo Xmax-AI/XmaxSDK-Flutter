@@ -40,6 +40,9 @@ final class RenderController implements RenderControlling {
   /// Whether a valid first frame has been decoded for the current result stream.
   bool _remoteFrameReady = false;
 
+  /// Invalidates submitted-frame notifications when a result binding is replaced or removed.
+  Object? _bindingVersion;
+
   /// The completers waiting for the current result stream's first decoded frame.
   final Set<Completer<void>> _frameWaiters = {};
 
@@ -90,9 +93,24 @@ final class RenderController implements RenderControlling {
     final track = _remoteTrack;
 
     if (track != null) {
+      final bindingVersion = Object();
+      _bindingVersion = bindingVersion;
+
       VideoRenderRegistry.register(
         track,
-        stream == null ? null : RemoteVideoRenderBinding(stream),
+        stream == null
+            ? null
+            : RemoteVideoRenderBinding(
+              stream,
+              onFirstFrameRendered: () {
+                if (identical(
+                  _bindingVersion,
+                  bindingVersion,
+                )) {
+                  markRemoteFrameRendered(stream);
+                }
+              },
+            ),
       );
     }
   }
@@ -159,6 +177,7 @@ final class RenderController implements RenderControlling {
 
   /// Ends readiness waits for the old result stream and clears first-frame flags.
   void _resetFrameReadiness() {
+    _bindingVersion = null;
     _remoteStream = null;
     _remoteFrameReady = false;
     for (final waiter in _frameWaiters) {
@@ -204,6 +223,7 @@ final class RenderController implements RenderControlling {
       RemoteVideoRenderBinding(
         stream,
         firstFrameRendered: true,
+        onFirstFrameRendered: binding.onFirstFrameRendered,
       ),
     );
   }

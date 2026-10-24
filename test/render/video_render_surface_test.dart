@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
+import 'package:xmax_sdk/src/render/video/VideoTextureFrameObserver.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
@@ -13,7 +14,8 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     final context = tester.element(find.byType(SizedBox));
     final engine = _Engine();
-    final view =
+    var rendered = 0;
+    final observer =
         VideoRenderSurface(
               binding: RemoteVideoRenderBinding(
                 RemoteStream(
@@ -24,11 +26,15 @@ void main() {
                   localUid: 42,
                   engine: engine,
                 ),
+                onFirstFrameRendered: () => rendered++,
               ),
               track: null,
               contentMode: VideoContentMode.fill,
             ).build(context)
-            as AgoraVideoView;
+            as VideoTextureFrameObserver;
+    final view = observer.child! as AgoraVideoView;
+    observer.onFirstFrameRendered!();
+    expect(rendered, 1);
     expect(view.controller.rtcEngine, same(engine));
     expect(view.controller.connection?.channelId, 'room');
     expect(view.controller.connection?.localUid, 42);
