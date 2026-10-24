@@ -10,6 +10,7 @@
 
 import 'dart:typed_data';
 
+import '../../foundation/storage/XmaxStorageCancellationToken.dart';
 import 'XmaxDownloadedFile.dart';
 import 'XmaxStorageProgressHandler.dart';
 import 'XmaxUploadedFile.dart';
@@ -83,21 +84,28 @@ abstract interface class XmaxStorageManaging {
 
   /// Downloads an image to a local file.
   ///
-  /// Replaces an existing file only after download succeeds. Failed transfers remove staged data
-  /// without changing the existing file. The parent directory must exist; [to] cannot be a directory.
+  /// Replaces an existing file only after download succeeds. Failed or cancelled transfers remove
+  /// staged data without changing the existing file. The parent directory must exist; [to] cannot
+  /// be a directory. Cancellation does not affect other transfers unless they share the same token.
   ///
   /// Parameters:
   /// - [from]: The remote file's HTTP or HTTPS URL.
   /// - [to]: The destination file URI.
   /// - [progress]: Receives bytes written and expected bytes, with zero total when unknown until
   ///   completion. Observer exceptions do not interrupt the transfer.
+  /// - [cancellationToken]: The optional one-shot signal that cancels this download before commit.
   ///
   /// Returns the downloaded file URI and its byte count.
-  /// The returned future completes only after the destination has been committed.
+  /// Successful completion confirms that the destination has been committed.
+  ///
+  /// The returned future completes with an `XmaxError` whose code is `XmaxErrorCode.cancelled` if
+  /// cancellation is accepted before replacement starts. Later cancellation cannot undo replacement
+  /// or change a successful result.
   Future<XmaxDownloadedFile> downloadImage({
     required Uri from,
     required Uri to,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Downloads a video to a local file.
@@ -109,12 +117,14 @@ abstract interface class XmaxStorageManaging {
   /// - [to]: The destination file URI.
   /// - [progress]: Receives bytes written and expected bytes, with zero total when unknown until
   ///   completion. Observer exceptions do not interrupt the transfer.
+  /// - [cancellationToken]: The optional one-shot signal that cancels this download before commit.
   ///
   /// Returns the downloaded file URI and its byte count.
-  /// The returned future completes only after the destination has been committed.
+  /// Successful completion confirms that the destination has been committed.
   Future<XmaxDownloadedFile> downloadVideo({
     required Uri from,
     required Uri to,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 }

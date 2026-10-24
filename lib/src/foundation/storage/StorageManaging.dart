@@ -13,6 +13,7 @@ import 'StorageConfiguration.dart';
 import 'StorageProgressListener.dart';
 import 'StorageUploadSource.dart';
 import 'StoredFile.dart';
+import 'XmaxStorageCancellationToken.dart';
 
 /// A transport interface for object uploads and HTTP file downloads.
 abstract interface class StorageManaging {
@@ -38,7 +39,7 @@ abstract interface class StorageManaging {
 
   /// Downloads a file and replaces the destination only after the transfer and file write succeed.
   ///
-  /// A failed transfer leaves an existing destination unchanged and removes its staged partial file.
+  /// A failed or cancelled transfer preserves an existing destination and removes staged data.
   /// The destination's parent directory must exist; directory destinations are rejected.
   ///
   /// Parameters:
@@ -46,12 +47,16 @@ abstract interface class StorageManaging {
   /// - [destinationURL]: The destination file URI.
   /// - [progress]: Receives bytes written and expected bytes; zero total means unknown until
   ///   completion. Observer exceptions do not interrupt the transfer.
+  /// - [cancellationToken]: The optional one-shot signal that cancels this download before commit.
   ///
   /// Returns the downloaded file's local URI and actual byte count.
   /// Only this future's successful completion confirms that the destination was committed.
+  /// Cancellation accepted before replacement starts produces an `XmaxError` whose code is
+  /// `XmaxErrorCode.cancelled`.
   Future<DownloadedFile> download({
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 }

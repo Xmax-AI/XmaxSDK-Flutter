@@ -26,6 +26,8 @@ export 'src/foundation/logging/XmaxLoggerOption.dart';
 export 'src/foundation/media/camera/CameraPosition.dart';
 export 'src/foundation/media/video/VideoContentMode.dart';
 export 'src/foundation/rtc/VideoStatistics.dart';
+export 'src/foundation/storage/XmaxStorageCancellationToken.dart'
+    show XmaxStorageCancellationToken;
 
 export 'src/service/media/MediaServicing.dart';
 export 'src/service/media/RealtimeMediaSource.dart';

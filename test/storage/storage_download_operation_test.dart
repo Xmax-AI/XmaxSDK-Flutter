@@ -465,6 +465,12 @@ final class _Request implements HttpClientRequest {
   final _Response response;
 
   @override
+  Future<HttpClientResponse> get done => Future.value(response);
+
+  @override
+  void abort([Object? exception, StackTrace? stackTrace]) {}
+
+  @override
   Future<HttpClientResponse> close() async => response;
 
   @override

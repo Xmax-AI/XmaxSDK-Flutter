@@ -124,6 +124,7 @@ final class _FakeStorageService implements StorageServicing {
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => DownloadedFile(fileURL: destinationURL, byteCount: 1);
 
   @override
@@ -131,5 +132,6 @@ final class _FakeStorageService implements StorageServicing {
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => DownloadedFile(fileURL: destinationURL, byteCount: 1);
 }

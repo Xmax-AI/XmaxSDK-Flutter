@@ -287,5 +287,6 @@ final class _FakeStorageManager implements StorageManaging {
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => DownloadedFile(fileURL: destinationURL, byteCount: 10);
 }

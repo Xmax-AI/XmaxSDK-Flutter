@@ -14,6 +14,7 @@ import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/storage/DownloadedFile.dart';
 import '../../foundation/storage/StorageProgressListener.dart';
 import '../../foundation/storage/StoredFile.dart';
+import '../../foundation/storage/XmaxStorageCancellationToken.dart';
 import '../../service/storage/StorageServicing.dart';
 import 'XmaxDownloadedFile.dart';
 import 'XmaxStorageManaging.dart';
@@ -99,11 +100,13 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     required Uri from,
     required Uri to,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _downloadedFile(
     await _storageService.downloadImage(
       remoteURL: from,
       destinationURL: to,
       progress: _progressListener(progress),
+      cancellationToken: cancellationToken,
     ),
   );
 
@@ -115,11 +118,13 @@ final class XmaxStorageManager implements XmaxStorageManaging {
     required Uri from,
     required Uri to,
     XmaxStorageProgressHandler? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async => _downloadedFile(
     await _storageService.downloadVideo(
       remoteURL: from,
       destinationURL: to,
       progress: _progressListener(progress),
+      cancellationToken: cancellationToken,
     ),
   );
 

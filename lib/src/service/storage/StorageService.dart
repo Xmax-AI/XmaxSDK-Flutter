@@ -25,6 +25,7 @@ import '../../foundation/storage/StorageManaging.dart';
 import '../../foundation/storage/StorageProgressListener.dart';
 import '../../foundation/storage/StorageUploadSource.dart';
 import '../../foundation/storage/StoredFile.dart';
+import '../../foundation/storage/XmaxStorageCancellationToken.dart';
 import '../network/ApiServicing.dart';
 import 'StorageServicing.dart';
 
@@ -202,10 +203,12 @@ final class StorageService implements StorageServicing {
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _download(
     remoteURL: remoteURL,
     destinationURL: destinationURL,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Downloads a video to a local file.
@@ -216,10 +219,12 @@ final class StorageService implements StorageServicing {
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) => _download(
     remoteURL: remoteURL,
     destinationURL: destinationURL,
     progress: progress,
+    cancellationToken: cancellationToken,
   );
 
   /// Validates an upload source and returns the stored object.
@@ -424,12 +429,14 @@ final class StorageService implements StorageServicing {
   /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
   /// - [destinationURL]: The destination file URI.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional cancellation signal for this download.
   ///
   /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> _download({
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async {
     _validateDownload(
       remoteURL,
@@ -440,6 +447,7 @@ final class StorageService implements StorageServicing {
       remoteURL: remoteURL,
       destinationURL: destinationURL,
       progress: progress,
+      cancellationToken: cancellationToken,
     );
   }
 

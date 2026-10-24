@@ -27,6 +27,7 @@ import 'StorageManaging.dart';
 import 'StorageProgressListener.dart';
 import 'StorageUploadSource.dart';
 import 'StoredFile.dart';
+import 'XmaxStorageCancellationToken.dart';
 
 /// The simple PUT threshold preventing automatic multipart uploads.
 /// Combined with forced simple upload, ensures every file size uses a single PUT request.
@@ -203,6 +204,7 @@ final class StorageManager implements StorageManaging {
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   }) async {
     if (!_isHTTPURL(remoteURL)) {
       throw const XmaxError(
@@ -219,7 +221,10 @@ final class StorageManager implements StorageManaging {
     }
 
     try {
-      return await StorageDownloadOperation(progress: progress).value(
+      return await StorageDownloadOperation(
+        progress: progress,
+        cancellationToken: cancellationToken,
+      ).value(
         client: _httpClient,
         remoteURL: remoteURL,
         destinationURL: destinationURL,

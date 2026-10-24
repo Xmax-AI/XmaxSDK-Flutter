@@ -13,6 +13,7 @@ import 'dart:typed_data';
 import '../../foundation/storage/DownloadedFile.dart';
 import '../../foundation/storage/StorageProgressListener.dart';
 import '../../foundation/storage/StoredFile.dart';
+import '../../foundation/storage/XmaxStorageCancellationToken.dart';
 
 /// An interface for image and video uploads, image safety checks, and downloads.
 abstract interface class StorageServicing {
@@ -113,12 +114,14 @@ abstract interface class StorageServicing {
   /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
   /// - [destinationURL]: The destination file URI.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional one-shot signal that cancels this download before commit.
   ///
   /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> downloadImage({
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 
   /// Downloads a video to a local file.
@@ -127,11 +130,13 @@ abstract interface class StorageServicing {
   /// - [remoteURL]: The HTTP or HTTPS URL of the file to download.
   /// - [destinationURL]: The destination file URI.
   /// - [progress]: The progress callback receiving completed and total bytes.
+  /// - [cancellationToken]: The optional one-shot signal that cancels this download before commit.
   ///
   /// Returns the downloaded file's local URI and actual byte count.
   Future<DownloadedFile> downloadVideo({
     required Uri remoteURL,
     required Uri destinationURL,
     StorageProgressListener? progress,
+    XmaxStorageCancellationToken? cancellationToken,
   });
 }

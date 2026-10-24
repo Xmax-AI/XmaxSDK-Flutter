@@ -654,6 +654,37 @@ credentials are not embedded in the host application.
 
 <br>
 
+### Download cancellation
+
+Pass an optional cancellation token to `downloadImage()` or `downloadVideo()`.
+Existing calls without a token remain unchanged:
+
+```dart
+final cancellation = XmaxStorageCancellationToken();
+final downloading = storage.downloadImage(
+  from: remoteImageURL,
+  to: localFileURL,
+  cancellationToken: cancellation,
+);
+
+// For example, call this when the user cancels the download.
+cancellation.cancel();
+
+try {
+  await downloading;
+} on XmaxError catch (error) {
+  if (error.code != XmaxErrorCode.cancelled) rethrow;
+}
+```
+
+Cancellation aborts only the associated download, preserves an existing destination,
+and removes staged data before the future completes with `XmaxErrorCode.cancelled`.
+Once destination replacement starts, cancellation cannot undo it. Create a new token
+for each download; a cancelled token cannot be reset. Sharing a token cancels all
+downloads using it. Cancelling a completed download has no effect on its result.
+
+<br>
+
 ### Logging
 
 SDK logging is disabled by default. Enable business logs, performance logs, or both

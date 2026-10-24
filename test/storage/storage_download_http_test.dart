@@ -4,6 +4,10 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/storage/StorageManager.dart';
+import 'package:xmax_sdk/src/core/storage/XmaxStorageManager.dart';
+import 'package:xmax_sdk/src/service/network/ApiServicing.dart';
+import 'package:xmax_sdk/src/service/storage/StorageService.dart';
+import 'package:xmax_sdk/xmax_sdk.dart' show XmaxStorageCancellationToken;
 
 void main() {
   late Directory directory;
@@ -40,6 +44,105 @@ void main() {
   });
 
   Uri remote() => Uri.parse('http://127.0.0.1:${server.port}/file');
+
+  test(
+    'public download cancellation interrupts a real response header wait',
+    () async {
+      await destination.writeAsString('previous');
+      final started = Completer<void>();
+      final release = Completer<void>();
+      handle = (request) async {
+        started.complete();
+        await release.future;
+        await request.response.close();
+      };
+      final storage = XmaxStorageManager(
+        storageService: StorageService(
+          apiService: _UnusedAPI(),
+          storageManager: manager,
+        ),
+      );
+      final token = XmaxStorageCancellationToken();
+      final downloading = storage.downloadImage(
+        from: remote(),
+        to: destination.uri,
+        cancellationToken: token,
+        progress: (_) => fail('No body progress expected'),
+      );
+      final failed = expectLater(
+        downloading.timeout(const Duration(seconds: 5)),
+        _cancelled,
+      );
+      await started.future.timeout(const Duration(seconds: 5));
+      token.cancel();
+      await failed;
+      expect(await destination.readAsString(), 'previous');
+      expect(directory.listSync().length, 1);
+      release.complete();
+    },
+  );
+
+  test(
+    'public video cancellation stops a real stalled body without closing other transfers',
+    () async {
+      await destination.writeAsString('previous');
+      final received = Completer<void>();
+      final otherStarted = Completer<void>();
+      final release = Completer<void>();
+      handle = (request) async {
+        if (request.uri.path == '/other') {
+          otherStarted.complete();
+          await release.future;
+          request.response.add([7, 8, 9]);
+          await request.response.close();
+          return;
+        }
+        request.response.contentLength = 16384;
+        request.response.add(List<int>.filled(8192, 1));
+        await request.response.flush();
+        await release.future;
+        request.response.add(List<int>.filled(8192, 2));
+        await request.response.close();
+      };
+      final storage = XmaxStorageManager(
+        storageService: StorageService(
+          apiService: _UnusedAPI(),
+          storageManager: manager,
+        ),
+      );
+      final token = XmaxStorageCancellationToken();
+      var notifications = 0;
+      final downloading = storage.downloadVideo(
+        from: remote(),
+        to: destination.uri,
+        cancellationToken: token,
+        progress: (_) {
+          notifications++;
+          if (!received.isCompleted) received.complete();
+        },
+      );
+      final failed = expectLater(
+        downloading.timeout(const Duration(seconds: 5)),
+        _cancelled,
+      );
+      await received.future.timeout(const Duration(seconds: 5));
+      final other = File('${directory.path}/other');
+      final unaffected = storage.downloadImage(
+        from: remote().replace(path: '/other'),
+        to: other.uri,
+      );
+      await otherStarted.future.timeout(const Duration(seconds: 5));
+      token.cancel();
+      await failed;
+      final countAfterCancellation = notifications;
+      release.complete();
+      await unaffected.timeout(const Duration(seconds: 5));
+      expect(notifications, countAfterCancellation);
+      expect(await destination.readAsString(), 'previous');
+      expect(await other.readAsBytes(), [7, 8, 9]);
+      expect(directory.listSync().length, 2);
+    },
+  );
 
   test(
     'real streamed HTTP download preserves the existing file until commit',
@@ -158,4 +261,17 @@ void main() {
       expect(directory.listSync().length, 1);
     },
   );
+}
+
+final _cancelled = throwsA(
+  isA<XmaxError>().having(
+    (error) => error.code,
+    'code',
+    XmaxErrorCode.cancelled,
+  ),
+);
+
+final class _UnusedAPI implements ApiServicing {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
