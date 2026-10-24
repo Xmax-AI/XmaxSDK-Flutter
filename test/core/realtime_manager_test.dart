@@ -35,6 +35,52 @@ import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 import 'package:xmax_sdk/src/stream/StreamControlling.dart';
 
 void main() {
+  for (final source in [
+    RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+    _Dependencies.format,
+  ]) {
+    test(
+      'generation separates local, canvas, and returned sizes for $source',
+      () async {
+        final deps = _Dependencies();
+        addTearDown(deps.manager.close);
+        final local = await deps.manager.createLocalCameraStream(
+          videoFormat: source,
+        );
+        deps.stream.resultTarget = const Size(512, 960);
+        await deps.manager.startGeneration(
+          localStream: local,
+          context: RealtimeContext(prompt: 'first'),
+        );
+        final expected = source.resized(width: 1024, height: 1920);
+        final padded = source.width * 1920 != source.height * 1024;
+        expect(deps.stream.generationFormats, [expected]);
+        expect(deps.stream.generationPadding, [padded]);
+        expect(deps.stream.generationTargets, [const Size(512, 960)]);
+        expect(deps.media.interactionFormat, source);
+        expect(local.videoTrack!.videoFormat, source);
+        await deps.manager.startGeneration(
+          context: RealtimeContext(prompt: 'second'),
+        );
+        expect(deps.stream.generationFormats, [expected, expected]);
+        expect(deps.stream.generationPadding, [padded, padded]);
+        expect(deps.stream.generationTargets, [const Size(512, 960), null]);
+        expect(deps.media.interactionFormat, source);
+      },
+    );
+  }
+
+  for (final enabled in [true, false]) {
+    test('connection forwards model limits and adaptation=$enabled', () async {
+      final deps = _Dependencies(isAdaptiveQualityEnabled: enabled);
+      addTearDown(deps.manager.close);
+      final local = await deps.manager.createLocalCameraStream();
+      await deps.manager.connect(localStream: local);
+      expect(deps.stream.preparedAdaptiveQuality, enabled);
+      expect(deps.stream.qualityConfiguration!.minimumInputPixels, 500000);
+    });
+  }
+
   for (final position in CameraPosition.values) {
     test(
       'default camera creation uses model settings (position=$position)',
@@ -68,28 +114,19 @@ void main() {
   }
 
   for (final preset in RealtimeCameraPreset.values) {
-    test(
-      'preset creation selects the matching model format (preset=$preset)',
-      () async {
-        final deps = _Dependencies();
-        final XmaxRealtimeManaging manager = deps.manager;
-        addTearDown(manager.close);
-        final expected = manager.options.model.supportedVideoFormats.firstWhere(
-          (format) =>
-              format.width == preset.size.width &&
-              format.height == preset.size.height,
-        );
-
-        final local = await manager.createLocalCameraStream(
+    test('unavailable preset fails before capture (preset=$preset)', () async {
+      final deps = _Dependencies();
+      final XmaxRealtimeManaging manager = deps.manager;
+      addTearDown(manager.close);
+      await expectLater(
+        manager.createLocalCameraStream(
           preset: preset,
           position: CameraPosition.back,
-        );
-
-        expect(local.videoTrack!.videoFormat, expected);
-        expect(local.videoTrack!.position, CameraPosition.back);
-        expect(deps.media.createCount, 1);
-      },
-    );
+        ),
+        throwsA(isA<XmaxError>()),
+      );
+      expect(deps.media.createCount, 0);
+    });
   }
 
   test(
@@ -99,7 +136,7 @@ void main() {
       final XmaxRealtimeManaging manager = deps.manager;
       addTearDown(manager.close);
       const format = RealtimeVideoFormat(
-        width: 1080,
+        width: 1024,
         height: 1920,
         fps: 24,
         minimumBitrate: 900,
@@ -171,7 +208,7 @@ void main() {
   });
 
   test(
-    'camera presets update ready preview in place and reject connected changes',
+    'camera formats update ready preview in place and reject connected changes',
     () async {
       final deps = _Dependencies();
       expect(await deps.manager.currentCameraVideoFormat, isNull);
@@ -192,12 +229,13 @@ void main() {
       );
       deps.media.notifyPreviewReady();
       await deps.manager.updateCameraFormat(
-        preset: RealtimeCameraPreset.resolution1408x1408,
+        videoFormat: const RealtimeVideoFormat(
+          width: 1920,
+          height: 1024,
+          fps: 24,
+        ),
       );
-      expect(
-        await deps.manager.currentCameraPreset,
-        RealtimeCameraPreset.resolution1408x1408,
-      );
+      expect(await deps.manager.currentCameraPreset, isNull);
       expect(local.videoTrack, same(deps.media.track));
       expect(local.videoTrack!.videoFormat!.fps, _Dependencies.format.fps);
       expect(deps.media.stopCount, 0);
@@ -922,7 +960,9 @@ void main() {
           XmaxClient(
             configuration: XmaxConfiguration(apiKey: 'test-key'),
           ).createRealtimeManager(
-            options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
+            options: const RealtimeConfiguration(
+              model: RealtimeModel.x2_1_1_preview_cn,
+            ),
           );
 
       expect(await manager.localAudioVolume, 0.45);
@@ -1171,7 +1211,7 @@ void main() {
 }
 
 final class _Dependencies {
-  _Dependencies() {
+  _Dependencies({bool isAdaptiveQualityEnabled = true}) {
     connection = XmaxRealtimeConnectionManager(
       sessionService: sessions,
       interactionController: media,
@@ -1184,7 +1224,10 @@ final class _Dependencies {
       taskIDGenerator: () => 'task-test',
     );
     manager = XmaxRealtimeManager.internal(
-      options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
+      options: RealtimeConfiguration(
+        model: RealtimeModel.x2_1_1_preview_cn,
+        isAdaptiveQualityEnabled: isAdaptiveQualityEnabled,
+      ),
       mediaController: media,
       streamController: stream,
       connectionManager: connection,
@@ -1267,11 +1310,16 @@ final class _FakeMedia implements MediaControlling {
   ) => _previewReadyListener = listener;
 
   void notifyPreviewReady() => _previewReadyListener?.call();
+
+  RealtimeVideoFormat? interactionFormat;
   @override
   void startInteraction({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
-  }) {}
+  }) {
+    interactionFormat = videoFormat;
+  }
+
   @override
   void stopInteraction() {}
   @override
@@ -1315,17 +1363,26 @@ final class _FakeStream implements StreamControlling {
   }
 
   final faceRestorations = <bool>[];
+  final generationFormats = <RealtimeVideoFormat>[];
+  final generationPadding = <bool>[];
+  final generationTargets = <Size?>[];
+  Size? resultTarget;
+  bool? preparedAdaptiveQuality;
   @override
-  Size? get targetSize => null;
+  Size? get targetSize => resultTarget;
   @override
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
+    int minimumInputPixels = 0,
+    bool isAdaptiveQualityEnabled = true,
   }) async {
+    preparedAdaptiveQuality = isAdaptiveQualityEnabled;
     configuration = QualityConfiguration(
       baseline: baseline,
       uplinkLevel: RealtimeQualityLevel.l2,
       downlinkLevel: RealtimeQualityLevel.l2,
+      minimumInputPixels: minimumInputPixels,
     );
     await setVideoEncoderConfig(baseline);
   }
@@ -1372,11 +1429,15 @@ final class _FakeStream implements StreamControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) async {
     final startError = generationStartError;
     if (startError != null) throw startError;
 
     generation = true;
+    generationFormats.add(videoFormat);
+    generationPadding.add(paddingContain);
+    generationTargets.add(targetSize);
     startedPrompts.add(context.prompt);
     faceRestorations.add(faceRestoration);
 
@@ -1469,8 +1530,12 @@ final class _FakeStream implements StreamControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) async {
     updatedPrompts.add(context.prompt);
+    generationFormats.add(videoFormat);
+    generationPadding.add(paddingContain);
+    generationTargets.add(targetSize);
     if (updateError case final error?) throw error;
     final started = firstUpdateStarted;
     if (started != null && !started.isCompleted) {

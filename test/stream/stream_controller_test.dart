@@ -42,6 +42,65 @@ Future<StreamController> _controller(
 }
 
 void main() {
+  test(
+    'disabled adaptation keeps network callbacks and permits manual changes',
+    () async {
+      final rtc = _Rtc(), room = _Room();
+      final stream = await _controller(rtc, room: room);
+      addTearDown(stream.disconnect);
+      final observed = <RealtimeNetworkQuality>[];
+      stream.setNetworkQualityListener(observed.add);
+      await stream.prepareQuality(
+        baseline: _format,
+        model: 'x2.1.1-preview-cn',
+        minimumInputPixels: 500000,
+        isAdaptiveQualityEnabled: false,
+      );
+      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l1);
+      expect(
+        stream.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l1,
+      );
+      final confirmation = await stream.beginGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'start'),
+        paddingContain: true,
+      );
+      expect(room.startPadding, isTrue);
+      rtc.listener!.onRemoteVideoPublished!(_remote, true);
+      await confirmation.value;
+      await stream.activateRemoteAudio();
+      final count = rtc.configurations.length;
+      for (var i = 0; i < 10; i++) {
+        rtc.listener!.onNetworkQuality!(
+          const RealtimeNetworkQuality(
+            uplink: RealtimeNetworkQualityLevel.veryBad,
+            downlink: RealtimeNetworkQualityLevel.veryBad,
+          ),
+        );
+        await _settle();
+      }
+      expect(observed, hasLength(10));
+      expect(rtc.configurations, hasLength(count));
+      expect(room.targetStarted.isCompleted, isFalse);
+      await stream.setQualityLevel(RealtimeQualityLevel.l5, downlink: false);
+      final last = rtc.configurations.last;
+      expect((last.width, last.height, last.frameRate), (544, 1020, 16));
+      await stream.setQualityLevel(RealtimeQualityLevel.l5, downlink: true);
+      expect(stream.targetSize, const Size(512, 960));
+      await stream.updateGeneration(
+        taskID: 'task',
+        videoFormat: _format,
+        context: RealtimeContext(prompt: 'next'),
+        paddingContain: true,
+      );
+      expect(room.conditionPadding, isTrue);
+      expect(room.conditionTarget, isNull);
+      expect(stream.qualityConfiguration!.uplinkLevel, RealtimeQualityLevel.l5);
+    },
+  );
+
   Future<StreamController> generating(_Rtc rtc, _Room room) async {
     final stream = await _controller(rtc, room: room);
     await stream.prepareQuality(baseline: _format, model: 'x2.1');
@@ -81,7 +140,7 @@ void main() {
         stream.qualityConfiguration!.downlinkLevel,
         RealtimeQualityLevel.l4,
       );
-      expect(stream.targetSize, const Size(512, 960));
+      expect(stream.targetSize, const Size(608, 1140));
       expect(stream.qualityConfiguration!.baseline, _format);
       await stream.stopGeneration(taskID: 'task');
       await expectLater(
@@ -146,7 +205,7 @@ void main() {
       room.targetGate!.complete();
       await manual;
       await update;
-      expect(room.conditionTarget, stream.targetSize);
+      expect(room.conditionTarget, isNull);
     },
   );
 
@@ -213,13 +272,13 @@ void main() {
     expect(stream.hasGenerationTask, false);
   });
   test(
-    'adaptive quality and condition updates share the latest return size',
+    'condition updates wait for quality writes without overriding the return size',
     () async {
       final rtc = _Rtc(), room = _Room()..targetGate = Completer<void>();
       final stream = await _controller(rtc, room: room);
       addTearDown(stream.disconnect);
       await stream.prepareQuality(baseline: _format, model: 'x2.1');
-      expect(stream.targetSize, const Size(800, 1500));
+      expect(stream.targetSize, const Size(896, 1680));
       final generation = await stream.beginGeneration(
         taskID: 'task',
         videoFormat: _format,
@@ -244,22 +303,21 @@ void main() {
             taskID: 'task',
             videoFormat: _format,
             context: RealtimeContext(prompt: 'b'),
-            targetSize: const Size(800, 1500),
           )
           .then((_) => updated = true);
       await _settle();
       expect(updated, false);
       room.targetGate!.complete();
       await update;
-      expect(stream.targetSize, const Size(640, 1200));
-      expect(room.conditionTarget, const Size(640, 1200));
+      expect(stream.targetSize, const Size(768, 1440));
+      expect(room.conditionTarget, isNull);
       expect(
         (
           rtc.configurations.last.width,
           rtc.configurations.last.height,
           rtc.configurations.last.frameRate,
         ),
-        (656, 1230, 24),
+        (768, 1440, 24),
       );
       expect(_format.width, 1024);
     },
@@ -537,6 +595,7 @@ class _Rtc implements RtcManaging {
 }
 
 class _Room implements RoomControlling {
+  bool? startPadding, conditionPadding;
   Object? targetError;
   Completer<void>? targetGate;
   final targetStarted = Completer<void>();
@@ -560,8 +619,10 @@ class _Room implements RoomControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) async {
     conditionTarget = targetSize;
+    conditionPadding = paddingContain;
   }
 
   Completer<void>? startGate;
@@ -573,8 +634,10 @@ class _Room implements RoomControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) async {
     if (startError != null) throw startError!;
+    startPadding = paddingContain;
     await startGate?.future;
   }
 

@@ -18,16 +18,20 @@ import 'RealtimeQualityLevel.dart';
 /// notifications.
 abstract interface class QualityControlling {
 
-  /// Loads valid model history, prepares independent link policies, and applies the initial
-  /// transport format.
+  /// Prepares independent link policies from model history or L1.
   ///
   /// Parameters:
   /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
   ///   updates.
   /// - [model]: The model identifier used to isolate quality-level history.
+  /// - [minimumInputPixels]: The model's minimum uplink area, in pixels.
+  /// - [isAdaptiveQualityEnabled]: Whether to use quality history. Disabled
+  ///   connections start at L1 without reading or saving history.
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
+    int minimumInputPixels = 0,
+    bool isAdaptiveQualityEnabled = true,
   });
 
   /// The media baseline and successfully applied link levels for the current connection.

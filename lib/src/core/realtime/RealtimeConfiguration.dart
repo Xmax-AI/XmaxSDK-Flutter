@@ -10,16 +10,23 @@
 
 import '../../service/realtime/RealtimeModel.dart';
 
-/// The model configuration for a realtime manager.
+/// The model and adaptive quality settings for a realtime manager.
 final class RealtimeConfiguration {
 
   /// Creates a realtime configuration.
   const RealtimeConfiguration({
     required this.model,
+    this.isAdaptiveQualityEnabled = true,
   });
 
   /// The realtime generation model defining the supported media formats.
   final RealtimeModel model;
+
+  /// Whether uplink and downlink quality levels adapt automatically.
+  ///
+  /// When disabled, each connection starts at L1 without reading or saving quality
+  /// history. Manual quality changes remain available during generation.
+  final bool isAdaptiveQualityEnabled;
 
   /// Whether [other] has the same value.
   @override
@@ -30,9 +37,14 @@ final class RealtimeConfiguration {
         this,
         other,
       ) ||
-      other is RealtimeConfiguration && model == other.model;
+      other is RealtimeConfiguration &&
+          model == other.model &&
+          isAdaptiveQualityEnabled == other.isAdaptiveQualityEnabled;
 
   /// The hash code consistent with value equality.
   @override
-  int get hashCode => model.hashCode;
+  int get hashCode => Object.hash(
+    model,
+    isAdaptiveQualityEnabled,
+  );
 }

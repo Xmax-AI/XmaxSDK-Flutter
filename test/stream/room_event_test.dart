@@ -11,6 +11,35 @@ import 'package:xmax_sdk/src/stream/room/RoomEvent.dart';
 void main() {
   const format = RealtimeVideoFormat(width: 1024, height: 576, fps: 30);
 
+  for (final padding in [true, false]) {
+    test(
+      'generation messages encode contain padding only when requested ($padding)',
+      () {
+        for (final encode in [RoomEvent.start, RoomEvent.changeCondition]) {
+          final event =
+              jsonDecode(
+                    encode(
+                      userID: 'user',
+                      taskID: 'task',
+                      videoFormat: format,
+                      context: RealtimeContext(prompt: 'test'),
+                      paddingContain: padding,
+                    ),
+                  )
+                  as Map<String, dynamic>;
+          final params = event['params'] as Map<String, dynamic>;
+          expect(params['size'], [1024, 576]);
+          expect(params['padding'], padding ? 'contain' : isNull);
+          expect(params.containsKey('target_size'), isFalse);
+          if (event['event'] == 'change_condition') {
+            expect(params.containsKey('min_bitrate'), isFalse);
+            expect(params.containsKey('max_bitrate'), isFalse);
+          }
+        }
+      },
+    );
+  }
+
   test('start event matches iOS room signaling contract', () {
     final event = jsonDecode(
       RoomEvent.start(

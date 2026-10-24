@@ -32,6 +32,7 @@ abstract final class RoomEvent {
   ///   generation canvas dimensions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   ///
   /// Returns JSON containing start parameters, task correlation fields, and runtime information.
   static String start({
@@ -41,6 +42,7 @@ abstract final class RoomEvent {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) => _generation(
     event: 'start',
     userID: userID,
@@ -49,6 +51,7 @@ abstract final class RoomEvent {
     context: context,
     targetSize: targetSize,
     faceRestoration: faceRestoration,
+    paddingContain: paddingContain,
     includeBitrates: true,
   );
 
@@ -63,6 +66,7 @@ abstract final class RoomEvent {
   ///   generation canvas dimensions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   ///
   /// Returns JSON containing the prompt, optional reference image, and face restoration setting.
   static String changeCondition({
@@ -72,6 +76,7 @@ abstract final class RoomEvent {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) => _generation(
     event: 'change_condition',
     userID: userID,
@@ -80,6 +85,7 @@ abstract final class RoomEvent {
     context: context,
     targetSize: targetSize,
     faceRestoration: faceRestoration,
+    paddingContain: paddingContain,
   );
 
   /// Encodes an update to result dimensions and the corresponding downlink bitrate budget.
@@ -163,6 +169,7 @@ abstract final class RoomEvent {
   ///   generation canvas dimensions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   /// - [includeBitrates]: Whether to include downlink bitrate bounds in generation messages;
   ///   omitted by default.
   ///
@@ -175,6 +182,7 @@ abstract final class RoomEvent {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
     bool includeBitrates = false,
   }) {
     final params = <String, Object?>{
@@ -182,6 +190,7 @@ abstract final class RoomEvent {
       'size': <int>[videoFormat.width, videoFormat.height],
       'prompt': context.prompt,
       'face_replace': faceRestoration,
+      if (paddingContain) 'padding': 'contain',
       if (includeBitrates) 'mirror': false,
       if (includeBitrates)
         ..._downlinkBitrates(

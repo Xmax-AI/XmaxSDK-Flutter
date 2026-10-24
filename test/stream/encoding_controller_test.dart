@@ -2,9 +2,60 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/stream/encoding/EncodingController.dart';
+import 'package:xmax_sdk/src/stream/quality/QualityVideoFormat.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  test(
+    'encoder rejects non-four-aligned dimensions before native calls',
+    () async {
+      final rtc = _Rtc();
+      final controller = EncodingController(rtcManager: rtc);
+      for (final (width, height) in [
+        (912, 1710),
+        (528, 990),
+        (1282, 720),
+        (2, 2),
+      ]) {
+        await expectLater(
+          controller.configure(
+            RealtimeVideoFormat(width: width, height: height, fps: 30),
+          ),
+          throwsA(
+            isA<XmaxError>().having(
+              (error) => error.code,
+              'code',
+              XmaxErrorCode.invalidConfiguration,
+            ),
+          ),
+        );
+      }
+      expect(rtc.configuration, isNull);
+    },
+  );
+
+  test('all model uplink tiers can be applied with the minimum area', () async {
+    final rtc = _Rtc();
+    final controller = EncodingController(rtcManager: rtc);
+    for (final model in RealtimeModel.values) {
+      for (final baseline in model.supportedVideoFormats) {
+        for (final level in RealtimeQualityLevel.values) {
+          final format = QualityVideoFormat.resolve(
+            baseline,
+            level,
+            downlink: false,
+            minimumInputPixels: model.minimumInputPixels,
+          );
+          await controller.configure(format);
+          expect(rtc.configuration!.width, format.width);
+          expect(rtc.configuration!.height, format.height);
+          expect(rtc.configuration!.frameRate, format.fps);
+          expect(format.width * format.height, greaterThanOrEqualTo(500000));
+        }
+      }
+    }
+  });
+
   test(
     'explicit zero minimum disables the floor and default minimum respects a low maximum',
     () async {
@@ -43,7 +94,7 @@ void main() {
       (1024, 768, 30, 1820),
       (3840, 2160, 30, 15120),
       (120, 120, 30, 100),
-      (2, 2, 1, 100),
+      (4, 4, 1, 100),
     ]) {
       await controller.configure(
         RealtimeVideoFormat(width: width, height: height, fps: fps),

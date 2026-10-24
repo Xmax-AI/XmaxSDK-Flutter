@@ -358,7 +358,10 @@ The same configuration is available in the example's
 `XmaxConfiguration` uses `XmaxEnvironment.china` by default. For the overseas
 service, set `environment: XmaxEnvironment.global` when creating `XmaxClient`.
 This controls realtime-session and storage-service routing as well as log
-language. `RealtimeModel.x2_1` is available in both environments.
+language. Select `RealtimeModel.x2_1_1_preview_cn` for the China preview or
+`RealtimeModel.x2_1_1_preview_us` for the global preview. Model selection and
+service environment are separate settings; choose the appropriate pair for your deployment.
+XLab selects the regional preview model for its language-selected environment.
 
 ### Generate and display video
 
@@ -380,7 +383,7 @@ class RealtimePage extends StatefulWidget {
 }
 
 class _RealtimePageState extends State<RealtimePage> {
-  static const _model = RealtimeModel.x2_1;
+  static const _model = RealtimeModel.x2_1_1_preview_cn;
   late final XmaxRealtimeManaging _realtime;
   RealtimeMediaStream? _localStream;
   RealtimeMediaStream? _remoteStream;
@@ -437,28 +440,28 @@ class _RealtimePageState extends State<RealtimePage> {
 }
 ```
 
-`RealtimeModel.x2_1` defaults to 1080×1920 at 30 fps. Its
-`supportedVideoFormats` list contains 1920×1080, 1080×1920, 1408×1408,
-1152×1536, and 1536×1152 formats. Create a stream without arguments to use the
-model's default format and the front camera, or select a supported preset:
+Both preview models default to 1024×1920 at 30 fps and support 1024×1920
+and 1920×1024 camera formats. Create a stream without arguments to use the
+model's default format and front camera, or provide a supported capture format:
 
 ```dart
 final localStream = await _realtime.createLocalCameraStream(
-  preset: RealtimeCameraPreset.resolution1408x1408,
+  videoFormat: const RealtimeVideoFormat(width: 1920, height: 1024, fps: 30),
   position: CameraPosition.back,
 );
 ```
 
-Pass `videoFormat` instead of `preset` to specify a complete capture format.
-Providing both is invalid; preset creation uses the matching entry from the
-model's supported formats, including its frame rate and encoding settings.
+Camera dimensions must exactly match an entry in `supportedVideoFormats`.
+The existing `RealtimeCameraPreset` values are model-dependent and are not
+supported by these preview models; use the default or an explicit format.
+Providing both `videoFormat` and `preset` is invalid.
 
 While the preview is ready and disconnected,
 update the capture format without recreating the stream or view:
 
 ```dart
 await _realtime.updateCameraFormat(
-  preset: RealtimeCameraPreset.resolution1408x1408,
+  videoFormat: const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
 );
 final format = await _realtime.currentCameraVideoFormat;
 ```
@@ -481,10 +484,19 @@ network quality changes. Capture settings and the model's generation canvas stay
 fixed. Recent successful quality levels are remembered per model for one hour.
 During generation, call `setUplinkQualityLevel(RealtimeQualityLevel.l1)` or
 `setDownlinkQualityLevel(RealtimeQualityLevel.l3)` to adjust a direction manually.
-Automatic adaptation remains enabled. Read the applied levels through
+Manual changes do not change the automatic adaptation setting. To disable
+automatic adaptation, pass `isAdaptiveQualityEnabled: false` to
+`RealtimeConfiguration`. Each connection then starts at L1 without reading or
+saving quality history, while manual changes remain available. Read the applied levels through
 `uplinkQualityLevel` and `downlinkQualityLevel`; both are `null` before connection
 completes or once disconnection starts. Downlink changes report the submitted
 target, which may precede the corresponding video frames.
+
+Uplink dimensions remain aligned to 4 pixels and retain at least 500000 pixels
+for both preview models, even at lower quality levels. This input minimum does
+not constrain returned video dimensions. The SDK resolves the generation canvas
+separately and automatically requests contain padding when its aspect ratio
+differs from the local media. Condition updates leave the current return size unchanged.
 
 The default encoder preference is `maintainFramerate`. Unless explicitly set,
 the uplink minimum bitrate is 500 kbps, capped at the resolved maximum bitrate.

@@ -118,6 +118,7 @@ final class RoomController implements RoomControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) => _send(
     RoomEvent.start(
       userID: _requireUserID(),
@@ -126,6 +127,7 @@ final class RoomController implements RoomControlling {
       context: context,
       targetSize: targetSize,
       faceRestoration: faceRestoration,
+      paddingContain: paddingContain,
     ),
   );
 
@@ -139,6 +141,7 @@ final class RoomController implements RoomControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) => _send(
     RoomEvent.changeCondition(
       userID: _requireUserID(),
@@ -147,6 +150,7 @@ final class RoomController implements RoomControlling {
       context: context,
       targetSize: targetSize,
       faceRestoration: faceRestoration,
+      paddingContain: paddingContain,
     ),
   );
 

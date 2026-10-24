@@ -22,10 +22,10 @@ final class MediaService implements MediaServicing {
 
   /// Creates a model-aware media dimension resolver.
   MediaService({
-    this.model = RealtimeModel.x2_1,
+    this.model = RealtimeModel.x2_1_1_preview_cn,
   });
 
-  /// The model defining dimension constraints; defaults to X2.1.
+  /// The model defining dimension constraints.
   @override
   final RealtimeModel model;
 
@@ -115,10 +115,13 @@ final class MediaService implements MediaServicing {
     return _boundedAlignedSize(
       width: validated.width * scale,
       height: validated.height * scale,
+      alignment: model.inputSizeAlignment,
+      minimumPixels: model.minimumInputPixels,
+      maximumPixels: model.maximumInputPixels,
     );
   }
 
-  /// Validates camera preset dimensions and resolves a non-upscaled local size aligned to 4 pixels.
+  /// Resolves local dimensions within model area limits and validates camera buckets.
   ///
   /// See [MediaServicing.resolveMediaSize] for the usage contract.
   @override
@@ -147,17 +150,18 @@ final class MediaService implements MediaServicing {
       );
     }
 
-    final scale = math.min(
-      1.0,
-      math.sqrt(
-        model.maximumInputPixels /
-            (sourceMediaSize.width * sourceMediaSize.height),
-      ),
+    final pixels = sourceMediaSize.width * sourceMediaSize.height;
+    final targetPixels = pixels.clamp(
+      model.minimumInputPixels,
+      model.maximumInputPixels,
     );
+    final scale = math.sqrt(targetPixels / pixels);
 
     return _alignedSize(
       sourceMediaSize,
       scale,
+      minimumPixels: model.minimumInputPixels,
+      maximumPixels: model.maximumInputPixels,
     );
   }
 
@@ -187,31 +191,61 @@ final class MediaService implements MediaServicing {
     );
   }
 
-  /// Resolves 4-pixel-aligned dimensions within the scale limit, preferring the exact aspect ratio.
+  /// Resolves 4-pixel-aligned dimensions, preferring the exact aspect ratio.
   ///
   /// Parameters:
   /// - [size]: The media pixel dimensions to resolve.
   /// - [scale]: The target scale relative to the baseline dimensions.
+  /// - [minimumPixels]: The inclusive area floor, or null to only round down.
+  /// - [maximumPixels]: The inclusive area ceiling, or null for no area ceiling.
   ///
-  /// Returns aligned pixel dimensions within the scale limit; throws a configuration error if
-  /// impossible.
-  static Size _alignedSize(
+  /// Returns dimensions satisfying the area bounds when provided. Without bounds,
+  /// only rounds down within the scale limit. Throws if no aligned size fits.
+  Size _alignedSize(
     Size size,
-    double scale,
-  ) {
+    double scale, {
+    int? minimumPixels,
+    int? maximumPixels,
+  }) {
     final width = size.width.toInt(), height = size.height.toInt();
     final divisor = width.gcd(height);
-    final multiplier = (divisor * scale / 4).floor() * 4;
+    final ratioWidth = width ~/ divisor;
+    final ratioHeight = height ~/ divisor;
+    var multiplier = (divisor * scale / 4).floor() * 4;
 
-    if (multiplier >= 4) {
+    if (minimumPixels != null) {
+      final minimumScale = math.sqrt(
+        minimumPixels / (ratioWidth.toDouble() * ratioHeight),
+      );
+      multiplier = math.max(multiplier, (minimumScale / 4).ceil() * 4);
+    }
+
+    final exactWidth = ratioWidth.toDouble() * multiplier;
+    final exactHeight = ratioHeight.toDouble() * multiplier;
+
+    if (multiplier >= 4 &&
+        (maximumPixels == null || exactWidth * exactHeight <= maximumPixels)) {
       return Size(
-        (width ~/ divisor * multiplier).toDouble(),
-        (height ~/ divisor * multiplier).toDouble(),
+        exactWidth,
+        exactHeight,
       );
     }
 
     final w = (width * scale / 4).floor() * 4,
         h = (height * scale / 4).floor() * 4;
+    final alignedPixels = w * h;
+
+    // Independent rounding can cross an area limit when the exact ratio cannot fit.
+    if (minimumPixels != null && maximumPixels != null &&
+        (alignedPixels < minimumPixels || alignedPixels > maximumPixels)) {
+      return _boundedAlignedSize(
+        width: width * scale,
+        height: height * scale,
+        alignment: 4,
+        minimumPixels: minimumPixels,
+        maximumPixels: maximumPixels,
+      );
+    }
 
     if (w < 4 || h < 4) {
       throw const XmaxError(
@@ -253,17 +287,22 @@ final class MediaService implements MediaServicing {
   /// Parameters:
   /// - [width]: The video width, in pixels.
   /// - [height]: The video height, in pixels.
+  /// - [alignment]: The required multiple of each dimension, in pixels.
+  /// - [minimumPixels]: The inclusive area floor, in pixels.
+  /// - [maximumPixels]: The inclusive area ceiling, in pixels.
   ///
   /// Returns the nearest valid dimensions satisfying model alignment and pixel-count limits.
   Size _boundedAlignedSize({
     required double width,
     required double height,
+    required int alignment,
+    required int minimumPixels,
+    required int maximumPixels,
   }) {
-    final alignment = model.inputSizeAlignment;
     final unitPixels = alignment * alignment;
     final minimumUnits =
-        (model.minimumInputPixels + unitPixels - 1) ~/ unitPixels;
-    final maximumUnits = model.maximumInputPixels ~/ unitPixels;
+        (minimumPixels + unitPixels - 1) ~/ unitPixels;
+    final maximumUnits = maximumPixels ~/ unitPixels;
     var bestSize = Size.zero;
     var bestDistance = double.infinity;
 

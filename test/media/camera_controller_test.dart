@@ -26,21 +26,21 @@ void main() {
         rtcManager: rtc,
         permissionManager: const _AllowedPermissions(),
       );
-      final initial = RealtimeModel.x2_1.defaultCameraVideoFormat;
+      final initial = RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat;
       final stream = await camera.createLocalCameraStream(
         videoFormat: initial,
         position: CameraPosition.front,
       );
       final track = stream.videoTrack!;
       final handle = VideoRenderRegistry.handleFor(track);
-      final target = initial.resized(width: 1408, height: 1408);
+      final target = initial.resized(width: 1920, height: 1024);
       await camera.updateVideoFormat(target);
       expect(camera.currentTrack, same(track));
       expect(track.videoFormat, target);
       expect(VideoRenderRegistry.handleFor(track), same(handle));
       expect(rtc.captureStarts, 1);
       expect(rtc.captureStops, 0);
-      expect(rtc.lastCaptureSize, const Size(1408, 1408));
+      expect(rtc.lastCaptureSize, const Size(1920, 1024));
       rtc.formatError = StateError('native configuration rejected');
       await expectLater(camera.updateVideoFormat(initial), throwsStateError);
       expect(track.videoFormat, target);
@@ -205,14 +205,14 @@ void main() {
     },
   );
 
-  test('x2.0-pro camera preserves its bucket and 30 fps', () async {
+  test('preview model camera preserves its bucket and 30 fps', () async {
     final rtc = _FakeRtc();
     final camera = CameraController(
       rtcManager: rtc,
       permissionManager: const _AllowedPermissions(),
-      mediaService: MediaService(model: RealtimeModel.x2_1),
+      mediaService: MediaService(model: RealtimeModel.x2_1_1_preview_cn),
     );
-    final format = RealtimeModel.x2_1.defaultCameraVideoFormat;
+    final format = RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat;
 
     final stream = await camera.createLocalCameraStream(
       videoFormat: format,
@@ -220,17 +220,17 @@ void main() {
     );
 
     expect(stream.videoTrack?.videoFormat, format);
-    expect(rtc.lastCaptureSize, const Size(1080, 1920));
+    expect(rtc.lastCaptureSize, const Size(1024, 1920));
     expect(rtc.lastCaptureFrameRate, 30);
     await camera.stopLocalCameraStream();
   });
 
-  test('x2.0-pro camera rejects an unsupported input size', () async {
+  test('preview model camera rejects an unsupported input size', () async {
     final rtc = _FakeRtc();
     final camera = CameraController(
       rtcManager: rtc,
       permissionManager: const _AllowedPermissions(),
-      mediaService: MediaService(model: RealtimeModel.x2_1),
+      mediaService: MediaService(model: RealtimeModel.x2_1_1_preview_cn),
     );
 
     await expectLater(
@@ -312,7 +312,7 @@ final class _IdentityMediaService implements MediaServicing {
   const _IdentityMediaService();
 
   @override
-  RealtimeModel get model => RealtimeModel.x2_1;
+  RealtimeModel get model => RealtimeModel.x2_1_1_preview_cn;
 
   @override
   Size resolveMediaSize(Size size, {required RealtimeMediaSource source}) =>
@@ -325,7 +325,7 @@ final class _ResizingMediaService implements MediaServicing {
   const _ResizingMediaService();
 
   @override
-  RealtimeModel get model => RealtimeModel.x2_1;
+  RealtimeModel get model => RealtimeModel.x2_1_1_preview_cn;
 
   @override
   Size resolveMediaSize(Size size, {required RealtimeMediaSource source}) =>

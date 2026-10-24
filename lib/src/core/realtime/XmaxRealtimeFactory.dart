@@ -14,6 +14,7 @@ import '../../media/MediaControlling.dart';
 import '../../media/camera/CameraController.dart';
 import '../../render/RenderController.dart';
 import '../../service/media/MediaService.dart';
+import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
 import '../../service/realtime/RealtimeSessionService.dart';
 import '../../stream/StreamController.dart';
@@ -35,6 +36,7 @@ final class XmaxRealtimeComponents {
     required this.errorManager,
     required this.mediaController,
     required this.streamController,
+    required this.mediaService,
   });
 
   /// The manager coordinating operation validity, state, and resource cleanup.
@@ -54,6 +56,9 @@ final class XmaxRealtimeComponents {
 
   /// The controller managing RTC publishing and signaling.
   final StreamControlling streamController;
+
+  /// The shared model-aware sizing service for capture, generation, and returned media.
+  final MediaServicing mediaService;
 }
 
 /// Creates realtime components and wires their readiness, failure, and cleanup callbacks.
@@ -119,6 +124,7 @@ abstract final class XmaxRealtimeFactory {
       connectionManager: connectionManager,
       generationManager: generationManager,
       errorManager: errorManager,
+      mediaService: mediaService,
     );
   }
 
@@ -130,6 +136,7 @@ abstract final class XmaxRealtimeFactory {
   /// - [connectionManager]: The server session and RTC connection manager.
   /// - [generationManager]: The generation request and confirmation manager.
   /// - [errorManager]: The shared runtime failure manager.
+  /// - [mediaService]: The shared sizing rules; defaults to the default model's service.
   ///
   /// Returns the components with lifecycle coordination and cleanup configured.
   static XmaxRealtimeComponents assemble({
@@ -138,6 +145,7 @@ abstract final class XmaxRealtimeFactory {
     required XmaxRealtimeConnectionManager connectionManager,
     required XmaxRealtimeGenerationManager generationManager,
     required XmaxRealtimeErrorManager errorManager,
+    MediaServicing? mediaService,
   }) {
     final lifecycleManager = XmaxRealtimeLifecycleManager(
       errorManager: errorManager,
@@ -197,6 +205,7 @@ abstract final class XmaxRealtimeFactory {
       errorManager: errorManager,
       mediaController: mediaController,
       streamController: streamController,
+      mediaService: mediaService ?? MediaService(),
     );
   }
 }

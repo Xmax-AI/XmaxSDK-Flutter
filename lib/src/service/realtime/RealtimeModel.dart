@@ -13,9 +13,13 @@ import 'RealtimeVideoFormat.dart';
 /// A realtime generation model supported by XmaxSDK.
 enum RealtimeModel {
 
-  /// The X2.1 realtime generation model, routed by the client's environment.
+  /// The China preview of the X2.1.1 realtime generation model.
   // ignore: constant_identifier_names
-  x2_1('x2.1');
+  x2_1_1_preview_cn('x2.1.1-preview-cn'),
+
+  /// The global preview of the X2.1.1 realtime generation model.
+  // ignore: constant_identifier_names
+  x2_1_1_preview_us('x2.1.1-preview-us');
 
   /// Defines a model's serialized identifier.
   const RealtimeModel(
@@ -27,40 +31,29 @@ enum RealtimeModel {
 
   /// The model's display name.
   String get displayName => switch (this) {
-    RealtimeModel.x2_1 => 'X2.1',
+    RealtimeModel.x2_1_1_preview_cn => 'X2.1.1-preview-cn',
+    RealtimeModel.x2_1_1_preview_us => 'X2.1.1-preview-us',
   };
 
   /// The supported camera and generation canvas dimensions, with recommended frame rates.
+  ///
+  /// Camera dimensions must match an entry exactly. An empty list allows variable
+  /// canvas dimensions, resolved using pixel limits and alignment.
   List<RealtimeVideoFormat> get supportedVideoFormats => const [
     RealtimeVideoFormat(
-      width: 1920,
-      height: 1080,
-      fps: 30,
-    ),
-    RealtimeVideoFormat(
-      width: 1080,
+      width: 1024,
       height: 1920,
       fps: 30,
     ),
     RealtimeVideoFormat(
-      width: 1408,
-      height: 1408,
-      fps: 30,
-    ),
-    RealtimeVideoFormat(
-      width: 1152,
-      height: 1536,
-      fps: 30,
-    ),
-    RealtimeVideoFormat(
-      width: 1536,
-      height: 1152,
+      width: 1920,
+      height: 1024,
       fps: 30,
     ),
   ];
 
-  /// The minimum pixel area used to resolve generation dimensions when no buckets exist.
-  int get minimumInputPixels => 600000;
+  /// The minimum local media and uplink area, in pixels; also limits variable generation canvases.
+  int get minimumInputPixels => 500000;
 
   /// The maximum local media area, in pixels; also limits variable generation canvases.
   int get maximumInputPixels => 2100000;
@@ -74,7 +67,7 @@ enum RealtimeModel {
   /// The default camera capture format.
   RealtimeVideoFormat get defaultCameraVideoFormat =>
       const RealtimeVideoFormat(
-        width: 1080,
+        width: 1024,
         height: 1920,
         fps: 30,
       );

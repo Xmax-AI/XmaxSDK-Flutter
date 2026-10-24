@@ -10,6 +10,7 @@
 
 import 'dart:math' as math;
 
+import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/rtc/RtcManaging.dart';
 import '../../foundation/rtc/VideoEncodingConfiguration.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
@@ -27,15 +28,23 @@ final class EncodingController implements EncodingControlling {
   /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
 
-  /// Resolves the format's bitrate budget and applies RTC encoding settings.
+  /// Validates and applies the resolved encoder configuration.
   /// An unspecified minimum defaults to 500 kbps, capped at the format's maximum bitrate.
   ///
   /// Parameters:
-  /// - [format]: The target video dimensions, frame rate, and encoding settings.
+  /// - [format]: The 4-aligned dimensions, frame rate, and encoding settings.
   @override
   Future<void> configure(
     RealtimeVideoFormat format,
   ) async {
+    format.validate();
+    if (format.width % 4 != 0 || format.height % 4 != 0) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Uplink video width and height must be multiples of 4',
+      );
+    }
+
     final budget = EncodingBitratePolicy.resolve(format);
 
     await _rtcManager.configureVideoEncoding(

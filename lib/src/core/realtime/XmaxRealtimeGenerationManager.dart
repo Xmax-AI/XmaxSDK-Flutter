@@ -79,6 +79,8 @@ final class XmaxRealtimeGenerationManager {
   ///   first start.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [generationVideoFormat]: The server generation canvas; null uses the local media format.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   /// - [ensureCurrent]: A lifecycle validity check that throws a cancellation error when
   ///   invalidated.
   /// - [timing]: The startup duration recorder, or null to omit timing.
@@ -88,6 +90,8 @@ final class XmaxRealtimeGenerationManager {
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext? context,
     bool faceRestoration = false,
+    RealtimeVideoFormat? generationVideoFormat,
+    bool paddingContain = false,
     required void Function() ensureCurrent,
     RealtimeTiming? timing,
   }) async {
@@ -102,9 +106,10 @@ final class XmaxRealtimeGenerationManager {
 
       final confirmation = await _streamController.beginGeneration(
         taskID: taskID,
-        videoFormat: videoFormat,
+        videoFormat: generationVideoFormat ?? videoFormat,
         context: resolvedContext,
         faceRestoration: faceRestoration,
+        paddingContain: paddingContain,
         targetSize: _streamController.targetSize,
       );
 
@@ -182,11 +187,15 @@ final class XmaxRealtimeGenerationManager {
   /// - [context]: The updated conditions; null reuses the most recently submitted conditions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [generationVideoFormat]: The server generation canvas; null uses the local media format.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   Future<void> update({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext? context,
     bool faceRestoration = false,
+    RealtimeVideoFormat? generationVideoFormat,
+    bool paddingContain = false,
   }) async {
     _interactionController.startInteraction(
       taskID: taskID,
@@ -197,10 +206,10 @@ final class XmaxRealtimeGenerationManager {
 
     await _streamController.updateGeneration(
       taskID: taskID,
-      videoFormat: videoFormat,
+      videoFormat: generationVideoFormat ?? videoFormat,
       context: resolvedContext,
       faceRestoration: faceRestoration,
-      targetSize: _streamController.targetSize,
+      paddingContain: paddingContain,
     );
 
     _currentContext = resolvedContext;

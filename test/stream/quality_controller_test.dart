@@ -18,6 +18,126 @@ void main() {
   tearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
   test(
+    'disabled adaptation ignores history and manual changes do not persist',
+    () async {
+      const model = 'x2.1.1-preview-cn';
+      final history = QualityHistory(model);
+      await history.write(RealtimeQualityLevel.l4, downlink: false);
+      await history.write(RealtimeQualityLevel.l5, downlink: true);
+      final controller = QualityController();
+      await controller.prepareQuality(
+        baseline: _baseline,
+        model: model,
+        minimumInputPixels: 500000,
+        isAdaptiveQualityEnabled: false,
+      );
+      expect(
+        controller.qualityConfiguration!.uplinkLevel,
+        RealtimeQualityLevel.l1,
+      );
+      expect(
+        controller.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l1,
+      );
+      expect(controller.qualityConfiguration!.minimumInputPixels, 500000);
+      await controller.completeQuality(
+        RealtimeQualityLevel.l3,
+        downlink: false,
+        success: true,
+        now: 0,
+      );
+      expect(
+        controller.qualityConfiguration!.uplinkLevel,
+        RealtimeQualityLevel.l3,
+      );
+      expect(await history.read(downlink: false), RealtimeQualityLevel.l4);
+      controller.resetQuality();
+      await controller.prepareQuality(baseline: _baseline, model: model);
+      expect(
+        controller.qualityConfiguration!.uplinkLevel,
+        RealtimeQualityLevel.l4,
+      );
+      expect(
+        controller.qualityConfiguration!.downlinkLevel,
+        RealtimeQualityLevel.l5,
+      );
+    },
+  );
+
+  for (final model in RealtimeModel.values) {
+    test(
+      '${model.value} uplink tiers retain the minimum area and alignment',
+      () {
+        for (final baseline in model.supportedVideoFormats) {
+          for (final level in RealtimeQualityLevel.values) {
+            final format = QualityVideoFormat.resolve(
+              baseline,
+              level,
+              downlink: false,
+              minimumInputPixels: model.minimumInputPixels,
+            );
+            expect(format.width % 4, 0);
+            expect(format.height % 4, 0);
+            expect(format.width * format.height, greaterThanOrEqualTo(500000));
+            expect(format.width, lessThanOrEqualTo(baseline.width));
+            expect(format.height, lessThanOrEqualTo(baseline.height));
+            expect(
+              format.width * baseline.height,
+              format.height * baseline.width,
+            );
+            expect(format.fps, lessThanOrEqualTo(baseline.fps));
+          }
+          final l5 = QualityVideoFormat.resolve(
+            baseline,
+            RealtimeQualityLevel.l5,
+            downlink: false,
+            minimumInputPixels: model.minimumInputPixels,
+          );
+          expect(l5.width * l5.height, 554880);
+          expect(l5.fps, 16);
+          final down = QualityVideoFormat.resolve(
+            baseline,
+            RealtimeQualityLevel.l5,
+            downlink: true,
+            minimumInputPixels: model.minimumInputPixels,
+          );
+          expect(down.width * down.height, 491520);
+          expect(down.fps, 24);
+        }
+      },
+    );
+  }
+
+  test('uplink alignment fallback honors the area floor without upscaling', () {
+    for (final baseline in [
+      const RealtimeVideoFormat(width: 1004, height: 600, fps: 30),
+      const RealtimeVideoFormat(width: 600, height: 1004, fps: 30),
+      const RealtimeVideoFormat(width: 512, height: 960, fps: 30),
+    ]) {
+      for (final level in RealtimeQualityLevel.values) {
+        final format = QualityVideoFormat.resolve(
+          baseline,
+          level,
+          downlink: false,
+          minimumInputPixels: 500000,
+        );
+        expect(format.width % 4, 0);
+        expect(format.height % 4, 0);
+        expect(format.width, lessThanOrEqualTo(baseline.width));
+        expect(format.height, lessThanOrEqualTo(baseline.height));
+        expect(
+          format.width * format.height,
+          greaterThanOrEqualTo(
+            baseline.width * baseline.height < 500000
+                ? baseline.width * baseline.height
+                : 500000,
+          ),
+        );
+      }
+    }
+  });
+
+  test(
     'manual completion preserves automatic adaptation and commits only accepted levels',
     () async {
       final controller = QualityController();
@@ -184,7 +304,7 @@ void main() {
         RealtimeQualityLevel.l2,
         downlink: false,
       );
-      expect((format.width, format.height, format.fps), (816, 1530, 24));
+      expect((format.width, format.height, format.fps), (896, 1680, 24));
       expect(_baseline.width, 1024);
       expect(
         QualityVideoFormat.resolve(

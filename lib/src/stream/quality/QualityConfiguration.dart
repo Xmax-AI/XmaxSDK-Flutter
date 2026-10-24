@@ -20,6 +20,7 @@ final class QualityConfiguration {
     required this.baseline,
     required this.uplinkLevel,
     required this.downlinkLevel,
+    this.minimumInputPixels = 0,
   });
 
   /// The media format that remains fixed across transport quality changes.
@@ -31,11 +32,15 @@ final class QualityConfiguration {
   /// The successfully submitted downlink target level.
   final RealtimeQualityLevel downlinkLevel;
 
+  /// The minimum uplink area, in pixels.
+  final int minimumInputPixels;
+
   /// The current uplink encoding format.
   RealtimeVideoFormat get uplink => QualityVideoFormat.resolve(
     baseline,
     uplinkLevel,
     downlink: false,
+    minimumInputPixels: minimumInputPixels,
   );
 
   /// The current downlink target format before applying server dimension alignment constraints.

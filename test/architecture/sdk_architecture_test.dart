@@ -14,9 +14,18 @@ import 'package:xmax_sdk/src/stream/quality/RealtimeQualityLevel.dart'
 
 void main() {
   test('public entry points expose the same relocated domain types', () {
-    expect(identical(RealtimeModel.x2_1, model.RealtimeModel.x2_1), isTrue);
     expect(
-      identical(RealtimeModel.x2_1, compatibility.RealtimeModel.x2_1),
+      identical(
+        RealtimeModel.x2_1_1_preview_cn,
+        model.RealtimeModel.x2_1_1_preview_cn,
+      ),
+      isTrue,
+    );
+    expect(
+      identical(
+        RealtimeModel.x2_1_1_preview_cn,
+        compatibility.RealtimeModel.x2_1_1_preview_cn,
+      ),
       isTrue,
     );
     expect(
@@ -36,16 +45,19 @@ void main() {
     );
   });
 
-  test('model capability values remain unchanged by layer relocation', () {
-    expect(RealtimeModel.values, [RealtimeModel.x2_1]);
+  test('public model capabilities expose the supported regional previews', () {
+    expect(RealtimeModel.values, [
+      RealtimeModel.x2_1_1_preview_cn,
+      RealtimeModel.x2_1_1_preview_us,
+    ]);
     expect(
-      RealtimeModel.x2_1.defaultCameraVideoFormat,
-      const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
+      RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
     );
-    expect(RealtimeModel.x2_1.supportedVideoFormats.length, 5);
-    expect(RealtimeModel.x2_1.minimumInputPixels, 600000);
-    expect(RealtimeModel.x2_1.maximumInputPixels, 2100000);
-    expect(RealtimeModel.x2_1.inputSizeAlignment, 32);
+    expect(RealtimeModel.x2_1_1_preview_cn.supportedVideoFormats.length, 2);
+    expect(RealtimeModel.x2_1_1_preview_cn.minimumInputPixels, 500000);
+    expect(RealtimeModel.x2_1_1_preview_cn.maximumInputPixels, 2100000);
+    expect(RealtimeModel.x2_1_1_preview_cn.inputSizeAlignment, 32);
   });
 
   test('lower layers do not import realtime domain types from Core', () {
@@ -109,7 +121,9 @@ void main() {
     () async {
       final api = _RecordingApi();
       final components = XmaxRealtimeFactory.make(
-        options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
+        options: const RealtimeConfiguration(
+          model: RealtimeModel.x2_1_1_preview_cn,
+        ),
         apiService: api,
       );
       expect(

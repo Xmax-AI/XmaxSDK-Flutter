@@ -21,7 +21,7 @@ void main() {
         await expectLater(
           RealtimeSessionService(
             apiService: api,
-          ).createSession(model: RealtimeModel.x2_1),
+          ).createSession(model: RealtimeModel.x2_1_1_preview_cn),
           throwsA(
             isA<XmaxError>().having(
               (error) => error.code,
@@ -36,30 +36,33 @@ void main() {
       await expectLater(
         RealtimeSessionService(
           apiService: invalid,
-        ).createSession(model: RealtimeModel.x2_1),
+        ).createSession(model: RealtimeModel.x2_1_1_preview_cn),
         throwsA(isA<XmaxError>()),
       );
       final valid = _RecordingApiService()..modelExtra = jsonEncode(extra);
       final session = await RealtimeSessionService(
         apiService: valid,
-      ).createSession(model: RealtimeModel.x2_1);
+      ).createSession(model: RealtimeModel.x2_1_1_preview_cn);
       expect(session.connection!.userID, 'rtc-user');
       expect(session.connection!.botName, 'bot');
     },
   );
-  test('x2.0-pro session request sends the iOS model identifier', () async {
-    final api = _RecordingApiService();
-    final service = RealtimeSessionService(apiService: api);
+  for (final model in RealtimeModel.values) {
+    test(
+      '${model.value} session request sends the selected model identifier',
+      () async {
+        final api = _RecordingApiService();
+        final service = RealtimeSessionService(apiService: api);
 
-    final session = await service.createSession(
-      model: RealtimeModel.x2_1,
+        final session = await service.createSession(model: model);
+
+        expect(api.method, ApiMethod.post);
+        expect(api.path, '/session');
+        expect(api.body, <String, Object?>{'model': model.value});
+        expect(session.id, 'session-pro');
+      },
     );
-
-    expect(api.method, ApiMethod.post);
-    expect(api.path, '/session');
-    expect(api.body, <String, Object?>{'model': 'x2.1'});
-    expect(session.id, 'session-pro');
-  });
+  }
 }
 
 final class _RecordingApiService implements ApiServicing {

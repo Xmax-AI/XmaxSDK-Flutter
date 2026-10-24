@@ -25,10 +25,12 @@ final class QualityDirection {
   /// - [level]: The initial level; raises the format until the bitrate budget is valid or L1 is
   ///   reached.
   /// - [downlink]: Whether to apply the downlink policy; false means uplink.
+  /// - [minimumInputPixels]: The minimum uplink area, in pixels; ignored for downlink.
   QualityDirection({
     required this.baseline,
     required this.level,
     required this.downlink,
+    this.minimumInputPixels = 0,
   }) {
     while (level != RealtimeQualityLevel.l1 && !_supports(level)) {
       level = RealtimeQualityLevel.values[level.index - 1];
@@ -40,6 +42,9 @@ final class QualityDirection {
 
   /// Whether to resolve a downlink format; false resolves uplink encoding.
   final bool downlink;
+
+  /// The minimum uplink area, in pixels; ignored for downlink.
+  final int minimumInputPixels;
 
   /// The target quality level, from 1 to 5.
   RealtimeQualityLevel level;
@@ -68,6 +73,7 @@ final class QualityDirection {
         baseline,
         level,
         downlink: downlink,
+        minimumInputPixels: minimumInputPixels,
       );
 
   /// Clears sample counters and the last sample time, retaining the level and cooldown windows.
@@ -96,6 +102,7 @@ final class QualityDirection {
           baseline,
           level,
           downlink: false,
+          minimumInputPixels: minimumInputPixels,
         ),
       );
 
@@ -167,6 +174,7 @@ final class QualityDirection {
         baseline,
         next,
         downlink: downlink,
+        minimumInputPixels: minimumInputPixels,
       ) !=
               format &&
           _supports(next)) {

@@ -44,12 +44,14 @@ abstract interface class RoomControlling {
   ///   generation canvas dimensions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   Future<void> startGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   });
 
   /// Updates task conditions; omitting the reference image clears the previous reference condition.
@@ -62,12 +64,14 @@ abstract interface class RoomControlling {
   ///   generation canvas dimensions.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   Future<void> changeGenerationCondition({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   });
 
   /// Submits result dimensions and the downlink bitrate budget for the current task.

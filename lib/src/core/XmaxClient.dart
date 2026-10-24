@@ -104,10 +104,10 @@ final class XmaxClient {
   /// Creates a service for media sizing.
   ///
   /// Parameters:
-  /// - [model]: The model whose sizing rules the service uses; defaults to X2.1.
+  /// - [model]: The model whose sizing rules the service uses; defaults to the China preview.
   ///
   /// Returns the media sizing service for the model.
   MediaServicing createMediaService({
-    RealtimeModel model = RealtimeModel.x2_1,
+    RealtimeModel model = RealtimeModel.x2_1_1_preview_cn,
   }) => MediaService(model: model);
 }

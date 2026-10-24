@@ -151,8 +151,11 @@ final class StreamController implements StreamControlling {
   /// The quality-level update currently being applied.
   Future<void>? _adaptation;
 
-  /// Whether the current task permits automatic uplink and downlink quality updates.
+  /// Whether the current task permits manual or automatic quality changes.
   bool _canAdapt = false;
+
+  /// Whether network samples may automatically adjust this connection's quality.
+  bool _isAdaptiveQualityEnabled = true;
 
   /// The number of queued or in-flight generation condition updates.
   int _conditionUpdates = 0;
@@ -236,16 +239,22 @@ final class StreamController implements StreamControlling {
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
+    int minimumInputPixels = 0,
+    bool isAdaptiveQualityEnabled = true,
   }) async {
     final version = ++_qualityVersion;
 
     await _qualityController.prepareQuality(
       baseline: baseline,
       model: model,
+      minimumInputPixels: minimumInputPixels,
+      isAdaptiveQualityEnabled: isAdaptiveQualityEnabled,
     );
     if (version != _qualityVersion) {
       return;
     }
+
+    _isAdaptiveQualityEnabled = isAdaptiveQualityEnabled;
 
     final configuration = qualityConfiguration;
 
@@ -290,7 +299,8 @@ final class StreamController implements StreamControlling {
     RealtimeNetworkQuality quality,
   ) {
     _qualityController.emitNetworkQuality(quality);
-    if (_conditionUpdates > 0 ||
+    if (!_isAdaptiveQualityEnabled ||
+        _conditionUpdates > 0 ||
         !_canAdapt ||
         _generationTaskID == null ||
         _generationCompleter != null ||
@@ -408,6 +418,7 @@ final class StreamController implements StreamControlling {
               baseline,
               level,
               downlink: false,
+              minimumInputPixels: qualityConfiguration?.minimumInputPixels ?? 0,
             ),
           );
           success = current();
@@ -818,6 +829,7 @@ final class StreamController implements StreamControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) async {
     if (taskID.trim().isEmpty) {
       throw const XmaxError(
@@ -879,6 +891,7 @@ final class StreamController implements StreamControlling {
           context: context,
           targetSize: targetSize,
           faceRestoration: faceRestoration,
+          paddingContain: paddingContain,
         ),
         completer.future,
       ]);
@@ -926,7 +939,7 @@ final class StreamController implements StreamControlling {
     }
   }
 
-  /// Wait for quality updates before changing conditions so the latest result dimensions are used.
+  /// Waits for quality updates before submitting new generation conditions.
   ///
   /// See [StreamControlling.updateGeneration] for the usage contract.
   @override
@@ -936,6 +949,7 @@ final class StreamController implements StreamControlling {
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   }) async {
     _conditionUpdates++;
 
@@ -954,8 +968,9 @@ final class StreamController implements StreamControlling {
         taskID: taskID,
         videoFormat: videoFormat,
         context: context,
-        targetSize: _targetSize ?? targetSize,
+        targetSize: targetSize,
         faceRestoration: faceRestoration,
+        paddingContain: paddingContain,
       );
     } finally {
       _conditionUpdates--;

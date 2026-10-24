@@ -18,7 +18,7 @@ import 'RealtimeQualityLevel.dart';
 abstract final class QualityVideoFormat {
 
   /// Video dimension scale factors indexed by quality level.
-  static const scales = [1.0, 0.8, 0.65, 0.5, 0.5];
+  static const scales = [1.0, 0.9, 0.75, 0.6, 0.5];
 
   /// Target uplink frame rates indexed by quality level, in fps.
   static const frameRates = [30, 24, 24, 20, 16];
@@ -67,25 +67,48 @@ abstract final class QualityVideoFormat {
   ///   updates.
   /// - [level]: The quality level to resolve, constrained to 1 through 5.
   /// - [downlink]: Whether to resolve downlink settings; the downlink budget uses a fixed 24 fps.
+  /// - [minimumInputPixels]: The minimum uplink area, capped at the baseline area;
+  ///   ignored for downlink.
   ///
   /// Returns a validated video format with dimensions, frame rate, and encoding settings.
   static RealtimeVideoFormat resolve(
     RealtimeVideoFormat baseline,
     RealtimeQualityLevel level, {
     required bool downlink,
+    int minimumInputPixels = 0,
   }) {
     final s = scale(
       baseline,
       level,
     ),
         divisor = baseline.width.gcd(baseline.height);
-    final units = ((divisor * s + 0.0000001).floor() ~/ 2) * 2;
-    final width = units >= 2
-        ? baseline.width ~/ divisor * units
-        : math.max(2, (baseline.width * s / 2).floor() * 2);
-    final height = units >= 2
-        ? baseline.height ~/ divisor * units
-        : math.max(2, (baseline.height * s / 2).floor() * 2);
+    final alignment = downlink ? 2 : 4;
+    final pixels = baseline.width * baseline.height;
+    final minimumScale = math.sqrt(
+      math.min(math.max(0, downlink ? 0 : minimumInputPixels), pixels) / pixels,
+    );
+    final minimumUnits = (divisor * minimumScale / alignment).ceil() * alignment;
+    final units = ((divisor * s + 0.0000001).floor() ~/ alignment) * alignment;
+    final resolvedUnits = math.max(units, minimumUnits);
+    final exact = units >= alignment && resolvedUnits <= divisor;
+    final width = exact
+        ? baseline.width ~/ divisor * resolvedUnits
+        : math.max(
+            alignment,
+            math.max(
+              (baseline.width * s / alignment).floor() * alignment,
+              (baseline.width * minimumScale / alignment).ceil() * alignment,
+            ),
+          );
+    final height = exact
+        ? baseline.height ~/ divisor * resolvedUnits
+        : math.max(
+            alignment,
+            math.max(
+              (baseline.height * s / alignment).floor() * alignment,
+              (baseline.height * minimumScale / alignment).ceil() * alignment,
+            ),
+          );
 
     return RealtimeVideoFormat(
       width: width,

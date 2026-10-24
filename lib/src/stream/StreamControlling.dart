@@ -53,9 +53,14 @@ abstract interface class StreamControlling {
   /// - [baseline]: The media dimensions, frame rate, and encoding settings unaffected by quality
   ///   updates.
   /// - [model]: The model identifier used to isolate quality-level history.
+  /// - [minimumInputPixels]: The model's minimum uplink area, in pixels.
+  /// - [isAdaptiveQualityEnabled]: Whether to automatically adapt quality. Disabled
+  ///   connections start at L1 without reading or saving history; manual changes remain available.
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
+    int minimumInputPixels = 0,
+    bool isAdaptiveQualityEnabled = true,
   });
 
   /// The result-stream width and height, in pixels.
@@ -160,30 +165,33 @@ abstract interface class StreamControlling {
   /// - [targetSize]: The result dimensions; when omitted, no target_size field is sent and canvas
   ///   dimensions are used.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   Future<GenerationStartConfirmation> beginGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   });
 
-  /// Wait for quality updates before changing conditions so the latest result dimensions are used.
+  /// Waits for quality updates before submitting new generation conditions.
   ///
   /// Parameters:
   /// - [taskID]: The current generation task identifier.
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   /// - [context]: The generation conditions for this request.
-  /// - [targetSize]: Fallback result dimensions before quality setup; adaptive dimensions take
-  ///   precedence. Omit if neither exists.
+  /// - [targetSize]: Explicit result dimensions; omit to leave the current return size unchanged.
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
+  /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
   Future<void> updateGeneration({
     required String taskID,
     required RealtimeVideoFormat videoFormat,
     required RealtimeContext context,
     Size? targetSize,
     bool faceRestoration = false,
+    bool paddingContain = false,
   });
 
   /// Submits result dimensions and the downlink bitrate budget for the current task.

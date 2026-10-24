@@ -11,13 +11,15 @@ void main() {
     SharedPreferencesAsyncPlatform.instance =
         InMemorySharedPreferencesAsync.withData(<String, Object>{
           'xlab.language': 'en',
-          'xlab.realtime.model': 'x2.1',
+          'xlab.realtime.model': 'x2.1.1-preview-us',
         });
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
     await tester.pumpWidget(const XLabApp());
     await tester.pumpAndSettle();
-    final proRow = find.byKey(const ValueKey<String>('model-x2.1'));
+    final proRow = find.byKey(
+      const ValueKey<String>('model-x2.1.1-preview-us'),
+    );
     expect(
       tester
           .widget<Semantics>(
@@ -30,13 +32,13 @@ void main() {
   });
 
   testWidgets(
-    'XLab falls back from a retired model and opens the realtime page with x2.1',
+    'XLab falls back from a retired model and opens the global preview',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.withData(<String, Object>{
             'xlab.language': 'en',
             'xlab.realtime.apiKey': 'test-key',
-            'xlab.realtime.model': 'x2.1.1-preview-us',
+            'xlab.realtime.model': 'x2.1',
           });
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
@@ -44,9 +46,12 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('MODELS: 1'), findsOneWidget);
       expect(find.text('X2.0 PRO'), findsNothing);
-      expect(find.text('X2.1'), findsOneWidget);
+      expect(find.text('X2.1.1-preview-cn'), findsNothing);
+      expect(find.text('X2.1.1-preview-us'), findsOneWidget);
 
-      final proRow = find.byKey(const ValueKey<String>('model-x2.1'));
+      final proRow = find.byKey(
+        const ValueKey<String>('model-x2.1.1-preview-us'),
+      );
       await tester.tap(proRow);
       await tester.pump();
       expect(
@@ -69,7 +74,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(
         tester.widget<RealtimePage>(find.byType(RealtimePage)).model,
-        RealtimeModel.x2_1,
+        RealtimeModel.x2_1_1_preview_us,
       );
     },
   );

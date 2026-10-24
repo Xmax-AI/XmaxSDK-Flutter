@@ -19,14 +19,18 @@ abstract interface class MediaServicing {
   /// The model defining input dimension constraints for this media service.
   RealtimeModel get model;
 
-  /// Validates camera preset dimensions and resolves a non-upscaled local size aligned to 4 pixels.
+  /// Resolves local media dimensions and validates camera resolution buckets.
   ///
   /// Parameters:
   /// - [sourceMediaSize]: The original local media pixel dimensions; width and height must be
   ///   positive integers.
   /// - [source]: The media source type; cameras must exactly match a model preset resolution.
   ///
-  /// Returns non-upscaled media dimensions satisfying pixel-count limits and 4-pixel alignment.
+  /// Returns dimensions aligned to 4 within the model's area limits, upscaling or
+  /// downscaling as needed and preserving the exact aspect ratio when possible.
+  ///
+  /// Throws a configuration error if dimensions are invalid or a camera bucket
+  /// does not match.
   Size resolveMediaSize(
     Size sourceMediaSize, {
     required RealtimeMediaSource source,

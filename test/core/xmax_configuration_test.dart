@@ -2,6 +2,33 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  test(
+    'realtime adaptation defaults on and participates in value equality',
+    () {
+      const enabled = RealtimeConfiguration(
+        model: RealtimeModel.x2_1_1_preview_cn,
+      );
+      const same = RealtimeConfiguration(
+        model: RealtimeModel.x2_1_1_preview_cn,
+        isAdaptiveQualityEnabled: true,
+      );
+      const disabled = RealtimeConfiguration(
+        model: RealtimeModel.x2_1_1_preview_cn,
+        isAdaptiveQualityEnabled: false,
+      );
+      expect(enabled.isAdaptiveQualityEnabled, isTrue);
+      expect(enabled, same);
+      expect(enabled.hashCode, same.hashCode);
+      expect(enabled, isNot(disabled));
+      expect(
+        enabled,
+        isNot(
+          const RealtimeConfiguration(model: RealtimeModel.x2_1_1_preview_us),
+        ),
+      );
+    },
+  );
+
   test('XmaxConfiguration trims and validates API key', () {
     final configuration = XmaxConfiguration(apiKey: '  key-123 \n');
 

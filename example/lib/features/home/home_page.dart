@@ -30,8 +30,17 @@ class _HomePageState extends State<HomePage> {
   final _preferences = SharedPreferencesAsync();
   bool _obscureApiKey = true;
   bool _isPickingImage = false;
-  RealtimeModel _selectedModel = RealtimeModel.x2_1;
+  RealtimeModel _selectedModel = RealtimeModel.x2_1_1_preview_cn;
   int _modelSelectionVersion = 0;
+
+  List<RealtimeModel> get _availableModels =>
+      XLabLocalization.shared.environment == XmaxEnvironment.china
+      ? const [RealtimeModel.x2_1_1_preview_cn]
+      : const [RealtimeModel.x2_1_1_preview_us];
+
+  RealtimeModel get _activeModel => _availableModels.contains(_selectedModel)
+      ? _selectedModel
+      : _availableModels.first;
 
   String get _minimumOS => switch (defaultTargetPlatform) {
     TargetPlatform.android => 'Android 8.0+',
@@ -53,7 +62,7 @@ class _HomePageState extends State<HomePage> {
 
     final selected = RealtimeModel.values.firstWhere(
       (model) => model.value == saved,
-      orElse: () => RealtimeModel.x2_1,
+      orElse: () => RealtimeModel.x2_1_1_preview_cn,
     );
     setState(() => _selectedModel = selected);
   }
@@ -125,7 +134,7 @@ class _HomePageState extends State<HomePage> {
     final apiKey = _apiKeyForNavigation();
     if (apiKey == null) return;
     final environment = XLabLocalization.shared.environment;
-    final model = _selectedModel;
+    final model = _activeModel;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => builder(apiKey, environment, model),
@@ -154,7 +163,7 @@ class _HomePageState extends State<HomePage> {
           builder: (_) => RealtimePage(
             apiKey: apiKey,
             environment: XLabLocalization.shared.environment,
-            model: _selectedModel,
+            model: _activeModel,
             localInput: XLabRealtimeImageInput(
               path: image.path,
               name: image.name,
@@ -373,7 +382,7 @@ class _HomePageState extends State<HomePage> {
             Text(
               XLabLocalization.shared.formatCount(
                 'feed.model.count',
-                RealtimeModel.values.length,
+                _availableModels.length,
               ),
               style: TextStyle(
                 color: Color(0x70FFFFFF),
@@ -499,11 +508,11 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 12),
-        for (final model in RealtimeModel.values) ...<Widget>[
-          if (model != RealtimeModel.values.first) const SizedBox(height: 4),
+        for (final model in _availableModels) ...<Widget>[
+          if (model != _availableModels.first) const SizedBox(height: 4),
           _ModelOptionRow(
             model: model,
-            selected: model == _selectedModel,
+            selected: model == _activeModel,
             onTap: () => _selectModel(model),
           ),
         ],

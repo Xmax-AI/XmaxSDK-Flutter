@@ -32,19 +32,20 @@ final class QualityController implements QualityControlling {
   /// The asynchronous operation revision.
   int _version = 0;
 
-  /// Loads valid model history, prepares independent link policies, and applies the initial
-  /// transport format.
+  /// Prepares independent link policies from model history or L1.
   ///
   /// See [QualityControlling.prepareQuality] for the usage contract.
   @override
   Future<void> prepareQuality({
     required RealtimeVideoFormat baseline,
     required String model,
+    int minimumInputPixels = 0,
+    bool isAdaptiveQualityEnabled = true,
   }) async {
     final version = ++_version;
-    final history = QualityHistory(model);
-    final up = await history.read(downlink: false);
-    final down = await history.read(downlink: true);
+    final history = isAdaptiveQualityEnabled ? QualityHistory(model) : null;
+    final up = await history?.read(downlink: false) ?? RealtimeQualityLevel.l1;
+    final down = await history?.read(downlink: true) ?? RealtimeQualityLevel.l1;
 
     if (version != _version) {
       return;
@@ -55,6 +56,7 @@ final class QualityController implements QualityControlling {
       baseline: baseline,
       level: up,
       downlink: false,
+      minimumInputPixels: minimumInputPixels,
     );
     _down = QualityDirection(
       baseline: baseline,
@@ -77,6 +79,7 @@ final class QualityController implements QualityControlling {
       baseline: up.baseline,
       uplinkLevel: up.level,
       downlinkLevel: down.level,
+      minimumInputPixels: up.minimumInputPixels,
     );
   }
 

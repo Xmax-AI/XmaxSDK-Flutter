@@ -25,12 +25,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('实时交互视频模型'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.china);
+    expect(find.text('X2.1.1-preview-cn'), findsOneWidget);
+    expect(find.text('X2.1.1-preview-us'), findsNothing);
 
     tester.binding.platformDispatcher.localeTestValue = const Locale('en');
     XLabLocalization.shared.systemLocaleDidChange();
     await tester.pumpAndSettle();
     expect(find.text('Realtime Interactive Video'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.global);
+    expect(find.text('X2.1.1-preview-us'), findsOneWidget);
+    expect(find.text('X2.1.1-preview-cn'), findsNothing);
   });
 
   testWidgets(

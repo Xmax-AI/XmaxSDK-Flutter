@@ -7,8 +7,8 @@ void main() {
   for (final model in RealtimeModel.values) {
     final service = MediaService(model: model);
     test('${model.value} camera accepts only exact buckets', () {
-      for (final preset in RealtimeCameraPreset.values) {
-        final size = preset.size;
+      for (final format in model.supportedVideoFormats) {
+        final size = Size(format.width.toDouble(), format.height.toDouble());
         expect(
           service.resolveMediaSize(size, source: RealtimeMediaSource.camera),
           size,
@@ -16,7 +16,7 @@ void main() {
       }
       for (final size in const [
         Size(832, 1472),
-        Size(1024, 1920),
+        Size(1080, 1920),
         Size(1024, 1919.9),
         Size(double.nan, 1920),
       ]) {
@@ -32,11 +32,19 @@ void main() {
     test('${model.value} separates generation canvas from media size', () {
       expect(
         service.resolveGenerationSize(const Size(300, 500)),
-        const Size(1080, 1920),
+        const Size(1024, 1920),
       );
       expect(
         service.resolveGenerationSize(const Size(500, 300)),
-        const Size(1920, 1080),
+        const Size(1920, 1024),
+      );
+      expect(
+        service.resolveGenerationSize(const Size(1200, 1600)),
+        const Size(1024, 1920),
+      );
+      expect(
+        service.resolveGenerationSize(const Size(1280, 720)),
+        const Size(1920, 1024),
       );
       expect(
         () => service.resolveGenerationSize(const Size(0, 300)),
@@ -44,6 +52,59 @@ void main() {
       );
     });
   }
+  test(
+    'returned sizes may fall below the input minimum at every quality tier',
+    () {
+      final service = MediaService();
+      for (final baseline in service.model.supportedVideoFormats) {
+        final source = Size(
+          baseline.width.toDouble(),
+          baseline.height.toDouble(),
+        );
+        final target = service.resolveTargetSize(
+          source,
+          maximumSize: Size(source.width / 2, source.height / 2),
+        );
+        expect(target.width * target.height, 491520);
+        expect(
+          target.width * target.height,
+          lessThan(service.model.minimumInputPixels),
+        );
+        expect(target.width % 4, 0);
+        expect(target.height % 4, 0);
+        expect(target.width * source.height, target.height * source.width);
+      }
+    },
+  );
+
+  test(
+    'camera bucket checks reject small, large, fractional and nonfinite inputs',
+    () {
+      final service = MediaService();
+      for (final size in const [
+        Size(512, 960),
+        Size(2048, 3840),
+        Size(1024, 1919.9),
+        Size.zero,
+        Size(double.infinity, 1920),
+        Size(1024, double.nan),
+      ]) {
+        expect(
+          () => service.resolveMediaSize(
+            size,
+            source: RealtimeMediaSource.camera,
+          ),
+          throwsA(
+            isA<XmaxError>().having(
+              (error) => error.code,
+              'code',
+              XmaxErrorCode.invalidConfiguration,
+            ),
+          ),
+        );
+      }
+    },
+  );
   test('target size keeps the exact aspect and respects fractional bounds', () {
     final service = MediaService();
     expect(

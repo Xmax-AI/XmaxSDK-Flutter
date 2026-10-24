@@ -9,11 +9,14 @@
 //
 
 import 'dart:async';
+import 'dart:ui';
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/media/camera/CameraPosition.dart';
 import '../../foundation/rtc/VideoStatistics.dart';
 import '../../media/MediaControlling.dart';
+import '../../service/media/MediaService.dart';
+import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
 import '../../service/realtime/RealtimeCameraPreset.dart';
 import '../../service/realtime/RealtimeContext.dart';
@@ -78,6 +81,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       connectionManager: connectionManager,
       generationManager: generationManager,
       errorManager: errorManager,
+      mediaService: MediaService(model: options.model),
     ),
   );
 
@@ -94,7 +98,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
        _connectionManager = components.connectionManager,
        _generationManager = components.generationManager,
        _errorManager = components.errorManager,
-       _lifecycleManager = components.lifecycleManager;
+       _lifecycleManager = components.lifecycleManager,
+       _mediaService = components.mediaService;
 
   /// The realtime model configuration used by this manager.
   @override
@@ -117,6 +122,9 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /// The coordinator owning state, operation revisions, and resource termination.
   final XmaxRealtimeLifecycleManager _lifecycleManager;
+
+  /// The shared rules resolving generation canvases independently of capture dimensions.
+  final MediaServicing _mediaService;
 
   /// The current realtime lifecycle state.
   RealtimeState get _state => _lifecycleManager.currentState;
@@ -624,6 +632,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       await _streamController.prepareQuality(
         baseline: videoFormat,
         model: options.model.value,
+        minimumInputPixels: options.model.minimumInputPixels,
+        isAdaptiveQualityEnabled: options.isAdaptiveQualityEnabled,
       );
 
       final remoteStream = await _connectionManager.connect(
@@ -832,6 +842,20 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       );
     }
 
+    final generationSize = _mediaService.resolveGenerationSize(
+      Size(
+        videoFormat.width.toDouble(),
+        videoFormat.height.toDouble(),
+      ),
+    );
+    final generationFormat = videoFormat.resized(
+      width: generationSize.width.toInt(),
+      height: generationSize.height.toInt(),
+    );
+    final paddingContain =
+        videoFormat.width * generationFormat.height !=
+        videoFormat.height * generationFormat.width;
+
     final activeTaskID =
         _state.taskID ?? _lifecycleManager.startingGenerationTaskID;
 
@@ -842,6 +866,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
           videoFormat: videoFormat,
           context: context,
           faceRestoration: faceRestoration,
+          generationVideoFormat: generationFormat,
+          paddingContain: paddingContain,
         );
 
         return _PreparedGenerationTask(
@@ -872,6 +898,8 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
         videoFormat: videoFormat,
         context: context,
         faceRestoration: faceRestoration,
+        generationVideoFormat: generationFormat,
+        paddingContain: paddingContain,
         ensureCurrent: () => _lifecycleManager.ensureCurrent(version),
       );
 
