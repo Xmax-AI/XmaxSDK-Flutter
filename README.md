@@ -348,19 +348,13 @@ The same configuration is available in the example's
 
 ## Quick Start
 
-`XmaxConfiguration` uses `XmaxEnvironment.china` by default. For the overseas
-service, set `environment: XmaxEnvironment.global` when creating `XmaxClient`.
-This controls realtime-session and storage-service routing as well as log
-language. Select `RealtimeModel.x2_1_1_preview_cn` for the China preview or
-`RealtimeModel.x2_1_1_preview_us` for the global preview. Model selection and
-service environment are separate settings; choose the appropriate pair for your deployment.
-XLab selects the regional preview model for its language-selected environment.
+Complete the [host configuration](#host-configuration) before running these examples.
 
-### Generate and display video
+### Create a client
 
-The following Flutter widget creates a camera stream, starts real-time generation,
-and binds the local and generated video tracks. Keep the manager and streams in
-widget state for the lifetime of the screen.
+Create a client and a realtime manager for your screen. This example uses the China
+service; for the global service, use `XmaxEnvironment.global` and
+`RealtimeModel.x2_1_1_preview_us`.
 
 ```dart
 import 'dart:async';
@@ -368,257 +362,68 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
-class RealtimePage extends StatefulWidget {
-  const RealtimePage({super.key});
-
-  @override
-  State<RealtimePage> createState() => _RealtimePageState();
-}
-
-class _RealtimePageState extends State<RealtimePage> {
-  static const _model = RealtimeModel.x2_1_1_preview_cn;
-  late final XmaxRealtimeManaging _realtime;
-  RealtimeMediaStream? _localStream;
-  RealtimeMediaStream? _remoteStream;
-
-  @override
-  void initState() {
-    super.initState();
-
-    final client = XmaxClient(
-      configuration: XmaxConfiguration(apiKey: 'YOUR_XMAX_API_KEY'),
-    );
-    _realtime = client.createRealtimeManager(
-      options: const RealtimeConfiguration(model: _model),
-    );
-    unawaited(_start());
-  }
-
-  Future<void> _start() async {
-    final localStream = await _realtime.createLocalCameraStream();
-    if (!mounted) return;
-    setState(() => _localStream = localStream);
-
-    final remoteStream = await _realtime.startGeneration(
-      localStream: localStream,
-      context: RealtimeContext(
-        prompt: '视频中角色替换成参考图中角色',
-        referencePath:
-            'https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg',
-      ),
-    );
-    if (!mounted) return;
-    setState(() => _remoteStream = remoteStream);
-  }
-
-  @override
-  void dispose() {
-    unawaited(_realtime.close());
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final localStream = _localStream;
-    if (localStream == null) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return XmaxRealtimeDualVideo(
-      localTrack: localStream.videoTrack,
-      remoteTrack: _remoteStream?.videoTrack,
-      videoContentMode: VideoContentMode.fill,
-    );
-  }
-}
-```
-
-Both preview models default to 1024×1920 at 30 fps and support 1024×1920
-and 1920×1024 camera formats. Create a stream without arguments to use the
-model's default format and front camera, or provide a supported capture format:
-
-```dart
-final localStream = await _realtime.createLocalCameraStream(
-  videoFormat: const RealtimeVideoFormat(width: 1920, height: 1024, fps: 30),
-  position: CameraPosition.back,
+final client = XmaxClient(
+  configuration: XmaxConfiguration(apiKey: 'YOUR_XMAX_API_KEY'),
 );
-```
-
-Camera dimensions must exactly match an entry in `supportedVideoFormats`.
-The existing `RealtimeCameraPreset` values are model-dependent and are not
-supported by these preview models; use the default or an explicit format.
-Providing both `videoFormat` and `preset` is invalid.
-
-To include microphone audio, opt in when creating the camera stream:
-
-```dart
-final localStream = await realtime.createLocalCameraStream(useMicrophone: true);
-```
-
-The default is `false`. Microphone permission is requested during stream creation,
-but capture starts only when connecting to realtime. The SDK uses Agora's built-in
-microphone capture and publishes the audio with the camera stream, without local
-microphone playback. Disconnecting stops microphone capture while retaining camera
-preview; reconnecting the same stream starts capture again. Closing the manager or
-stopping the camera stream also releases microphone capture.
-
-`setLocalAudioVolume` does not control microphone input. `setRemoteAudioVolume`
-controls generated audio playback independently and remains muted after stream
-creation until your app enables it.
-
-`XmaxRealtimeDualVideo` is the recommended video container. It keeps local
-preview mounted beneath the remote result, reveals the result after its first
-rendered frame, and restores preview when generation stops. Its
-`remoteVideoFadeInDuration` is measured in seconds and defaults to `0.3`. Set it
-to `0` to disable the transition; negative or nonfinite values also disable it.
-Changes apply to the next fade-in, without changing an animation in progress.
-
-For picture-in-picture or other custom layouts, compose separate
-`XmaxRealtimeVideo(track: ...)` widgets for the local and remote tracks.
-
-While the preview is ready and disconnected,
-update the capture format without recreating the stream or view:
-
-```dart
-await _realtime.updateCameraFormat(
-  videoFormat: const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
-);
-final format = await _realtime.currentCameraVideoFormat;
-```
-
-Use either `preset` (preserves the current frame rate and encoding settings) or
-`videoFormat` (provides a complete format), but not both.
-
-The widget keeps the local camera preview underneath the generated video, enables
-touch interaction by default, and returns to the local preview after
-`disconnect()`.
-
-To display a loading overlay, keep it visible after `startGeneration()` returns
-and bind the returned remote track. Dismiss the overlay in the optional
-`onRemoteVideoReady` callback, which fires when the first remote frame has been
-rendered and the view starts showing it. Condition updates do not repeat this
-notification; a new remote binding cycle does.
-
-The SDK adapts uplink encoding and the returned video size independently as
-network quality changes. Capture settings and the model's generation canvas stay
-fixed. Recent successful quality levels are remembered per model for one hour.
-During generation, call `setUplinkQualityLevel(RealtimeQualityLevel.l1)` or
-`setDownlinkQualityLevel(RealtimeQualityLevel.l3)` to adjust a direction manually.
-Manual changes do not change the automatic adaptation setting. To disable
-automatic adaptation, pass `isAdaptiveQualityEnabled: false` to
-`RealtimeConfiguration`. Each connection then starts at L1 without reading or
-saving quality history, while manual changes remain available. Read the applied levels through
-`uplinkQualityLevel` and `downlinkQualityLevel`; both are `null` before connection
-completes or once disconnection starts. Downlink changes report the submitted
-target, which may precede the corresponding video frames.
-
-Uplink dimensions remain aligned to 4 pixels and retain at least 200000 pixels
-for both preview models, even at lower quality levels. This input minimum does
-not constrain returned video dimensions. The SDK resolves the generation canvas
-separately and automatically requests contain padding when its aspect ratio
-differs from the local media. Condition updates leave the current return size unchanged.
-
-The default encoder preference is `maintainFramerate`. Unless explicitly set,
-the uplink minimum bitrate is 500 kbps, capped at the resolved maximum bitrate.
-
-Subscribe to `setUplinkVideoStatisticsListener` and
-`setDownlinkVideoStatisticsListener` to display resolution, frame rate, bitrate,
-packet loss, and media delay. Statistics become `null` when their stream ends.
-These listeners work independently of logging and network-quality listeners.
-
-An unfinished `startGeneration()` request is replaced by a newer call, including
-while waiting for the first remote frame. The replaced future completes with
-`XmaxErrorCode.cancelled` after cleanup. During established generation, condition
-updates use the existing task without repeating first-frame loading. Other
-foreground operations, such as switching cameras or manually changing quality,
-are mutually exclusive and reject conflicting calls.
-
-State listeners receive the current snapshot on registration and subsequently
-only changed snapshots. Successful completion releases operation admission before
-notifying your app, so a listener can start the next operation immediately.
-
-For virtual try-on, pass `faceRestoration: true` to `startGeneration` to retain
-the original face. The default is `false`; every condition update sends the value
-provided for that call. Switching cameras automatically restores the cached
-generation condition and face-restoration setting.
-
-Camera generation audio is muted by default. To hear it, call
-`await _realtime.setRemoteAudioVolume(0.8)` after creating the local stream;
-the setting is applied when the generated stream is selected. Read it with
-`await _realtime.remoteAudioVolume` (rounded to hundredths). Stopping generation
-or disconnecting preserves the setting; creating a new camera or external stream resets it
-to zero. Before the first stream is created, remote volume defaults to `1.0`.
-
-Neither camera input nor external PCM input has local audio playback.
-`await _realtime.localAudioVolume` returns `0.45`, and valid calls to
-`setLocalAudioVolume()` succeed without changing it. Both volume setters reject
-non-finite values and values outside `0...1`.
-
-To update an active generation task, submit a new context without another local
-stream:
-
-```dart
-await realtime.startGeneration(
-  context: RealtimeContext(
-    prompt: '视频中人物衣服替换成参考图中衣服',
-    referencePath: anotherReferenceImageURL,
+late final realtime = client.createRealtimeManager(
+  options: const RealtimeConfiguration(
+    model: RealtimeModel.x2_1_1_preview_cn,
   ),
 );
 ```
 
-Switch between the front and rear cameras without rebuilding the manager:
-
-```dart
-final switchedStream = await realtime.switchCamera();
-```
-
 <br>
 
-### External capture
+### Generate and display video
 
-Extend `RealtimeExternalVideoSource` to supply your app's video and optional audio.
-Implement `start()` and `stop()` to manage frame delivery; your app owns the capture
-device or player.
+Keep the manager and streams in your widget's state, and display the local track
+before starting generation. `XmaxRealtimeDualVideo` switches from preview to the
+generated video when its first frame is ready.
 
 ```dart
-final localStream = await realtime.createExternalVideoStream(source: source);
+RealtimeMediaStream? localStream;
+RealtimeMediaStream? remoteStream;
 
-// Bind localStream.videoTrack to XmaxRealtimeDualVideo.localTrack as usual.
-final remoteStream = await realtime.startGeneration(
-  localStream: localStream,
-  context: RealtimeContext(prompt: 'Transform the supplied video'),
-);
+Future<void> startGeneration() async {
+  final local = await realtime.createLocalCameraStream();
+  if (!mounted) return;
+  setState(() => localStream = local);
 
-await realtime.disconnect(); // External delivery and local preview continue.
-await realtime.stopExternalVideoStream(); // Detach after disconnecting.
+  final remote = await realtime.startGeneration(
+    localStream: local,
+    context: RealtimeContext(
+      prompt: '视频中角色替换成参考图中角色',
+      referencePath:
+          'https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg',
+    ),
+  );
+  if (!mounted) return;
+  setState(() => remoteStream = remote);
+}
 ```
 
-Submit frames through the supplied sink:
+```dart
+@override
+Widget build(BuildContext context) {
+  final local = localStream;
+  if (local == null) {
+    return const Center(child: CircularProgressIndicator());
+  }
 
-- Video: use `pushVideo()` with upright BGRA or video-range NV12 pixels, with mirroring already applied.
-- Optional audio: set `hasAudio` to `true` and use `pushAudio()` with interleaved, little-endian PCM16 or Float32 samples.
-- Await submissions of each media type. Use nonnegative, strictly increasing timestamps on one shared monotonic timeline, including seeks and playback loops.
-
-The SDK scales video to the model's encoding limits. See the
-[source and sink API](lib/src/media/external/RealtimeExternalVideoSource.dart)
-for the full contract, or
-[XLab's file-input example](example/lib/features/realtime/realtime_file_video_source.dart)
-for a working implementation.
+  return XmaxRealtimeDualVideo(
+    localTrack: local.videoTrack,
+    remoteTrack: remoteStream?.videoTrack,
+  );
+}
+```
 
 <br>
 
 ### Listen for events
 
-After creating `realtime`, register the listeners you need before creating the
-input stream or starting generation.
-
-| Listener | Purpose |
-| --- | --- |
-| `setStateListener` | Observe `idle → preparing → ready → connecting → connected → generating` and any failure reason. `ready` follows the first camera frame and mounted preview. |
-| `setNetworkQualityListener` | Monitor uplink and downlink network quality. |
-| `setPerformanceAlarmListener` | Detect device performance limitations or recovery, with a suggested video format when available. |
-
-For example, monitor state changes and errors:
+Register listeners before creating the input stream. Observe state changes and
+runtime failures through `setStateListener`, and handle errors from awaited calls
+with `try` / `catch`.
 
 ```dart
 await realtime.setStateListener((state) {
@@ -630,195 +435,49 @@ await realtime.setStateListener((state) {
 });
 ```
 
-Handle errors from explicit method calls with `try` / `catch` around the awaited
-call. Runtime failures are reported through `state.reason?.error`.
-
 <br>
 
-### Resource Cleanup
+### Resource cleanup
 
-- **`disconnect()` — Stop Remote Generation**
-
-  Ends the remote session and cancels billing while keeping the local camera stream
-  and preview active. A new session can later use the same local stream:
-
-  ```dart
-  await realtime.disconnect();
-  ```
-
-- **`close()` — Full Teardown & Release**
-
-  Ends the remote session, stops local media capture, and releases all RTC resources.
-  Use this when leaving the generation screen:
-
-  ```dart
-  await realtime.close();
-  ```
-
-  If another manager owns the shared RTC engine, closing a waiting manager cancels
-  its queued acquisition without stopping the active owner's preview. Native
-  initialization already in progress finishes and releases its resources before
-  teardown completes.
-
-> **Note:** `disconnect()` and `close()` are alternatives, not sequential steps.
-> When exiting a screen, call `close()` directly—there is no need to call
-> `disconnect()` first.
-
-<br>
-
-### Remote audio and video frames
-
-Register one listener to receive the result user's decoded video and PCM audio:
+Use `disconnect()` to stop generation while keeping the local preview active:
 
 ```dart
-await realtime.setRemoteMediaFrameListener((frame) async {
-  // Your recorder or processor should return a Future for asynchronous work.
-  await recorder.append(frame);
-});
-
-// Stop observation and discard queued delivery without changing playback.
-await realtime.setRemoteMediaFrameListener(null);
+await realtime.disconnect();
 ```
 
-Each `RealtimeMediaFrame` carries a `streamID`, an `isDiscontinuous` flag, and
-`content`: either a `RealtimeVideoFrame` or a `RealtimeAudioFrame`. Video is
-owned, tightly packed planar I420 (Y, then U, then V), with dimensions and
-clockwise display rotation. Audio is owned, interleaved little-endian PCM16,
-with sample rate, channel count, and samples per channel. Treat the bytes as
-read-only.
-
-Both tracks use `presentationTimeStamp` on the same receiver rendering timeline,
-not the source file's timecode. Audio time advances by sample count, even when
-native callbacks arrive in batches. Schedule or mux both tracks using one origin;
-callbacks are delivered in arrival order, not sorted across tracks by timestamp.
-A changed stream identity, discontinuity, format change, or clock jump may require
-a new recording segment.
-
-Callbacks run serially on the manager's Dart isolate and do not require a mounted
-video widget. Keep synchronous work short; move encoding and blocking I/O to native
-code or another isolate. The SDK delivery queue retains at most 256 packets and
-32 MiB, including a running callback. A slow asynchronous consumer causes new
-packets to be dropped; the next admitted event of that track reports a
-discontinuity without compressing its timeline. These limits apply to SDK delivery,
-not memory retained by your app or the transport plugin. Listener removal discards
-queued events; an already-running callback may finish.
-
-Observation is disabled by default and does not change audio subscriptions or
-playback volume. XLab's external-capture page demonstrates recording these output
-frames as H.264/AAC MP4, with native background encoding and gallery saving.
-Recording stops when generation ends; changing video dimensions or stream identity
-ends the current recording. Gallery saving in the Android example requires
-Android 10 or later; this does not restrict the SDK's frame callback API.
-
-### Touch interaction
-
-During an active generation task, `XmaxRealtimeDualVideo` captures multi-touch
-trajectories over the generated video, converts them into video coordinates, and
-submits them to the active task. Trajectory interaction and the default visual
-effect are enabled by default.
-
-Disable interaction when touch input belongs to the surrounding interface:
+Call `close()` when leaving the screen to release all SDK resources; there is no
+need to disconnect first.
 
 ```dart
-XmaxRealtimeDualVideo(
-  localTrack: localStream.videoTrack,
-  remoteTrack: remoteStream?.videoTrack,
-  isInteractionEnabled: false,
-)
-```
-
-Provide a `TrajectoryEffectRendering` implementation to customize the local touch
-effect. A runnable implementation is available in
-[`xlab_trajectory_renderer.dart`](example/lib/features/realtime/xlab_trajectory_renderer.dart).
-
-<br>
-
-### Reference image upload
-
-`RealtimeContext.referencePath` accepts a supported remote reference-image URL.
-Upload an on-device image through the storage manager before using it as a
-generation condition:
-
-```dart
-final storage = client.createStorageManager();
-
-final uploaded = await storage.uploadImage(
-  at: Uri.file('/path/to/reference.jpg'),
-  contentType: 'image/jpeg',
-);
-
-final referenceImageURL = uploaded.url.toString();
-```
-
-Use `uploadImageWithSafetyCheck()` when the image must pass the Xmax safety check.
-The storage manager obtains temporary credentials from Xmax; Tencent Cloud
-credentials are not embedded in the host application.
-
-<br>
-
-### File transfer cancellation
-
-Pass an optional cancellation token to `uploadImage()`,
-`uploadImageWithSafetyCheck()`, `uploadVideo()`, `downloadImage()`, or `downloadVideo()`.
-Existing calls without a token remain unchanged:
-
-```dart
-final cancellation = XmaxStorageCancellationToken();
-final downloading = storage.downloadImage(
-  from: remoteImageURL,
-  to: localFileURL,
-  cancellationToken: cancellation,
-);
-
-// For example, call this when the user cancels the download.
-cancellation.cancel();
-
-try {
-  await downloading;
-} on XmaxError catch (error) {
-  if (error.code != XmaxErrorCode.cancelled) rethrow;
+@override
+void dispose() {
+  unawaited(realtime.close());
+  super.dispose();
 }
 ```
 
-Cancellation aborts only the associated download, preserves an existing destination,
-and removes staged data before the future completes with `XmaxErrorCode.cancelled`.
-Once destination replacement starts, cancellation cannot undo it.
+<br>
 
-For uploads, the token also cancels credential retrieval and optional image safety
-checks. COS cancellation targets only the associated native upload task. If task
-registration is still in progress, cancellation waits for its handle before
-releasing it. Objects already received by cloud storage are not deleted automatically.
+### Upload a reference image
 
-Create a new token for each transfer; a cancelled token cannot be reset. Sharing a
-token cancels all transfers using it. Cancelling a completed transfer does not
-change its result. Download progress preserves transferred bytes when the total
-size is unknown: `totalBytes` and `fractionCompleted` remain zero until completion,
-when the actual total is reported.
+`RealtimeContext.referencePath` accepts a remote image URL. Upload a local image
+through the storage manager and pass the returned URL as the reference.
+
+```dart
+final storage = client.createStorageManager();
+final uploaded = await storage.uploadImage(
+  at: Uri.file('/path/to/reference.jpg'),
+);
+final referenceImageURL = uploaded.url.toString();
+```
 
 <br>
 
-### Logging
-
-SDK logging is disabled by default. Enable business logs, performance logs, or both
-when creating the client:
-
-```dart
-final client = XmaxClient(
-  configuration: XmaxConfiguration(
-    apiKey: 'YOUR_XMAX_API_KEY',
-    loggerOptions: XmaxLoggerOption.all,
-  ),
-);
-```
-
-Logging configuration is process-wide and shared by all `XmaxClient` instances.
-Log titles remain bilingual. Detail labels use Chinese for `XmaxEnvironment.china`
-and English for `XmaxEnvironment.global`; the most recently created client's
-configuration applies process-wide, matching the iOS SDK.
-
-Enabled logs are sent to iOS unified logging (`ai.xmax.XmaxSDK` / `XmaxSDK`)
-or Android Logcat (`XmaxSDK`), and are also available in Dart DevTools. Native
-logging is registered automatically with the SDK; no host-app setup is required.
+See the [XLab realtime example](example/lib/features/realtime/realtime_page.dart)
+for external capture, recording, touch interaction, and quality controls. Detailed
+contracts are documented in the
+[realtime API](lib/src/core/realtime/XmaxRealtimeManaging.dart) and
+[storage API](lib/src/core/storage/XmaxStorageManaging.dart).
 
 <br>
 
