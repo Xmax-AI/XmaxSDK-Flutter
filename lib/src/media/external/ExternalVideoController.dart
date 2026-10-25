@@ -12,7 +12,6 @@ import 'package:flutter/widgets.dart';
 
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
-import '../../foundation/rtc/RtcManager.dart';
 import '../../foundation/rtc/RtcManaging.dart';
 import '../../foundation/rtc/VideoEncodingConfiguration.dart';
 import '../../foundation/tasks/OperationCancellation.dart';
@@ -134,9 +133,7 @@ final class ExternalVideoController implements ExternalVideoControlling {
       operation.check();
       VideoRenderRegistry.register(
         track,
-        _rtcManager is RtcManager
-            ? LocalVideoRenderBinding.fromStream(_rtcManager.localStream)
-            : const LocalVideoRenderBinding.external(),
+        LocalVideoRenderBinding.fromStream(_rtcManager.localStream),
       );
       await operation.wait(source.start(sink: sink));
       operation.check();

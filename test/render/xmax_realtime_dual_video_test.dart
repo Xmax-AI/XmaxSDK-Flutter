@@ -5,6 +5,7 @@ import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
 import 'package:xmax_sdk/src/render/RenderController.dart';
 import 'package:xmax_sdk/src/render/video/VideoTextureFrameObserver.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/media/interaction/InteractionFrame.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryBinding.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryRegistry.dart';
@@ -48,7 +49,10 @@ void main() {
       final local = createRealtimeVideoTrack(id: 'persistent-local');
       final first = createRealtimeVideoTrack(id: 'first-result');
       final second = createRealtimeVideoTrack(id: 'second-result');
-      VideoRenderRegistry.register(local, const LocalVideoRenderBinding());
+      VideoRenderRegistry.register(
+        local,
+        LocalVideoRenderBinding.fromStream(const LocalStream()),
+      );
       for (final track in [first, second]) {
         VideoRenderRegistry.register(
           track,
@@ -448,7 +452,10 @@ void main() {
     (tester) async {
       final local = createRealtimeVideoTrack(id: 'local');
       final remote = createRealtimeVideoTrack(id: 'remote');
-      VideoRenderRegistry.register(local, const LocalVideoRenderBinding());
+      VideoRenderRegistry.register(
+        local,
+        LocalVideoRenderBinding.fromStream(const LocalStream()),
+      );
       VideoRenderRegistry.register(
         remote,
         const RemoteVideoRenderBinding(
@@ -548,7 +555,10 @@ void main() {
     var attachments = 0;
     VideoRenderRegistry.register(
       localTrack,
-      LocalVideoRenderBinding(onPreviewAttached: () => attachments += 1),
+      LocalVideoRenderBinding.fromStream(
+        const LocalStream(),
+        onPreviewAttached: () => attachments += 1,
+      ),
     );
     addTearDown(() => VideoRenderRegistry.unregister(localTrack));
 
@@ -612,7 +622,10 @@ void main() {
   ) async {
     final localTrack = createRealtimeVideoTrack(id: 'local-preview');
     final remoteTrack = createRealtimeVideoTrack(id: 'remote-result');
-    VideoRenderRegistry.register(localTrack, const LocalVideoRenderBinding());
+    VideoRenderRegistry.register(
+      localTrack,
+      LocalVideoRenderBinding.fromStream(const LocalStream()),
+    );
     VideoRenderRegistry.register(
       remoteTrack,
       const RemoteVideoRenderBinding(

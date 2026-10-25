@@ -14,6 +14,20 @@ import 'package:xmax_sdk/src/stream/quality/RealtimeQualityLevel.dart'
     as quality;
 
 void main() {
+  test('local preview controllers depend only on the RTC interface', () {
+    for (final path in [
+      'lib/src/media/camera/CameraController.dart',
+      'lib/src/media/external/ExternalVideoController.dart',
+    ]) {
+      final source = File(path).readAsStringSync();
+      expect(source, isNot(contains('/RtcManager.dart')), reason: path);
+      expect(source, isNot(contains('is RtcManager')), reason: path);
+      expect(source, isNot(contains('as RtcManager')), reason: path);
+      expect(source, contains('_rtcManager.localStream'), reason: path);
+      expect(source, contains('LocalVideoRenderBinding.fromStream'), reason: path);
+    }
+  });
+
   test(
     'public video widgets distinguish single-track and dual-track rendering',
     () {

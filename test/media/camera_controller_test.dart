@@ -1,9 +1,11 @@
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/media/camera/CameraPosition.dart';
 import 'package:xmax_sdk/src/foundation/errors/XmaxError.dart';
 import 'package:xmax_sdk/src/foundation/permissions/PermissionManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
@@ -19,6 +21,62 @@ import 'package:xmax_sdk/xmax_sdk.dart' show RealtimeModel;
 import 'package:xmax_sdk/src/service/media/RealtimeMediaSource.dart';
 
 void main() {
+  test('camera preview uses the RTC interface input and mount callback', () async {
+    final rtc = _FakeRtc();
+    final camera = CameraController(
+      rtcManager: rtc,
+      permissionManager: const _AllowedPermissions(),
+    );
+    var ready = 0;
+    camera.setPreviewReadyListener(() => ready++);
+    final local = await camera.createLocalCameraStream(
+      videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+      position: CameraPosition.front,
+    );
+    addTearDown(camera.stopLocalCameraStream);
+
+    final binding = VideoRenderRegistry.handleFor(local.videoTrack!)!.value
+        as LocalVideoRenderBinding;
+    expect(rtc.captureStarts, 1);
+    expect(binding.engine, same(rtc.previewEngine));
+    expect(binding.sourceType, VideoSourceType.videoSourceCamera);
+    rtc.notifyPreviewReady();
+    expect(ready, 0);
+    binding.onPreviewAttached!();
+    expect(ready, 1);
+    binding.onPreviewAttached!();
+    expect(ready, 1);
+  });
+
+  test('unavailable RTC input rolls back capture and permits retry', () async {
+    final rtc = _FakeRtc()..localStreamError = StateError('input unavailable');
+    final camera = CameraController(
+      rtcManager: rtc,
+      permissionManager: const _AllowedPermissions(),
+    );
+    await expectLater(
+      camera.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+      ),
+      throwsA(isA<XmaxError>()),
+    );
+    expect(camera.currentTrack, isNull);
+    expect(rtc.captureStarts, 1);
+    expect(rtc.captureStops, 1);
+
+    rtc.localStreamError = null;
+    final local = await camera.createLocalCameraStream(
+      videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+      position: CameraPosition.front,
+    );
+    final binding = VideoRenderRegistry.handleFor(local.videoTrack!)!.value
+        as LocalVideoRenderBinding;
+    expect(binding.engine, same(rtc.previewEngine));
+    await camera.stopLocalCameraStream();
+    expect(VideoRenderRegistry.handleFor(local.videoTrack!), isNull);
+  });
+
   test(
     'microphone remains disabled and permission is skipped by default',
     () async {
@@ -526,6 +584,15 @@ final class _ResizingMediaService implements MediaServicing {
 }
 
 final class _FakeRtc implements RtcManaging {
+  final previewEngine = _PreviewEngine();
+  Object? localStreamError;
+
+  @override
+  LocalStream get localStream {
+    if (localStreamError case final error?) throw error;
+    return LocalStream(engine: previewEngine);
+  }
+
   int audioStarts = 0;
   int audioStops = 0;
   Object? audioStartError;
@@ -651,4 +718,9 @@ final class _FakeRtc implements RtcManaging {
     final error = switchError;
     if (error != null) throw error;
   }
+}
+
+class _PreviewEngine implements RtcEngineEx {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

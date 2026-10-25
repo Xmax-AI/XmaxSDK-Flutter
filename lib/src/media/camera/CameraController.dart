@@ -15,7 +15,6 @@ import '../../foundation/logging/XmaxLogger.dart';
 import '../../foundation/media/camera/CameraPosition.dart';
 import '../../foundation/permissions/PermissionManager.dart';
 import '../../foundation/permissions/PermissionManaging.dart';
-import '../../foundation/rtc/RtcManager.dart';
 import '../../foundation/rtc/RtcManaging.dart';
 import '../../render/video/VideoRenderBinding.dart';
 import '../../render/video/VideoRenderRegistry.dart';
@@ -150,8 +149,7 @@ final class CameraController implements CameraControlling {
         await _permissionManager.ensureMicrophonePermission();
       }
 
-      // RtcManager.destroy() clears native callbacks.
-      // Retain the preview listener and register it again when recreating the camera stream.
+      // Engine release clears native callbacks; rebind readiness for this capture lifecycle.
       _rtcManager.setCameraPreviewReadyListener(() => _capturedFrame(track));
       await _rtcManager.switchCamera(position: position);
       await _rtcManager.startVideoCapture(
@@ -163,14 +161,10 @@ final class CameraController implements CameraControlling {
       // Register preview rendering only after camera capture starts successfully.
       VideoRenderRegistry.register(
         track,
-        _rtcManager is RtcManager
-            ? LocalVideoRenderBinding.fromStream(
-              _rtcManager.localStream,
-              onPreviewAttached: () => _previewAttached(track),
-            )
-            : LocalVideoRenderBinding(
-              onPreviewAttached: () => _previewAttached(track),
-            ),
+        LocalVideoRenderBinding.fromStream(
+          _rtcManager.localStream,
+          onPreviewAttached: () => _previewAttached(track),
+        ),
       );
       _activeTrack = track;
       _useMicrophone = useMicrophone;

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Resolve camera and external preview bindings through the RTC interface, removing concrete-manager checks and alternate binding constructors.
 - Add opt-in `setRemoteMediaFrameListener` for owned I420 video and premixing PCM, shared receiver timestamps, sample-based audio continuity, bounded serial delivery, and stale-stream rejection.
 - Add XLab external-capture recording controls with background H.264/AAC encoding, timestamp-preserving MP4 muxing, and photo-library saving.
 - Separate realtime startup timing into session creation, RTC room join, local stream publication, and first-frame arrival, with consistent localized success and failure summaries.

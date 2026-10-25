@@ -14,6 +14,7 @@ import 'RemoteStream.dart';
 
 import '../media/camera/CameraPosition.dart';
 import '../media/video/RealtimeExternalVideoFrame.dart';
+import 'LocalStream.dart';
 import 'RoomJoinConfiguration.dart';
 import 'RtcEventListener.dart';
 import 'RtcQualityListener.dart';
@@ -21,6 +22,12 @@ import 'VideoEncodingConfiguration.dart';
 
 /// An interface for RTC capture, encoding, rooms, publication, subscriptions, and volume.
 abstract interface class RtcManaging {
+
+  /// The current local input binding, independent of view mounting and room publication.
+  ///
+  /// Available after initialization succeeds and until the engine lease is released.
+  /// Reads do not start capture or create a preview. Throws if no engine lease is held.
+  LocalStream get localStream;
 
   /// Observes decoded video and premixing PCM for one result binding without changing playback.
   ///

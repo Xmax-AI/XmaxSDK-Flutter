@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeConnectionManager.dart';
@@ -353,6 +354,9 @@ class _Fixture {
 }
 
 class _Rtc implements RtcManaging {
+  @override
+  LocalStream get localStream => const LocalStream();
+
   RtcEventListener? listener;
   RtcQualityListener? quality;
   @override

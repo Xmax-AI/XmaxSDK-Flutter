@@ -5,6 +5,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/media/external/ExternalVideoController.dart';
 import 'package:xmax_sdk/src/media/external/ExternalVideoFrameSink.dart';
@@ -105,12 +106,10 @@ void main() {
       expect(stream.videoTrack, same(controller.currentTrack));
       expect(controller.currentTrack!.position, isNull);
       expect(controller.hasAudio, isFalse);
-      expect(
-        (VideoRenderRegistry.handleFor(stream.videoTrack!)!.value
-                as LocalVideoRenderBinding)
-            .sourceType,
-        VideoSourceType.videoSourceCustom,
-      );
+      final binding = VideoRenderRegistry.handleFor(stream.videoTrack!)!.value
+          as LocalVideoRenderBinding;
+      expect(binding.engine, same(rtc.previewEngine));
+      expect(binding.sourceType, VideoSourceType.videoSourceCustom);
       expect(source.sink!.isRequestingFrames, isTrue);
       expect(rtc.videos, isEmpty);
       await source.sink!.pushVideo(pixels(), timestamp: Duration.zero);
@@ -374,6 +373,12 @@ class FakeExternalSource extends RealtimeExternalVideoSource {
 }
 
 class FakeExternalRtc implements RtcManaging {
+  final previewEngine = _PreviewEngine();
+
+  @override
+  LocalStream get localStream =>
+      LocalStream(engine: previewEngine, isExternal: true);
+
   int destroyed = 0;
   bool? audioEnabled;
   int stops = 0;
@@ -425,4 +430,9 @@ class FakeExternalRtc implements RtcManaging {
   @override
   dynamic noSuchMethod(Invocation invocation) =>
       throw StateError('Unexpected RTC call: ${invocation.memberName}');
+}
+
+class _PreviewEngine implements RtcEngineEx {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

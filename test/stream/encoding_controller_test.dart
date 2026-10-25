@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
 import 'package:xmax_sdk/src/stream/encoding/EncodingController.dart';
@@ -211,6 +212,9 @@ void main() {
 }
 
 class _Rtc implements RtcManaging {
+  @override
+  LocalStream get localStream => const LocalStream();
+
   VideoEncodingConfiguration? configuration;
   @override
   Future<void> configureVideoEncoding(

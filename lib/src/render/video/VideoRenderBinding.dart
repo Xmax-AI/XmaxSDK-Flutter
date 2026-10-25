@@ -24,19 +24,6 @@ sealed class VideoRenderBinding {
 /// The local media RTC engine, source type, and preview mount callback.
 final class LocalVideoRenderBinding extends VideoRenderBinding {
 
-  /// Creates a local preview binding.
-  const LocalVideoRenderBinding({
-    this.onPreviewAttached,
-    this.engine,
-    this.sourceType = VideoSourceType.videoSourceCamera,
-  });
-
-  /// Creates a custom-source preview binding without camera capture.
-  const LocalVideoRenderBinding.external({
-    this.onPreviewAttached,
-    this.engine,
-  }) : sourceType = VideoSourceType.videoSourceCustom;
-
   /// Creates a view binding for a local RTC input.
   ///
   /// Parameters:

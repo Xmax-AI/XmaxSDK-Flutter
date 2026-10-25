@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
@@ -8,6 +9,9 @@ import 'package:xmax_sdk/src/render/RenderController.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 
 class _Rtc implements RtcManaging {
+  @override
+  LocalStream get localStream => const LocalStream();
+
   final bindings =
       <(RemoteStream?, void Function(RealtimeMediaFrameContent)?)>[];
   Completer<void>? gate;

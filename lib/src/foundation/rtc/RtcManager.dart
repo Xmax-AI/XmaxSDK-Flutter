@@ -110,6 +110,9 @@ final class RtcManager implements RtcManaging {
   }
 
   /// The current local input binding, independent of view creation and room publication.
+  ///
+  /// See [RtcManaging.localStream] for lifecycle requirements.
+  @override
   LocalStream get localStream => _platform.localStream;
 
   /// Acquires and initializes the RTC engine for this lifecycle.

@@ -7,6 +7,7 @@ import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcRoom.dart';
@@ -47,6 +48,8 @@ void main() {
     () async {
       final platform = _Platform();
       final manager = _manager(platform);
+      final RtcManaging input = manager;
+      expect(() => input.localStream, throwsA(isA<XmaxError>()));
       await manager.initialize();
       const encoding = VideoEncodingConfiguration(
         width: 1024,
@@ -60,8 +63,8 @@ void main() {
         #startVideoCapture,
       ]);
       expect(platform.calls.first.positionalArguments.single, same(encoding));
-      expect(manager.localStream, same(platform.localStream));
-      expect(manager.localStream.engine, isNull);
+      expect(input.localStream, same(platform.localStream));
+      expect(input.localStream.engine, isNull);
 
       await manager.joinRoom(configuration: _join);
       final room = platform.rooms.single;
@@ -81,12 +84,14 @@ void main() {
       expect(room.calls[3].namedArguments, {#volume: 45, #userID: 'bot'});
       await manager.leaveRoom();
       expect(room.closed, isTrue);
+      expect(input.localStream, same(platform.localStream));
       expect(
         platform.calls.map((call) => call.memberName),
         isNot(contains(#stopVideoCapture)),
       );
       await manager.destroy();
       expect(platform.destroyed, 1);
+      expect(() => input.localStream, throwsA(isA<XmaxError>()));
     },
   );
 

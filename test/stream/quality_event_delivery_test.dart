@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
 import 'package:xmax_sdk/src/stream/quality/QualityController.dart';
@@ -145,6 +146,9 @@ void main() {
 }
 
 class _Rtc implements RtcManaging {
+  @override
+  LocalStream get localStream => const LocalStream();
+
   RtcQualityListener? quality;
   @override
   void setQualityListener(RtcQualityListener? listener) => quality = listener;

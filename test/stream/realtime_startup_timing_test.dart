@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/core/XmaxEnvironment.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLogger.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLoggerOption.dart';
@@ -112,6 +113,9 @@ void main() {
 }
 
 class _Rtc implements RtcManaging {
+  @override
+  LocalStream get localStream => const LocalStream();
+
   _Rtc({required this.onJoin, required this.onPublish});
 
   final Future<void> Function() onJoin;
