@@ -147,10 +147,14 @@ final class CameraController implements CameraControlling {
       // Register preview rendering only after camera capture starts successfully.
       VideoRenderRegistry.register(
         track,
-        LocalVideoRenderBinding(
-          onPreviewAttached: () => _previewAttached(track),
-          engine: _rtcManager is RtcManager ? _rtcManager.renderEngine : null,
-        ),
+        _rtcManager is RtcManager
+            ? LocalVideoRenderBinding.fromStream(
+              _rtcManager.localStream,
+              onPreviewAttached: () => _previewAttached(track),
+            )
+            : LocalVideoRenderBinding(
+              onPreviewAttached: () => _previewAttached(track),
+            ),
       );
       _activeTrack = track;
       _notifyPreviewReady(track);

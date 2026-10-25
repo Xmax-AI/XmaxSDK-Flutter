@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
+import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcPlatform.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
@@ -317,7 +318,10 @@ void main() {
   );
   test('leave failure still releases engine and ends a pending join', () async {
     final platform = _Platform();
-    final pool = RtcEngineManager.internal(createEngine: () async => platform);
+    var creations = 0;
+    final pool = RtcEngineManager.internal(
+      createEngine: () async => creations++ == 0 ? platform : _Platform(),
+    );
     final manager = RtcManager(engineManager: pool);
     await manager.initialize();
     final joining = manager.joinRoom(
@@ -338,9 +342,13 @@ void main() {
   });
 }
 
-class _Platform implements RtcPlatform {
+class _Platform extends AgoraRtcPlatform {
+  _Platform() : this._(_Engine());
+
+  _Platform._(super.engine);
+
   @override
-  final _Engine engine = _Engine();
+  _Engine get engine => super.engine as _Engine;
   int destroyCount = 0;
   bool failDestroy = false;
   Completer<void>? destroyGate;
@@ -348,6 +356,7 @@ class _Platform implements RtcPlatform {
   Future<void> destroy() async {
     destroyCount++;
     await destroyGate?.future;
+    await super.destroy();
     if (failDestroy) throw StateError('destroy failed');
   }
 }

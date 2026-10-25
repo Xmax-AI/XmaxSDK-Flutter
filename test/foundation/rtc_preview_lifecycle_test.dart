@@ -5,10 +5,11 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/logging/XmaxLogger.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/VideoEncodingConfiguration.dart';
-import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
+import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcPlatform.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 const _configuration = RoomJoinConfiguration(
@@ -18,6 +19,35 @@ const _configuration = RoomJoinConfiguration(
 );
 
 void main() {
+  test('released platform suppresses stale engine callbacks', () async {
+    final platform = _Platform();
+    final manager = _manager(platform);
+    var frames = 0;
+    var failures = 0;
+    manager.setCameraPreviewReadyListener(() => frames++);
+    manager.setEventListener(RtcEventListener(onError: (_) => failures++));
+    await manager.initialize();
+    final handler = platform.engine.handlers.single;
+    handler.onFirstLocalVideoFrame!(
+      VideoSourceType.videoSourceCamera,
+      640,
+      480,
+      0,
+    );
+    expect(frames, 1);
+    await manager.destroy();
+    handler.onFirstLocalVideoFrame!(
+      VideoSourceType.videoSourceCamera,
+      640,
+      480,
+      0,
+    );
+    handler.onError!(ErrorCodeType.errFailed, 'late failure');
+    expect(frames, 1);
+    expect(failures, 0);
+    expect(platform.engine.handlers, isEmpty);
+  });
+
   test(
     'external input publishes custom tracks and preserves preview after leaving',
     () async {
@@ -536,14 +566,19 @@ RtcManager _manager(_Platform platform) => RtcManager(
   engineManager: RtcEngineManager.internal(createEngine: () async => platform),
 );
 
-class _Platform implements RtcPlatform {
+class _Platform extends AgoraRtcPlatform {
+  _Platform() : this._(_Engine());
+
+  _Platform._(super.engine);
+
   @override
-  final _Engine engine = _Engine();
+  _Engine get engine => super.engine as _Engine;
   int destroyCount = 0;
 
   @override
   Future<void> destroy() async {
     destroyCount++;
+    await super.destroy();
   }
 }
 

@@ -12,6 +12,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../foundation/rtc/RemoteStream.dart';
+import '../../foundation/rtc/LocalStream.dart';
 
 /// An internal rendering binding for local preview or remote result video.
 sealed class VideoRenderBinding {
@@ -29,6 +30,25 @@ final class LocalVideoRenderBinding extends VideoRenderBinding {
     this.engine,
     this.sourceType = VideoSourceType.videoSourceCamera,
   });
+
+  /// Creates a custom-source preview binding without camera capture.
+  const LocalVideoRenderBinding.external({
+    this.onPreviewAttached,
+    this.engine,
+  }) : sourceType = VideoSourceType.videoSourceCustom;
+
+  /// Creates a view binding for a local RTC input.
+  ///
+  /// Parameters:
+  /// - [stream]: The input metadata resolved by the RTC platform.
+  /// - [onPreviewAttached]: The callback after the preview view mounts.
+  LocalVideoRenderBinding.fromStream(
+    LocalStream stream, {
+    this.onPreviewAttached,
+  }) : engine = stream.engine,
+       sourceType = stream.isExternal
+           ? VideoSourceType.videoSourceCustom
+           : VideoSourceType.videoSourceCamera;
 
   /// The RTC engine for local preview; without an engine, rendering displays a black background.
   final RtcEngine? engine;

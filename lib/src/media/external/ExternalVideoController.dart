@@ -8,7 +8,6 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../foundation/errors/XmaxError.dart';
@@ -135,10 +134,9 @@ final class ExternalVideoController implements ExternalVideoControlling {
       operation.check();
       VideoRenderRegistry.register(
         track,
-        LocalVideoRenderBinding(
-          engine: _rtcManager is RtcManager ? _rtcManager.renderEngine : null,
-          sourceType: VideoSourceType.videoSourceCustom,
-        ),
+        _rtcManager is RtcManager
+            ? LocalVideoRenderBinding.fromStream(_rtcManager.localStream)
+            : const LocalVideoRenderBinding.external(),
       );
       await operation.wait(source.start(sink: sink));
       operation.check();

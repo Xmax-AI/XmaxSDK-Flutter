@@ -9,6 +9,7 @@ import 'package:xmax_sdk/src/core/realtime/XmaxRealtimeManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEngineManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManager.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcPlatform.dart';
+import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcPlatform.dart';
 import 'package:xmax_sdk/src/media/MediaController.dart';
 import 'package:xmax_sdk/src/media/camera/CameraControlling.dart';
 import 'package:xmax_sdk/src/render/RenderController.dart';
@@ -268,15 +269,24 @@ class _Camera implements CameraControlling {
   }
 }
 
-class _Platform implements RtcPlatform {
+class _Platform extends AgoraRtcPlatform {
+  _Platform() : this._(_Engine());
+
+  _Platform._(super.engine);
+
   @override
-  final engine = _Engine();
+  _Engine get engine => super.engine as _Engine;
   int destroyed = 0;
   @override
-  Future<void> destroy() async => destroyed++;
+  Future<void> destroy() async {
+    destroyed++;
+    await super.destroy();
+  }
 }
 
 class _Engine implements RtcEngineEx {
+  @override
+  Future<void> release({bool sync = false}) async {}
   @override
   Future<void> setVideoEncoderConfiguration(
     VideoEncoderConfiguration configuration,

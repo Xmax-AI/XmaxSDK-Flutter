@@ -13,43 +13,49 @@ import 'dart:convert';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
-import '../../service/realtime/RealtimeNetworkQuality.dart';
-import '../../service/realtime/RealtimePerformanceAlarm.dart';
-import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../errors/XmaxError.dart';
 import '../logging/XmaxLogger.dart';
 import 'RemoteStream.dart';
 import 'RoomJoinConfiguration.dart';
-import 'RtcEventListener.dart';
-import 'RtcQualityListener.dart';
+import 'AgoraRtcPlatform.dart';
+import 'RtcRoomEvent.dart';
+import 'RtcRoomEventBridge.dart';
+import 'RtcQualityConverter.dart';
 import 'RtcMessageQueue.dart';
 import 'RtcRoom.dart';
 import 'RtcStatsLogger.dart';
-import 'VideoStatistics.dart';
 
-/// Filters callbacks after leave and maps numeric UIDs to RTC user accounts.
+/// An Agora connection adapter for users, media, and data-stream signaling.
 final class AgoraRtcRoom implements RtcRoom {
 
   /// Creates a room adapter for an RTC engine.
   AgoraRtcRoom({
-    required this.engine,
+    required this.platform,
     required this.roomID,
-    required this.listener,
-    this.qualityListener,
     this.leaveTimeout = const Duration(seconds: 2),
   });
 
-  /// The native RTC engine in use.
-  final RtcEngineEx engine;
+  /// The platform owning local media and the shared engine.
+  final AgoraRtcPlatform platform;
+
+  /// The native engine used only within the Agora adapter.
+  RtcEngineEx get engine => platform.engine;
 
   /// The server-assigned RTC room identifier.
   final String roomID;
 
-  /// The current RTC event listener provider; null suppresses event delivery.
-  final RtcEventListener? Function() listener;
+  /// The normalized room event receiver.
+  void Function(
+    RtcRoomEvent event,
+  )? _listener;
 
-  /// The current quality receiver, independent of publication and signaling callbacks.
-  final RtcQualityListener? Function()? qualityListener;
+  /// Sets room event delivery without changing native subscriptions.
+  @override
+  void setEventListener(
+    void Function(
+      RtcRoomEvent event,
+    )? listener,
+  ) => _listener = _isClosed ? null : listener;
 
   /// The deadline for native leave and its callback; defaults to 2 seconds.
   final Duration leaveTimeout;
@@ -104,8 +110,8 @@ final class AgoraRtcRoom implements RtcRoom {
   /// The account lookup operations coalesced by numeric UID.
   final _pendingAccounts = <int, Future<String?>>{};
 
-  /// The room's native RTC event handler.
-  late final RtcEngineEventHandler _handler;
+  /// The bridge filtering and translating native connection callbacks.
+  late final RtcRoomEventBridge _bridge;
 
   /// The room's ordered, rate-limited signaling queue.
   RtcMessageQueue? _sender;
@@ -145,73 +151,21 @@ final class AgoraRtcRoom implements RtcRoom {
   ) async {
     _joined.future.ignore();
     _userAccount = configuration.userID;
-    _handler = RtcEngineEventHandler(
-      onLeaveChannel: (
-        connection,
-        _,
-      ) {
-        if (!_isClosed ||
-            connection.channelId != roomID ||
-            (_connection != null &&
-                connection.localUid != null &&
-                connection.localUid != _connection!.localUid) ||
-            _left.isCompleted) {
-          return;
-        }
-
-        _left.complete();
-        XmaxLogger.debug(
-          category: XmaxLoggerCategory.rtc,
-          message: 'RTC 房间已退出 (RTC Room Left)',
-        );
-      },
-      onJoinChannelSuccess: (
-        connection,
-        _,
-      ) {
-        if (!_isCurrent(connection) ||
-            _joined.isCompleted ||
-            _preparingSender) {
-          return;
-        }
-
-        final uid = connection.localUid;
-
-        if (uid == null || uid <= 0) {
-          _failure(StateError('RTC join returned no local UID'));
-
-          return;
-        }
-
-        _connection = RtcConnection(
-          channelId: roomID,
-          localUid: uid,
-        );
-        _preparingSender = true;
-        unawaited(_prepareSender());
-      },
+    _bridge = RtcRoomEventBridge(
+      isCurrent: _isCurrent,
+      isClosed: () => _isClosed,
+      onLeft: _onLeft,
+      onJoined: _onJoined,
       onUserJoined: (
-        connection,
         uid,
-        _,
       ) {
-        if (!_isCurrent(connection)) {
-          return;
-        }
-
         _online.add(uid);
         unawaited(_publish(uid));
       },
-      onUserInfoUpdated: (
+      onAccount: (
         uid,
-        info,
+        account,
       ) {
-        if (_isClosed) {
-          return;
-        }
-
-        final account = info.userAccount;
-
         if (account != null && account.isNotEmpty) {
           _accounts[uid] = account;
         }
@@ -220,249 +174,82 @@ final class AgoraRtcRoom implements RtcRoom {
           unawaited(_publish(uid));
         }
       },
-      onUserOffline: (
-        connection,
+      onUserOffline: _onUserOffline,
+      onPublication: _onPublication,
+      onDecoded: (
         uid,
-        _,
       ) {
-        if (!_isCurrent(connection)) {
-          return;
-        }
-
-        final account = _accounts.remove(uid);
-
-        _online.remove(uid);
-        _announced.remove(uid);
-        _decoded.remove(uid);
-        _rendered.remove(uid);
-        if (account != null && _connection != null) {
-          final stream = _stream(
-            uid,
-            account,
-          );
-
-          listener()?.onRemoteVideoPublished?.call(
-            stream,
-            false,
-          );
-          listener()?.onRemoteAudioPublished?.call(
-            stream,
-            false,
-          );
-        }
-      },
-      onRemoteVideoStateChanged: (
-        connection,
-        uid,
-        state,
-        reason,
-        _,
-      ) {
-        if (!_isCurrent(connection)) {
-          return;
-        }
-
-        if (reason ==
-            RemoteVideoStateReason.remoteVideoStateReasonRemoteMuted) {
-          _announced.remove(uid);
-          _decoded.remove(uid);
-          _rendered.remove(uid);
-          unawaited(
-            _withStream(
-              uid,
-              (
-                stream,
-              ) =>
-                  listener()?.onRemoteVideoPublished?.call(
-                    stream,
-                    false,
-                  ),
-            ),
-          );
-        } else if (state == RemoteVideoState.remoteVideoStateStarting ||
-            state == RemoteVideoState.remoteVideoStateDecoding) {
-          unawaited(_publish(uid));
-        }
-      },
-      onFirstRemoteVideoDecoded: (
-        connection,
-        uid,
-        width,
-        height,
-        _,
-      ) {
-        if (!_isCurrent(connection) || width <= 0 || height <= 0) {
-          return;
-        }
-
         _decoded.add(uid);
         unawaited(
           _withStream(
             uid,
             (
               stream,
-            ) =>
-                listener()?.onFirstRemoteVideoFrameDecoded?.call(stream),
+            ) => _emit(RtcRoomFirstVideoDecoded(stream: stream)),
           ),
         );
       },
-      onFirstRemoteVideoFrame: (
-        connection,
+      onRendered: (
         uid,
-        width,
-        height,
-        _,
       ) {
-        if (!_isCurrent(connection) || width <= 0 || height <= 0) {
-          return;
-        }
-
         _rendered.add(uid);
         unawaited(
           _withStream(
             uid,
             (
               stream,
-            ) =>
-                listener()?.onFirstRemoteVideoFrameRendered?.call(stream),
+            ) => _emit(RtcRoomFirstVideoRendered(stream: stream)),
           ),
         );
       },
-      onNetworkQuality: (
-        connection,
+      onRemoteStatistics: (
         uid,
-        up,
-        down,
-      ) {
-        if (!_isCurrent(connection) || uid != 0) {
-          return;
-        }
-
-        final quality = RealtimeNetworkQuality(
-          uplink: _quality(up),
-          downlink: _quality(down),
-        );
-
-        RtcStatsLogger.logNetworkQuality(quality);
-        qualityListener?.call()?.onNetworkQuality(quality);
-      },
-      onLocalVideoStats: (
-        connection,
-        _,
         stats,
       ) {
-        if (!_isCurrent(connection)) {
-          return;
-        }
-
-        final value = UplinkVideoStatistics(
-          width: _positive(stats.encodedFrameWidth),
-          height: _positive(stats.encodedFrameHeight),
-          captureFrameRate: _nonnegative(stats.captureFrameRate),
-          encodeFrameRate: _nonnegative(stats.encoderOutputFrameRate),
-          sendFrameRate: _nonnegative(stats.sentFrameRate),
-          bitrateKbps: _nonnegative(stats.sentBitrate),
-          packetLossPercent: _loss(stats.txPacketLossRate),
-        );
-
-        RtcStatsLogger.logUplinkVideoStatistics(value);
-        qualityListener?.call()?.onUplinkVideoStatistics(value);
-
-        final adaptation = stats.qualityAdaptIndication;
-
-        if (adaptation == QualityAdaptIndication.adaptDownBandwidth ||
-            adaptation == QualityAdaptIndication.adaptUpBandwidth) {
-          qualityListener?.call()?.onPerformanceAlarm(
-            RealtimePerformanceAlarm(
-              status: adaptation == QualityAdaptIndication.adaptDownBandwidth
-                  ? RealtimePerformanceStatus.limited
-                  : RealtimePerformanceStatus.recovered,
-              suggestedVideoFormat:
-                  value.width != null &&
-                      value.height != null &&
-                      (value.encodeFrameRate ?? 0) > 0
-                  ? RealtimeVideoFormat(
-                    width: value.width!,
-                    height: value.height!,
-                    fps: value.encodeFrameRate!,
-                  )
-                  : null,
-            ),
-          );
-        }
-      },
-      onRemoteVideoStats: (
-        connection,
-        stats,
-      ) {
-        final uid = stats.uid;
-
-        if (!_isCurrent(connection) || uid == null) {
-          return;
-        }
-
         unawaited(
           _withStream(
             uid,
             (
               stream,
-            ) {
-            final value = DownlinkVideoStatistics(
-              userID: stream.userID,
-              width: _positive(stats.width),
-              height: _positive(stats.height),
-              decodeFrameRate: _nonnegative(stats.decoderOutputFrameRate),
-              renderFrameRate: _nonnegative(stats.rendererOutputFrameRate),
-              bitrateKbps: _nonnegative(stats.receivedBitrate),
-              packetLossPercent: _loss(stats.packetLossRate),
-              endToEndDelayMs: _nonnegative(stats.e2eDelay),
-            );
-
-            RtcStatsLogger.logDownlinkVideoStatistics(value);
-            qualityListener?.call()?.onDownlinkVideoStatistics(value);
-          },
+            ) => _emit(
+              RtcRoomDownlinkVideoStatistics(
+                statistics: RtcQualityConverter.downlinkVideoStatistics(
+                  userID: stream.userID,
+                  stats: stats,
+                ),
+              ),
+            ),
           ),
         );
       },
-      onConnectionStateChanged: (
-        connection,
-        state,
-        reason,
+      onEvent: (
+        event,
       ) {
-        if (_isCurrent(connection) &&
-            state == ConnectionStateType.connectionStateFailed) {
-          _failure(StateError('RTC connection failed: ${reason.name}'));
-        }
-      },
-      onStreamMessageError: (
-        connection,
-        _,
-        _,
-        code,
-        _,
-        _,
-      ) {
-        if (_isCurrent(connection)) {
-          _failure(StateError('RTC DataStream failed: ${code.name}'));
+        if (event case RtcRoomFailure(:final error)) {
+          _failure(error);
+        } else {
+          _emit(event);
         }
       },
     );
-    engine.registerEventHandler(_handler);
+    engine.registerEventHandler(_bridge.handler);
 
     try {
-      await engine.joinChannelWithUserAccountEx(
-        token: configuration.token,
-        channelId: roomID,
-        userAccount: configuration.userID,
-        options: const ChannelMediaOptions(
-          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-          clientRoleType: ClientRoleType.clientRoleBroadcaster,
-          publishCameraTrack: false,
-          publishCustomVideoTrack: false,
-          publishMicrophoneTrack: false,
-          publishCustomAudioTrack: false,
-          autoSubscribeAudio: false,
-          autoSubscribeVideo: false,
+      await AgoraRtcPlatform.check(
+        () => engine.joinChannelWithUserAccountEx(
+          token: configuration.token,
+          channelId: roomID,
+          userAccount: configuration.userID,
+          options: const ChannelMediaOptions(
+            channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+            clientRoleType: ClientRoleType.clientRoleBroadcaster,
+            publishCameraTrack: false,
+            publishCustomVideoTrack: false,
+            publishMicrophoneTrack: false,
+            publishCustomAudioTrack: false,
+            autoSubscribeAudio: false,
+            autoSubscribeVideo: false,
+          ),
         ),
       );
       await _joined.future;
@@ -479,6 +266,224 @@ final class AgoraRtcRoom implements RtcRoom {
       rethrow;
     }
   }
+
+  /// Completes native leave only for this room's local connection.
+  ///
+  /// [connection] identifies the native leave acknowledgement.
+  void _onLeft(
+    RtcConnection connection,
+  ) {
+    if (!_isClosed || connection.channelId != roomID ||
+        (_connection != null && connection.localUid != null &&
+            connection.localUid != _connection!.localUid) || _left.isCompleted) {
+      return;
+    }
+
+    _left.complete();
+    XmaxLogger.debug(
+      category: XmaxLoggerCategory.rtc,
+      message: 'RTC 房间已退出 (RTC Room Left)',
+    );
+  }
+
+  /// Confirms the local UID before creating the room's signaling queue.
+  ///
+  /// [connection] contains the native-assigned local UID.
+  void _onJoined(
+    RtcConnection connection,
+  ) {
+    if (_joined.isCompleted || _preparingSender) {
+      return;
+    }
+
+    final uid = connection.localUid;
+
+    if (uid == null || uid <= 0) {
+      _failure(StateError('RTC join returned no local UID'));
+      return;
+    }
+
+    _connection = RtcConnection(
+      channelId: roomID,
+      localUid: uid,
+    );
+    _preparingSender = true;
+    unawaited(_prepareSender());
+  }
+
+  /// Clears a departed user's mappings and both media publications.
+  ///
+  /// [uid] is the departing remote UID.
+  void _onUserOffline(
+    int uid,
+  ) {
+    final account = _accounts.remove(uid);
+
+    _online.remove(uid);
+    _announced.remove(uid);
+    _decoded.remove(uid);
+    _rendered.remove(uid);
+
+    if (account != null && _connection != null) {
+      final stream = _stream(
+        uid,
+        account,
+      );
+
+      _emit(
+        RtcRoomVideoPublication(
+          stream: stream,
+          published: false,
+        ),
+      );
+      _emit(
+        RtcRoomAudioPublication(
+          stream: stream,
+          published: false,
+        ),
+      );
+    }
+  }
+
+  /// Applies remote video publication while retaining account identity until departure.
+  ///
+  /// Parameters:
+  /// - [uid]: The remote numeric UID.
+  /// - [published]: Whether video is available.
+  void _onPublication(
+    int uid,
+    bool published,
+  ) {
+    if (published) {
+      unawaited(_publish(uid));
+      return;
+    }
+
+    _announced.remove(uid);
+    _decoded.remove(uid);
+    _rendered.remove(uid);
+    unawaited(
+      _withStream(
+        uid,
+        (
+          stream,
+        ) => _emit(
+          RtcRoomVideoPublication(
+            stream: stream,
+            published: false,
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Delivers normalized room events only while this connection remains open.
+  ///
+  /// [event] contains a publication, first-frame, failure, or quality notification.
+  void _emit(
+    RtcRoomEvent event,
+  ) {
+    if (_isClosed) {
+      return;
+    }
+
+    switch (event) {
+      case RtcRoomNetworkQuality(:final quality):
+        RtcStatsLogger.logNetworkQuality(quality);
+      case RtcRoomUplinkVideoStatistics(:final statistics):
+        RtcStatsLogger.logUplinkVideoStatistics(statistics);
+      case RtcRoomDownlinkVideoStatistics(:final statistics):
+        RtcStatsLogger.logDownlinkVideoStatistics(statistics);
+      default:
+        break;
+    }
+
+    _listener?.call(event);
+  }
+
+  /// Changes camera or custom publication for this connection only.
+  ///
+  /// [publish] controls video and the source's opted-in external audio.
+  @override
+  Future<void> publishLocalVideo(
+    bool publish,
+  ) async {
+    await AgoraRtcPlatform.check(
+      () => engine.updateChannelMediaOptionsEx(
+        options: ChannelMediaOptions(
+          publishCameraTrack: publish && !platform.usesExternalVideo,
+          publishCustomVideoTrack: publish && platform.usesExternalVideo,
+          customVideoTrackId: 0,
+          publishMicrophoneTrack: false,
+          publishCustomAudioTrack: publish && platform.externalAudioTrackID != null,
+          publishCustomAudioTrackId: platform.externalAudioTrackID,
+        ),
+        connection: connection,
+      ),
+    );
+    platform.isPublishingLocalMedia = publish;
+
+    if (publish) {
+      await platform.reapplyVideoConfiguration();
+    }
+  }
+
+  /// Changes the video subscription for a resolved remote account.
+  ///
+  /// Parameters:
+  /// - [userID]: The remote RTC account.
+  /// - [subscribe]: Whether to receive video.
+  @override
+  Future<void> subscribeRemoteVideo({
+    required String userID,
+    required bool subscribe,
+  }) => AgoraRtcPlatform.check(() async {
+    final uid = await resolveUID(userID);
+
+    await engine.muteRemoteVideoStreamEx(
+      uid: uid,
+      mute: !subscribe,
+      connection: connection,
+    );
+  });
+
+  /// Changes the audio subscription for a resolved remote account.
+  ///
+  /// Parameters:
+  /// - [userID]: The remote RTC account.
+  /// - [subscribe]: Whether to receive audio.
+  @override
+  Future<void> subscribeRemoteAudio({
+    required String userID,
+    required bool subscribe,
+  }) => AgoraRtcPlatform.check(() async {
+    final uid = await resolveUID(userID);
+
+    await engine.muteRemoteAudioStreamEx(
+      uid: uid,
+      mute: !subscribe,
+      connection: connection,
+    );
+  });
+
+  /// Sets connection-scoped playback volume for a remote account.
+  ///
+  /// Parameters:
+  /// - [volume]: The playback percentage, from 0 to 100.
+  /// - [userID]: The remote RTC account.
+  @override
+  Future<void> setRemoteAudioVolume({
+    required int volume,
+    required String userID,
+  }) => AgoraRtcPlatform.check(() async {
+    final uid = await resolveUID(userID);
+
+    await engine.adjustUserPlaybackSignalVolumeEx(
+      uid: uid,
+      volume: volume,
+      connection: connection,
+    );
+  });
 
   /// Creates the ordered signaling queue and completes room join.
   Future<void> _prepareSender() async {
@@ -551,7 +556,7 @@ final class AgoraRtcRoom implements RtcRoom {
     if (!_joined.isCompleted) {
       _joined.completeError(failure);
     } else {
-      listener()?.onError?.call(failure);
+      _emit(RtcRoomFailure(error: failure));
     }
   }
 
@@ -639,26 +644,31 @@ final class AgoraRtcRoom implements RtcRoom {
     (
       stream,
     ) {
-    if (!_announced.add(uid)) {
-      return;
-    }
+      if (!_announced.add(uid)) {
+        return;
+      }
 
-    listener()?.onRemoteVideoPublished?.call(
-      stream,
-      true,
-    );
-    listener()?.onRemoteAudioPublished?.call(
-      stream,
-      true,
-    );
-    if (_decoded.contains(uid)) {
-      listener()?.onFirstRemoteVideoFrameDecoded?.call(stream);
-    }
+      _emit(
+        RtcRoomVideoPublication(
+          stream: stream,
+          published: true,
+        ),
+      );
+      _emit(
+        RtcRoomAudioPublication(
+          stream: stream,
+          published: true,
+        ),
+      );
 
-    if (_rendered.contains(uid)) {
-      listener()?.onFirstRemoteVideoFrameRendered?.call(stream);
-    }
-  },
+      if (_decoded.contains(uid)) {
+        _emit(RtcRoomFirstVideoDecoded(stream: stream));
+      }
+
+      if (_rendered.contains(uid)) {
+        _emit(RtcRoomFirstVideoRendered(stream: stream));
+      }
+    },
   );
 
   /// Creates a remote stream binding with room, account, UID, and engine identity.
@@ -752,6 +762,8 @@ final class AgoraRtcRoom implements RtcRoom {
     }
 
     _isClosed = true;
+    _listener = null;
+    platform.isPublishingLocalMedia = false;
     _sender?.close();
     if (!_joined.isCompleted) {
       _joined.completeError(
@@ -792,47 +804,7 @@ final class AgoraRtcRoom implements RtcRoom {
         }
       })().timeout(leaveTimeout);
     } finally {
-      engine.unregisterEventHandler(_handler);
+      engine.unregisterEventHandler(_bridge.handler);
     }
   }
-
-  /// Retains positive statistics values.
-  ///
-  /// Parameters:
-  /// - [value]: The RTC statistic; missing or nonpositive values resolve to null.
-  static int? _positive(
-    int? value,
-  ) => value != null && value > 0 ? value : null;
-
-  /// Retains nonnegative statistics values, including valid zeros.
-  ///
-  /// Parameters:
-  /// - [value]: The RTC statistic; missing or negative values resolve to null.
-  static int? _nonnegative(
-    int? value,
-  ) => value != null && value >= 0 ? value : null;
-
-  /// Retains valid packet loss percentages.
-  ///
-  /// Parameters:
-  /// - [value]: The loss percentage; missing values or values outside 0 to 100 resolve to null.
-  static int? _loss(
-    int? value,
-  ) => value != null && value >= 0 && value <= 100 ? value : null;
-
-  /// Converts native RTC network quality to SDK quality.
-  ///
-  /// Parameters:
-  /// - [value]: The native RTC network quality level.
-  static RealtimeNetworkQualityLevel _quality(
-    QualityType value,
-  ) => switch (value) {
-    QualityType.qualityExcellent => RealtimeNetworkQualityLevel.excellent,
-    QualityType.qualityGood => RealtimeNetworkQualityLevel.good,
-    QualityType.qualityPoor => RealtimeNetworkQualityLevel.poor,
-    QualityType.qualityBad => RealtimeNetworkQualityLevel.bad,
-    QualityType.qualityVbad => RealtimeNetworkQualityLevel.veryBad,
-    QualityType.qualityDown => RealtimeNetworkQualityLevel.down,
-    _ => RealtimeNetworkQualityLevel.unknown,
-  };
 }

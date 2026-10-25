@@ -2,6 +2,7 @@ import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
+import 'package:xmax_sdk/src/foundation/rtc/LocalStream.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderSurface.dart';
 import 'package:xmax_sdk/src/render/video/VideoTextureFrameObserver.dart';
@@ -50,7 +51,9 @@ void main() {
     final engine = _Engine();
     final view =
         VideoRenderSurface(
-              binding: LocalVideoRenderBinding(engine: engine),
+              binding: LocalVideoRenderBinding.fromStream(
+                LocalStream(engine: engine),
+              ),
               track: null,
               contentMode: VideoContentMode.fill,
             ).build(context)
@@ -72,9 +75,8 @@ void main() {
       final context = tester.element(find.byType(SizedBox));
       final view =
           VideoRenderSurface(
-                binding: LocalVideoRenderBinding(
-                  engine: _Engine(),
-                  sourceType: VideoSourceType.videoSourceCustom,
+                binding: LocalVideoRenderBinding.fromStream(
+                  LocalStream(engine: _Engine(), isExternal: true),
                 ),
                 track: null,
                 contentMode: VideoContentMode.fit,

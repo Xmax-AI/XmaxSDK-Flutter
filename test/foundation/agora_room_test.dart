@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcRoom.dart';
+import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcPlatform.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcQualityListener.dart';
+import 'package:xmax_sdk/src/foundation/rtc/RtcRoomEvent.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcEventListener.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RoomJoinConfiguration.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
@@ -25,7 +28,7 @@ void main() {
       });
       quality.setPerformanceAlarmListener((_) => alarms++);
       quality.setUplinkVideoStatisticsEnabled(true);
-      final room = AgoraRtcRoom(
+      final room = _room(
         engine: engine,
         roomID: 'room',
         listener: () => const RtcEventListener(),
@@ -73,7 +76,7 @@ void main() {
     () async {
       final engine = _Engine()..localUid = 42;
       final published = <RemoteStream>[];
-      final room = AgoraRtcRoom(
+      final room = _room(
         engine: engine,
         roomID: 'room',
         listener: () => RtcEventListener(
@@ -133,7 +136,7 @@ void main() {
     () async {
       final engine = _Engine()..publishBeforeJoin = true;
       final published = <RemoteStream>[];
-      final room = AgoraRtcRoom(
+      final room = _room(
         engine: engine,
         roomID: 'room',
         listener: () => RtcEventListener(
@@ -160,11 +163,7 @@ void main() {
     'failed join closes only its account and cleanup is idempotent',
     () async {
       final engine = _Engine()..failJoin = true;
-      final room = AgoraRtcRoom(
-        engine: engine,
-        roomID: 'room',
-        listener: () => null,
-      );
+      final room = _room(engine: engine, roomID: 'room', listener: () => null);
       await expectLater(
         room.join(
           const RoomJoinConfiguration(
@@ -188,11 +187,7 @@ void main() {
 
   test('missing local UID fails before creating a data stream', () async {
     final engine = _Engine()..localUid = 0;
-    final room = AgoraRtcRoom(
-      engine: engine,
-      roomID: 'room',
-      listener: () => null,
-    );
+    final room = _room(engine: engine, roomID: 'room', listener: () => null);
     await expectLater(
       room.join(
         const RoomJoinConfiguration(
@@ -220,7 +215,7 @@ void main() {
     'missing native leave callback times out and unregisters room events',
     () async {
       final engine = _Engine()..autoLeave = false;
-      final room = AgoraRtcRoom(
+      final room = _room(
         engine: engine,
         roomID: 'room',
         listener: () => null,
@@ -255,7 +250,7 @@ void main() {
     () async {
       final engine = _Engine()..failEvent = 'change_target_size';
       final errors = <Object>[];
-      final room = AgoraRtcRoom(
+      final room = _room(
         engine: engine,
         roomID: 'room',
         listener: () => RtcEventListener(onError: errors.add),
@@ -283,7 +278,7 @@ void main() {
       final engine = _Engine(),
           published = <RemoteStream>[],
           decoded = <RemoteStream>[];
-      final room = AgoraRtcRoom(
+      final room = _room(
         engine: engine,
         roomID: 'room',
         listener: () => RtcEventListener(
@@ -329,11 +324,7 @@ void main() {
     'join publishes no microphone and subscribes no remote media automatically',
     () async {
       final engine = _Engine();
-      final room = AgoraRtcRoom(
-        engine: engine,
-        roomID: 'room',
-        listener: () => null,
-      );
+      final room = _room(engine: engine, roomID: 'room', listener: () => null);
       await room.join(
         const RoomJoinConfiguration(
           roomID: 'room',
@@ -350,6 +341,43 @@ void main() {
       await room.destroy();
     },
   );
+}
+
+AgoraRtcRoom _room({
+  required RtcEngineEx engine,
+  required String roomID,
+  required RtcEventListener? Function() listener,
+  RtcQualityListener? Function()? qualityListener,
+  Duration leaveTimeout = const Duration(seconds: 2),
+}) {
+  final room =
+      AgoraRtcPlatform(
+            engine,
+          ).createRoom(roomID: roomID, leaveTimeout: leaveTimeout)
+          as AgoraRtcRoom;
+  room.setEventListener((event) {
+    switch (event) {
+      case RtcRoomVideoPublication(:final stream, :final published):
+        listener()?.onRemoteVideoPublished?.call(stream, published);
+      case RtcRoomAudioPublication(:final stream, :final published):
+        listener()?.onRemoteAudioPublished?.call(stream, published);
+      case RtcRoomFirstVideoDecoded(:final stream):
+        listener()?.onFirstRemoteVideoFrameDecoded?.call(stream);
+      case RtcRoomFirstVideoRendered(:final stream):
+        listener()?.onFirstRemoteVideoFrameRendered?.call(stream);
+      case RtcRoomFailure(:final error):
+        listener()?.onError?.call(error);
+      case RtcRoomNetworkQuality(:final quality):
+        qualityListener?.call()?.onNetworkQuality(quality);
+      case RtcRoomUplinkVideoStatistics(:final statistics):
+        qualityListener?.call()?.onUplinkVideoStatistics(statistics);
+      case RtcRoomDownlinkVideoStatistics(:final statistics):
+        qualityListener?.call()?.onDownlinkVideoStatistics(statistics);
+      case RtcRoomPerformanceAlarm(:final alarm):
+        qualityListener?.call()?.onPerformanceAlarm(alarm);
+    }
+  });
+  return room;
 }
 
 class _Engine implements RtcEngineEx {
