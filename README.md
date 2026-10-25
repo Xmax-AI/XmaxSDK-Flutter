@@ -576,11 +576,9 @@ final switchedStream = await realtime.switchCamera();
 
 ### External capture
 
-Extend `RealtimeExternalVideoSource` to provide video captured, decoded, or processed
-by your app. Keep `videoFormat` unchanged until delivery stops. In `start(sink:)`,
-install your frame callback and return once the source is ready to deliver frames;
-do not wait for generation or the first frame. In `stop()`, stop delivery and release
-the sink reference. Your app retains ownership of its capture devices and players.
+Extend `RealtimeExternalVideoSource` to supply your app's video and optional audio.
+Implement `start()` and `stop()` to manage frame delivery; your app owns the capture
+device or player.
 
 ```dart
 final localStream = await realtime.createExternalVideoStream(source: source);
@@ -595,41 +593,17 @@ await realtime.disconnect(); // External delivery and local preview continue.
 await realtime.stopExternalVideoStream(); // Detach after disconnecting.
 ```
 
-Submit `RealtimeExternalVideoFrame` buffers through
-`sink.pushVideo(frame, timestamp: timestamp)`. Accepted layouts are upright BGRA
-and video-range NV12, with orientation and mirroring already applied. Timestamps
-are nonnegative, strictly increasing `Duration` values from one monotonic clock;
-keep them increasing across seeks and playback loops. The sink copies buffers
-before returning and drops concurrent video input rather than building a queue.
-Await submission futures to apply backpressure.
+Submit frames through the supplied sink:
 
-External input dimensions are not restricted to camera presets. The SDK resolves
-an encoding format within the model's pixel-area limits, aligned to four pixels;
-`sink.videoFormat` exposes it. Continue submitting the source dimensions: native
-transport scales frames for encoding. Binding becomes `ready` without waiting for
-a frame or a mounted view. No camera or microphone permission is requested.
-Remote audio starts muted after binding; call `setRemoteAudioVolume` to enable it.
+- Video: use `pushVideo()` with upright BGRA or video-range NV12 pixels, with mirroring already applied.
+- Optional audio: set `hasAudio` to `true` and use `pushAudio()` with interleaved, little-endian PCM16 or Float32 samples.
+- Await submissions of each media type. Use nonnegative, strictly increasing timestamps on one shared monotonic timeline, including seeks and playback loops.
 
-To supply audio, override `hasAudio` with `true` before binding and call
-`sink.pushAudio(frame, timestamp: timestamp)` with interleaved, little-endian PCM16
-or Float32 in a `RealtimeExternalAudioFrame`. Audio and video share the same
-monotonic timeline. The SDK converts audio to 48 kHz mono PCM16 in 10 ms packets,
-without local playback or an upload backlog while disconnected. Input audio
-format must remain fixed; overlapping buffers are ignored and gaps start a new
-segment without inserting silence. Await each audio submission before the next.
-
-Report unrecoverable capture or decoding failures using `sink.reportError(error)`;
-the SDK closes the realtime connection and detaches the local source. Detached
-sinks ignore late frames. `close()` also detaches the source, but does not dispose
-your app's devices or players.
-
-XLab's **External Capture** entry selects a video from Photos and implements
-`RealtimeFileVideoSource` in the example app. AVFoundation and MediaCodec decode
-video and optional PCM, loop playback on a monotonic timeline, and submit through
-the same public source/sink interfaces available to integrating apps. File decoding
-is not part of the SDK's external-source API. The example uses
-`client.createMediaService(model: model)` to select decoder dimensions before
-binding, keeping raw frame transfers within the model's media limits.
+The SDK scales video to the model's encoding limits. See the
+[source and sink API](lib/src/media/external/RealtimeExternalVideoSource.dart)
+for the full contract, or
+[XLab's file-input example](example/lib/features/realtime/realtime_file_video_source.dart)
+for a working implementation.
 
 <br>
 
