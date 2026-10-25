@@ -247,7 +247,7 @@ abstract final class RoomEvent {
     'runtime': RuntimeInfo.current.toJson(),
   });
 
-  /// Calculates downlink bitrate bounds at 24 fps for the result size, capped at 10000 kbps.
+  /// Calculates downlink bitrate bounds at 24 fps, with a 500 kbps floor and 10000 kbps ceiling.
   ///
   /// Parameters:
   /// - [size]: The target video width and height, in pixels.
@@ -276,9 +276,12 @@ abstract final class RoomEvent {
       ),
     );
 
-    return {'min_bitrate': 100, 'max_bitrate': budget.$2.clamp(
-      100,
-      10000,
-    )};
+    return {
+      'min_bitrate': 500,
+      'max_bitrate': budget.$2.clamp(
+        500,
+        10000,
+      ),
+    };
   }
 }

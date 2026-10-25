@@ -8,106 +8,93 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../foundation/media/video/VideoContentMode.dart';
+import '../../media/interaction/InteractionFrame.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
+import '../trajectory/DefaultTrajectoryEffectRenderer.dart';
 import '../trajectory/TrajectoryEffectRendering.dart';
+import '../trajectory/TrajectoryRegistry.dart';
 import 'VideoRenderBinding.dart';
 import 'VideoRenderRegistry.dart';
-import 'XmaxVideoView.dart';
+import 'VideoRenderSurface.dart';
 
-/// The recommended realtime video view, automatically switching between local preview and remote
-/// results.
-///
-/// The local preview remains underneath. After [remoteTrack] renders its first frame,
-/// the result appears above the preview. Stopping or unbinding the remote stream restores local
-/// preview.
-/// When generation stops, remote video is hidden before resources are released to avoid black
-/// flashes.
-///
-/// For picture-in-picture or custom layouts, compose multiple [XmaxVideoView] widgets instead.
+/// A Flutter view that displays a local or remote realtime video track.
 final class XmaxRealtimeVideoView extends StatefulWidget {
 
-  /// Creates a video view that automatically switches between local preview and generation results.
+  /// Creates a single-track video view.
   const XmaxRealtimeVideoView({
     super.key,
-    this.localTrack,
-    this.remoteTrack,
+    this.track,
     this.videoContentMode = VideoContentMode.fill,
     this.isInteractionEnabled = true,
     this.trajectoryRenderer,
-    this.onRemoteVideoReady,
   });
 
-  /// The local camera track shown before a remote result appears and after it stops.
-  final RealtimeVideoTrack? localTrack;
+  /// The video track to display; null shows a black background without creating a video texture.
+  final RealtimeVideoTrack? track;
 
-  /// The remote result track, displayed automatically after stream matching and first-frame
-  /// rendering.
-  final RealtimeVideoTrack? remoteTrack;
-
-  /// The shared video scaling mode; defaults to aspect fill with cropping.
+  /// The video scaling mode; defaults to aspect fill with cropping.
   final VideoContentMode videoContentMode;
 
-  /// Whether to submit interaction trails on visible remote video; enabled by default.
+  /// Whether to enable interaction sampling and trail rendering; enabled by default.
   final bool isInteractionEnabled;
 
-  /// The remote interaction trail renderer; defaults to the SDK renderer.
+  /// The custom trail renderer; null uses the SDK renderer.
   ///
   /// The caller owns a supplied renderer's lifecycle; the view disposes of its default renderer.
   final TrajectoryEffectRendering? trajectoryRenderer;
 
-  /// The callback invoked when the first remote frame is rendered and displayed; use it to dismiss
-  /// loading UI.
-  ///
-  /// Called once per remote stream binding; condition updates do not trigger it again.
-  /// Runs after the current frame, allowing safe UI updates; the fade-in animation may still be in
-  /// progress.
-  /// Pending callbacks are discarded if generation stops, the stream is unbound, or the track is
-  /// replaced.
-  final VoidCallback? onRemoteVideoReady;
-
-  /// Creates the state managing preview transitions and remote readiness notifications.
+  /// Creates the state managing single-track video and interaction resources.
   @override
   State<XmaxRealtimeVideoView> createState() => _XmaxRealtimeVideoViewState();
 }
 
-/// Manages transitions between local preview and remote results, including readiness notifications.
-final class _XmaxRealtimeVideoViewState extends State<XmaxRealtimeVideoView> {
+/// Manages video rendering, interaction sampling, and trail effect resources.
+final class _XmaxRealtimeVideoViewState extends State<XmaxRealtimeVideoView>
+    with SingleTickerProviderStateMixin {
 
-  // Flutter quantizes opacity to an 8-bit value.
-  // Very small values such as 0.001 round to zero, preventing the RTC view from painting.
+  /// The sampling interval, allowing at most 30 periodic interaction samples per second.
+  static const _samplingInterval = Duration(
+    microseconds: Duration.microsecondsPerSecond ~/ 30,
+  );
 
-  /// The remote layer opacity before its first frame is ready.
-  static const _pendingRemoteOpacity = 1 / 255;
+  /// The renderer providing current trail state and repaint notifications.
+  late TrajectoryEffectRendering _renderer;
 
-  /// The observable rendering handle for the current remote track.
-  VideoRenderHandle? _remoteHandle;
+  /// Whether this view owns disposal of the trail renderer.
+  late bool _ownsRenderer;
 
-  /// Whether remote video can currently be displayed.
-  bool _isRemoteVisible = false;
+  /// The display-synchronized ticker driving interaction sampling.
+  late final Ticker _samplingTicker;
 
-  /// Whether the result is forcibly hidden while remote resources are being removed.
-  bool _isRemoteSuppressed = false;
+  /// The active pointers indexed by pointer identifier.
+  final Map<int, _ActivePointer> _activePointers = <int, _ActivePointer>{};
 
-  /// The task waiting for remote video to finish hiding.
-  Future<void>? _concealment;
+  /// The elapsed time in the current interaction sampling cycle.
+  Duration _currentSamplingTime = Duration.zero;
 
-  /// The unique result-stream identifier used to distinguish bindings.
-  (String, String, String)? _remoteIdentity;
+  /// The time of the last submitted sample in the current cycle.
+  Duration? _lastSampleTime;
 
-  /// The remote binding version used to invalidate stale readiness callbacks.
-  int _readyVersion = 0;
+  /// The viewport dimensions of the latest sample, in logical pixels.
+  Size? _samplingViewportSize;
 
-  /// Whether display readiness has been reported for this remote binding.
-  bool _didNotifyReady = false;
+  /// The handler for submitting view interaction samples.
+  void Function(
+    InteractionFrame frame,
+  )?
+  _samplingListener;
 
   /// Initializes view listeners, input sampling, and local drawing resources.
   @override
   void initState() {
     super.initState();
-    _attachRemoteTrack();
+    _ownsRenderer = widget.trajectoryRenderer == null;
+    _renderer = widget.trajectoryRenderer ?? DefaultTrajectoryEffectRenderer();
+    _samplingTicker = createTicker(_sampleActivePointers);
   }
 
   /// Updates track bindings, interaction, and renderer ownership for the new widget configuration.
@@ -120,20 +107,29 @@ final class _XmaxRealtimeVideoViewState extends State<XmaxRealtimeVideoView> {
   ) {
     super.didUpdateWidget(oldWidget);
 
-    if (oldWidget.remoteTrack != widget.remoteTrack) {
-      _detachRemoteTrack();
-      _isRemoteVisible = false;
-      _isRemoteSuppressed = false;
-      _attachRemoteTrack();
-    } else if (oldWidget.onRemoteVideoReady != widget.onRemoteVideoReady) {
-      _scheduleRemoteVideoReady();
+    final rendererChanged =
+        oldWidget.trajectoryRenderer != widget.trajectoryRenderer;
+
+    if (rendererChanged ||
+        oldWidget.track != widget.track ||
+        oldWidget.isInteractionEnabled != widget.isInteractionEnabled) {
+      _resetPointers();
+    }
+
+    if (rendererChanged) {
+      _disposeOwnedRenderer();
+      _ownsRenderer = widget.trajectoryRenderer == null;
+      _renderer =
+          widget.trajectoryRenderer ?? DefaultTrajectoryEffectRenderer();
     }
   }
 
   /// Releases listeners, animation resources, and drawing resources owned by the component.
   @override
   void dispose() {
-    _detachRemoteTrack();
+    _resetPointers();
+    _disposeOwnedRenderer();
+    _samplingTicker.dispose();
     super.dispose();
   }
 
@@ -146,201 +142,313 @@ final class _XmaxRealtimeVideoViewState extends State<XmaxRealtimeVideoView> {
   @override
   Widget build(
     BuildContext context,
-  ) => Stack(
-    fit: StackFit.expand,
-    children: <Widget>[
-      XmaxVideoView(
-        track: widget.localTrack,
-        videoContentMode: widget.videoContentMode,
-        isInteractionEnabled: false,
-      ),
-      if (widget.remoteTrack != null)
-        IgnorePointer(
-          ignoring: !_isRemoteVisible,
-          child: TweenAnimationBuilder<double>(
-            // Keep opacity low but nonzero while waiting for the native first frame, then fade in above local preview.
-            tween: Tween<double>(end: _remoteOpacity),
-            duration: _isRemoteVisible
-                ? const Duration(milliseconds: 300)
-                : Duration.zero,
-            curve: Curves.easeInOut,
-            builder: (
-              context,
-              opacity,
-              child,
-            ) =>
-                Opacity(
-                  opacity: opacity,
-                  child: child,
-                ),
-            child: XmaxVideoView(
-              track: widget.remoteTrack,
-              videoContentMode: widget.videoContentMode,
-              isInteractionEnabled:
-                  _isRemoteVisible && widget.isInteractionEnabled,
-              trajectoryRenderer: widget.trajectoryRenderer,
-            ),
-          ),
-        ),
-    ],
-  );
-
-  /// Observes rendering bindings and removal notifications for the current remote track.
-  void _attachRemoteTrack() {
-    final track = widget.remoteTrack;
+  ) {
+    final track = widget.track;
 
     if (track == null) {
-      return;
+      return const ColoredBox(color: Colors.black);
     }
 
     final handle = VideoRenderRegistry.handleFor(track);
+    final video = handle == null
+        ? const ColoredBox(color: Colors.black)
+        : ValueListenableBuilder<VideoRenderBinding?>(
+          valueListenable: handle,
+          builder: (
+            context,
+            binding,
+            _,
+          ) => _buildVideo(binding),
+        );
 
-    _remoteHandle = handle;
-    handle?.addListener(_remoteBindingDidChange);
-    handle?.addRemovalListener(_prepareForRemoteRemoval);
-    _isRemoteVisible = _hasRemoteBinding;
-    _updateRemoteReadiness();
+    final interaction = TrajectoryRegistry.bindingFor(track);
+
+    return ColoredBox(
+      color: Colors.black,
+      child: Stack(
+        fit: StackFit.expand,
+        children: <Widget>[
+          video,
+          if (widget.isInteractionEnabled && interaction != null)
+            LayoutBuilder(
+              builder: (
+                context,
+                constraints,
+              ) => Listener(
+                behavior: HitTestBehavior.opaque,
+                onPointerDown: (
+                  event,
+                ) => _pointerDown(
+                  event,
+                  constraints.biggest,
+                  interaction.interactionListener,
+                ),
+                onPointerMove: (
+                  event,
+                ) => _pointerMove(
+                  event,
+                  constraints.biggest,
+                  interaction.interactionListener,
+                ),
+                onPointerUp: _pointerUp,
+                onPointerCancel: _pointerUp,
+                child: IgnorePointer(child: _renderer.view),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
-  /// Removes remote track listeners and invalidates scheduled readiness notifications.
-  void _detachRemoteTrack() {
-    _remoteHandle?.removeListener(_remoteBindingDidChange);
-    _remoteHandle?.removeRemovalListener(_prepareForRemoteRemoval);
-    _remoteHandle = null;
-    _concealment = null;
-    _remoteIdentity = null;
-    _invalidateRemoteReadiness();
-  }
-
-  /// Updates video visibility using the latest remote stream binding.
-  void _remoteBindingDidChange() {
-    if (_remoteHandle?.value == null) {
-      _isRemoteSuppressed = false;
+  /// Builds the native video texture using the current track binding.
+  ///
+  /// Parameters:
+  /// - [binding]: The rendering or interaction configuration for the current track.
+  ///
+  /// Returns the widget tree for the current video or trail effects.
+  Widget _buildVideo(
+    VideoRenderBinding? binding,
+  ) {
+    if (binding == null) {
+      return const ColoredBox(color: Colors.black);
     }
 
-    final isVisible = _hasRemoteBinding;
+    return VideoRenderSurface(
+      binding: binding,
+      track: widget.track,
+      contentMode: widget.videoContentMode,
+    );
+  }
 
-    if (mounted) {
-      setState(() => _isRemoteVisible = isVisible);
+  /// Starts a pointer trail and immediately submits its first interaction sample.
+  ///
+  /// Parameters:
+  /// - [event]: The pointer-down, move, or release event being processed.
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
+  void _pointerDown(
+    PointerDownEvent event,
+    Size size,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
+  ) {
+    final pointer = _ActivePointer(
+      id: createTrajectoryID(event.pointer),
+      location: event.localPosition,
+    );
+
+    _activePointers[event.pointer] = pointer;
+    _updateSamplingContext(
+      size,
+      listener,
+    );
+    _renderer.renderBegan(<TrajectoryPoint>[_point(
+      pointer,
+      size,
+    )]);
+
+    // Submit the first point immediately, then sample all active pointers at 30 Hz using the display ticker.
+    _submit(
+      size,
+      listener,
+    );
+    if (!_samplingTicker.isActive) {
+      _currentSamplingTime = Duration.zero;
+      _lastSampleTime = Duration.zero;
+      _samplingTicker.start();
+    } else {
+      _lastSampleTime = _currentSamplingTime;
     }
-
-    _updateRemoteReadiness();
   }
 
-  /// Invalidates pending display readiness callbacks for this binding.
-  void _invalidateRemoteReadiness() {
-    _readyVersion += 1;
-    _didNotifyReady = false;
-  }
+  /// Updates an active pointer's position and trail display.
+  ///
+  /// Parameters:
+  /// - [event]: The pointer-down, move, or release event being processed.
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
+  void _pointerMove(
+    PointerMoveEvent event,
+    Size size,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
+  ) {
+    final pointer = _activePointers[event.pointer];
 
-  /// Updates result visibility from the remote binding and first-frame state.
-  void _updateRemoteReadiness() {
-    final binding = _remoteHandle?.value;
-    final stream = binding is RemoteVideoRenderBinding ? binding.stream : null;
-    final identity = stream == null
-        ? null
-        : (stream.roomID, stream.userID, stream.streamID);
-
-    if (identity != _remoteIdentity || !_hasRemoteBinding) {
-      _invalidateRemoteReadiness();
-      _remoteIdentity = identity;
-    }
-
-    _scheduleRemoteVideoReady();
-  }
-
-  /// Invokes display readiness after the current frame, unless the binding has expired.
-  void _scheduleRemoteVideoReady() {
-    if (!_hasRemoteBinding ||
-        _didNotifyReady ||
-        widget.onRemoteVideoReady == null) {
+    if (pointer == null) {
       return;
     }
 
-    final version = _readyVersion;
-    // A cached first frame may exist during build; defer readiness until visibility is updated
-    // so applications can safely call setState from the callback.
-    WidgetsBinding.instance.addPostFrameCallback((
-      _,
-    ) {
-      if (!mounted ||
-          version != _readyVersion ||
-          !_hasRemoteBinding ||
-          _didNotifyReady) {
-        return;
-      }
-
-      final callback = widget.onRemoteVideoReady;
-
-      if (callback == null) {
-        return;
-      }
-
-      _didNotifyReady = true;
-      callback();
-    });
-  }
-
-  /// The effective opacity of the remote video layer.
-  double get _remoteOpacity {
-    if (_isRemoteSuppressed || _remoteHandle?.value == null) {
-      return 0;
-    }
-
-    return _isRemoteVisible ? 1 : _pendingRemoteOpacity;
-  }
-
-  /// Hides remote video and waits for frame submission before allowing native resources to be
-  /// released.
-  Future<void> _prepareForRemoteRemoval() {
-    final active = _concealment;
-
-    if (active != null) {
-      return active;
-    }
-
-    if (!mounted || _isRemoteSuppressed || _remoteHandle?.value == null) {
-      return Future<void>.value();
-    }
-
-    // Retain video rendering resources until the hidden frame is submitted,
-    // then clear the binding to avoid exposing a black canvas while the layer is visible.
-    setState(() {
-      _isRemoteSuppressed = true;
-      _isRemoteVisible = false;
-    });
-    _invalidateRemoteReadiness();
-
-    final binding = WidgetsBinding.instance;
-    final lifecycle = binding.lifecycleState;
-
-    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) {
-      return Future<void>.value();
-    }
-
-    final future = binding.endOfFrame.timeout(
-      const Duration(milliseconds: 100),
-      onTimeout: () {},
+    pointer.location = event.localPosition;
+    _updateSamplingContext(
+      size,
+      listener,
     );
-
-    _concealment = future;
-
-    return future.whenComplete(() {
-      if (identical(
-        _concealment,
-        future,
-      )) {
-        _concealment = null;
-      }
-    });
+    _renderer.renderMoved(<TrajectoryPoint>[_point(
+      pointer,
+      size,
+    )]);
   }
 
-  /// Whether the remote track has an available result-stream binding.
-  bool get _hasRemoteBinding {
-    final binding = _remoteHandle?.value;
+  /// Ends a pointer trail and stops sampling when no active pointers remain.
+  ///
+  /// Parameters:
+  /// - [event]: The pointer-down, move, or release event being processed.
+  void _pointerUp(
+    PointerEvent event,
+  ) {
+    final pointer = _activePointers.remove(event.pointer);
 
-    return !_isRemoteSuppressed &&
-        binding is RemoteVideoRenderBinding &&
-        binding.firstFrameRendered;
+    if (pointer != null) {
+      _renderer.renderEnded(<TrajectoryID>[pointer.id]);
+    }
+
+    if (_activePointers.isEmpty) {
+      _stopSampling();
+    }
   }
+
+  /// Submits all active pointers at the fixed sampling interval.
+  ///
+  /// Parameters:
+  /// - [elapsed]: The time elapsed in the current animation or sampling cycle.
+  void _sampleActivePointers(
+    Duration elapsed,
+  ) {
+    _currentSamplingTime = elapsed;
+
+    if (_activePointers.isEmpty) {
+      _stopSampling();
+
+      return;
+    }
+
+    final lastSampleTime = _lastSampleTime;
+
+    if (lastSampleTime != null &&
+        elapsed - lastSampleTime < _samplingInterval) {
+      return;
+    }
+
+    final size = _samplingViewportSize;
+    final listener = _samplingListener;
+
+    if (size == null || listener == null) {
+      return;
+    }
+
+    _submit(
+      size,
+      listener,
+    );
+    _lastSampleTime = elapsed;
+  }
+
+  /// Saves the viewport dimensions and submission handler for interaction sampling.
+  ///
+  /// Parameters:
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
+  void _updateSamplingContext(
+    Size size,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
+  ) {
+    _samplingViewportSize = size;
+    _samplingListener = listener;
+  }
+
+  /// Stops the sampling ticker and clears the sampling context.
+  void _stopSampling() {
+    if (_samplingTicker.isActive) {
+      _samplingTicker.stop();
+    }
+
+    _currentSamplingTime = Duration.zero;
+    _lastSampleTime = null;
+    _samplingViewportSize = null;
+    _samplingListener = null;
+  }
+
+  /// Converts an active pointer into trail rendering input containing position and elapsed time.
+  ///
+  /// Parameters:
+  /// - [pointer]: The state of the active pointer.
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  ///
+  /// Returns a position and time sample for local trail rendering.
+  TrajectoryPoint _point(
+    _ActivePointer pointer,
+    Size size,
+  ) => TrajectoryPoint(
+    id: pointer.id,
+    location: pointer.location,
+    normalizedLocation: Offset(
+      size.width == 0 ? 0 : pointer.location.dx / size.width,
+      size.height == 0 ? 0 : pointer.location.dy / size.height,
+    ),
+    timestamp: Duration(microseconds: DateTime.now().microsecondsSinceEpoch),
+  );
+
+  /// Submits all active pointers to the interaction controller using the current view
+  /// configuration.
+  ///
+  /// Parameters:
+  /// - [size]: The current video viewport dimensions, in logical pixels.
+  /// - [listener]: The callback receiving this notification.
+  void _submit(
+    Size size,
+    void Function(
+      InteractionFrame frame,
+    )
+    listener,
+  ) {
+    listener(
+      InteractionFrame(
+        points: _activePointers.values
+            .map((
+              pointer,
+            ) => pointer.location)
+            .toList(growable: false),
+        viewportSize: size,
+        contentMode: widget.videoContentMode,
+      ),
+    );
+  }
+
+  /// Clears active pointers, the sampling ticker, and visible trails.
+  void _resetPointers() {
+    _activePointers.clear();
+    _stopSampling();
+    _renderer.reset();
+  }
+
+  /// Disposes only the default trail renderer created by this view.
+  void _disposeOwnedRenderer() {
+    if (_ownsRenderer && _renderer is DefaultTrajectoryEffectRenderer) {
+      (_renderer as DefaultTrajectoryEffectRenderer).dispose();
+    }
+  }
+}
+
+/// The trail identifier and latest view position of an active pointer.
+final class _ActivePointer {
+
+  /// Records an active pointer's trail identifier and current position.
+  _ActivePointer({
+    required this.id,
+    required this.location,
+  });
+
+  /// The trail identifier of the active pointer.
+  final TrajectoryID id;
+
+  /// The pointer position within the view, in logical pixels.
+  Offset location;
 }

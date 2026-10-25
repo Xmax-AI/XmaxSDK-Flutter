@@ -432,7 +432,7 @@ class _RealtimePageState extends State<RealtimePage> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return XmaxRealtimeVideoView(
+    return XmaxRealtimeDualVideoView(
       localTrack: localStream.videoTrack,
       remoteTrack: _remoteStream?.videoTrack,
       videoContentMode: VideoContentMode.fill,
@@ -456,6 +456,16 @@ Camera dimensions must exactly match an entry in `supportedVideoFormats`.
 The existing `RealtimeCameraPreset` values are model-dependent and are not
 supported by these preview models; use the default or an explicit format.
 Providing both `videoFormat` and `preset` is invalid.
+
+`XmaxRealtimeDualVideoView` is the recommended video container. It keeps local
+preview mounted beneath the remote result, reveals the result after its first
+rendered frame, and restores preview when generation stops. Its
+`remoteVideoFadeInDuration` is measured in seconds and defaults to `0.3`. Set it
+to `0` to disable the transition; negative or nonfinite values also disable it.
+Changes apply to the next fade-in, without changing an animation in progress.
+
+For picture-in-picture or other custom layouts, compose separate
+`XmaxRealtimeVideoView(track: ...)` widgets for the local and remote tracks.
 
 While the preview is ready and disconnected,
 update the capture format without recreating the stream or view:
@@ -566,7 +576,7 @@ the sink reference. Your app retains ownership of its capture devices and player
 ```dart
 final localStream = await realtime.createExternalVideoStream(source: source);
 
-// Bind localStream.videoTrack to XmaxRealtimeVideoView.localTrack as usual.
+// Bind localStream.videoTrack to XmaxRealtimeDualVideoView.localTrack as usual.
 final remoteStream = await realtime.startGeneration(
   localStream: localStream,
   context: RealtimeContext(prompt: 'Transform the supplied video'),
@@ -675,7 +685,7 @@ call. Runtime failures are reported through `state.reason?.error`.
 
 ### Touch interaction
 
-During an active generation task, `XmaxRealtimeVideoView` captures multi-touch
+During an active generation task, `XmaxRealtimeDualVideoView` captures multi-touch
 trajectories over the generated video, converts them into video coordinates, and
 submits them to the active task. Trajectory interaction and the default visual
 effect are enabled by default.
@@ -683,7 +693,7 @@ effect are enabled by default.
 Disable interaction when touch input belongs to the surrounding interface:
 
 ```dart
-XmaxRealtimeVideoView(
+XmaxRealtimeDualVideoView(
   localTrack: localStream.videoTrack,
   remoteTrack: remoteStream?.videoTrack,
   isInteractionEnabled: false,

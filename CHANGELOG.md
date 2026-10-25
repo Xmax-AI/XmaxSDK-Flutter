@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Rename the single-track view to `XmaxRealtimeVideoView` and the recommended local/remote overlay to `XmaxRealtimeDualVideoView`. Remove `XmaxVideoView` and migrate dual-track usages to the new name.
+- Add `remoteVideoFadeInDuration` in seconds, defaulting to 0.3; zero, negative, or nonfinite values disable fade-in, and changes apply to the next transition.
+- Raise the downlink minimum bitrate to 500 kbps and clamp the maximum to 500–10000 kbps for generation start and target-size changes.
 - Migrate realtime transport and texture rendering to Agora RTC 4.6.4 through the Flutter 6.6.4 plugin.
 - Replace the model catalog with `x2.1.1-preview-cn` and `x2.1.1-preview-us`, including model-specific realtime endpoints and strict RTC credential parsing.
 - Add ordered, rate-limited DataStream signaling with Unicode-safe fragmentation and pending-trajectory coalescing.

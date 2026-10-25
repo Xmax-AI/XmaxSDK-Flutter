@@ -11,6 +11,48 @@ import 'package:xmax_sdk/src/stream/room/RoomEvent.dart';
 void main() {
   const format = RealtimeVideoFormat(width: 1024, height: 576, fps: 30);
 
+  for (final (size, maximum) in [
+    (const Size(2, 2), 500),
+    (const Size(320, 180), 500),
+    (const Size(1024, 576), 1263),
+    (const Size(7680, 4320), 10000),
+  ]) {
+    test(
+      'downlink bounds use the result size and clamp its budget ($size)',
+      () {
+        final messages = [
+          RoomEvent.start(
+            userID: 'user',
+            taskID: 'task',
+            videoFormat: RealtimeVideoFormat(
+              width: size.width.toInt(),
+              height: size.height.toInt(),
+              fps: 60,
+            ),
+            context: RealtimeContext(prompt: 'test'),
+          ),
+          RoomEvent.start(
+            userID: 'user',
+            taskID: 'task',
+            videoFormat: format,
+            targetSize: size,
+            context: RealtimeContext(prompt: 'test'),
+          ),
+          RoomEvent.changeTargetSize(
+            userID: 'user',
+            taskID: 'task',
+            targetSize: size,
+          ),
+        ];
+        for (final message in messages) {
+          final params = jsonDecode(message)['params'] as Map<String, dynamic>;
+          expect(params['min_bitrate'], 500);
+          expect(params['max_bitrate'], maximum);
+        }
+      },
+    );
+  }
+
   for (final padding in [true, false]) {
     test(
       'generation messages encode contain padding only when requested ($padding)',
@@ -40,7 +82,7 @@ void main() {
     );
   }
 
-  test('start event matches iOS room signaling contract', () {
+  test('start event includes generation parameters and bitrate bounds', () {
     final event = jsonDecode(
       RoomEvent.start(
         userID: 'user-1',
@@ -62,7 +104,7 @@ void main() {
         'ref_image_path': 'cos/ref.png',
         'face_replace': false,
         'mirror': false,
-        'min_bitrate': 100,
+        'min_bitrate': 500,
         'max_bitrate': 1263,
       },
       'user_id': 'user-1',
@@ -96,7 +138,7 @@ void main() {
     }
   });
 
-  test('change target size matches iOS room signaling contract', () {
+  test('change target size includes dimensions and bitrate bounds', () {
     expect(
       jsonDecode(
         RoomEvent.changeTargetSize(
@@ -109,7 +151,7 @@ void main() {
         'event': 'change_target_size',
         'params': <String, Object?>{
           'target_size': <int>[1280, 720],
-          'min_bitrate': 100,
+          'min_bitrate': 500,
           'max_bitrate': 1774,
         },
         'user_id': 'user-1',

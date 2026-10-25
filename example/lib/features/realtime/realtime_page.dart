@@ -903,7 +903,7 @@ class _RealtimePageState extends State<RealtimePage>
                       ),
                     RealtimeCameraSwitchTransition(
                       active: _isSwitchingCamera,
-                      child: XmaxRealtimeVideoView(
+                      child: XmaxRealtimeDualVideoView(
                         localTrack: _localStream?.videoTrack,
                         remoteTrack: _remoteStream?.videoTrack,
                         onRemoteVideoReady: _remoteVideoDidBecomeReady,
