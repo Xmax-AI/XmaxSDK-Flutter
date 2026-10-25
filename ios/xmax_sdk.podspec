@@ -10,7 +10,7 @@
 
 Pod::Spec.new do |s|
   s.name = 'xmax_sdk'
-  s.version = '1.0.2'
+  s.version = '1.0.3'
   s.summary = 'XmaxSDK native logging for Flutter.'
   s.description = 'Routes enabled XmaxSDK Flutter logs to the iOS unified logging system.'
   s.homepage = 'https://github.com/Xmax-AI/XmaxSDK-Flutter'

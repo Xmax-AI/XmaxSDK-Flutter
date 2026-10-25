@@ -2,7 +2,7 @@ name: xmax_sdk
 description: >-
   Flutter SDK for integrating Xmax AI real-time interactive video generation
   and media storage into iOS and Android apps.
-version: 1.0.2
+version: 1.0.3
 homepage: https://platform.xmaxai.com/
 repository: https://github.com/Xmax-AI/XmaxSDK-Flutter
 issue_tracker: https://github.com/Xmax-AI/XmaxSDK-Flutter/issues

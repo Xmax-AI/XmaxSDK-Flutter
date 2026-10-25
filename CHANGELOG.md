@@ -1,10 +1,11 @@
 # Changelog
 
-## Unreleased
+## 1.0.3
 
 - Show all supported models on the XLab home page and preserve model selection independently of the service environment.
 - Resolve camera and external preview bindings through the RTC interface, removing concrete-manager checks and alternate binding constructors.
 - Add opt-in `setRemoteMediaFrameListener` for owned I420 video and premixing PCM, shared receiver timestamps, sample-based audio continuity, bounded serial delivery, and stale-stream rejection.
+- Add caller-owned external media input through `createExternalVideoStream`, with BGRA or NV12 video, optional PCM audio, bounded frame delivery, and source lifecycle management.
 - Add XLab external-capture recording controls with background H.264/AAC encoding, timestamp-preserving MP4 muxing, and photo-library saving.
 - Separate realtime startup timing into session creation, RTC room join, local stream publication, and first-frame arrival, with consistent localized success and failure summaries.
 - Display XLab external video with aspect-fit scaling to preserve the complete frame, while retaining the camera's aspect-fill layout.
@@ -20,7 +21,17 @@
 - Normalize interaction coordinates to the resolved media dimensions while retaining 30 Hz sampling.
 - Add independent adaptive uplink/downlink quality, recovery cooldowns, one-hour model-specific history, and four-pixel-aligned return sizes.
 - Add public video-statistics listeners, XLab statistics, and face restoration for clothing references.
+- Add model-default and preset-based camera creation and in-place camera format updates.
+- Add per-transfer upload and download cancellation, preserving existing destination files and removing staged download data on failure or cancellation.
 - Replace `resolveModelInputSize` with media, generation, and return-size resolution methods. Remove `stopGeneration` from the public manager interface; use `disconnect` to stop remote generation.
+
+### Migration Notes
+
+- Update model selection to `RealtimeModel.x2_1_1_preview_cn` or `RealtimeModel.x2_1_1_preview_us`; the previous model identifiers are no longer available.
+- Use `XmaxRealtimeDualVideo` for the recommended local/remote overlay and `XmaxRealtimeVideo` for a single track. The previous `View`-suffixed widget names have been removed.
+- Use `disconnect` to stop generation while retaining local preview. The public `stopGeneration` method has been removed.
+- Replace `resolveModelInputSize` with the appropriate `MediaServicing` sizing method. See the README for camera, external-source, and result-size integration.
+- Remote frame callbacks are opt-in. Keep synchronous callback work short and use a shared timestamp origin when recording audio and video.
 
 ## 1.0.2
 

@@ -17,7 +17,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('XLAB'), findsOneWidget);
-    expect(find.text('v1.0.2'), findsOneWidget);
+    expect(find.text('v1.0.3'), findsOneWidget);
     expect(find.text('Android 8.0+'), findsOneWidget);
     final apiKeyField = tester.widget<TextField>(
       find.byKey(const ValueKey<String>('api-key-field')),

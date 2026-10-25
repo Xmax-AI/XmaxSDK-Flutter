@@ -191,7 +191,7 @@ Add XmaxSDK to your application's `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  xmax_sdk: ^1.0.2
+  xmax_sdk: ^1.0.3
 ```
 
 ### Git
@@ -203,7 +203,7 @@ dependencies:
   xmax_sdk:
     git:
       url: https://github.com/Xmax-AI/XmaxSDK-Flutter.git
-      ref: 1.0.2
+      ref: 1.0.3
 ```
 
 ### Local path
