@@ -34,15 +34,6 @@ class _HomePageState extends State<HomePage> {
   RealtimeModel _selectedModel = RealtimeModel.x2_1_1_preview_cn;
   int _modelSelectionVersion = 0;
 
-  List<RealtimeModel> get _availableModels =>
-      XLabLocalization.shared.environment == XmaxEnvironment.china
-      ? const [RealtimeModel.x2_1_1_preview_cn]
-      : const [RealtimeModel.x2_1_1_preview_us];
-
-  RealtimeModel get _activeModel => _availableModels.contains(_selectedModel)
-      ? _selectedModel
-      : _availableModels.first;
-
   String get _minimumOS => switch (defaultTargetPlatform) {
     TargetPlatform.android => 'Android 8.0+',
     TargetPlatform.iOS => 'iOS 15+',
@@ -135,7 +126,7 @@ class _HomePageState extends State<HomePage> {
     final apiKey = _apiKeyForNavigation();
     if (apiKey == null) return;
     final environment = XLabLocalization.shared.environment;
-    final model = _activeModel;
+    final model = _selectedModel;
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => builder(apiKey, environment, model),
@@ -164,7 +155,7 @@ class _HomePageState extends State<HomePage> {
           builder: (_) => RealtimePage(
             apiKey: apiKey,
             environment: XLabLocalization.shared.environment,
-            model: _activeModel,
+            model: _selectedModel,
             localInput: XLabRealtimeImageInput(
               path: image.path,
               name: image.name,
@@ -199,7 +190,7 @@ class _HomePageState extends State<HomePage> {
           builder: (_) => RealtimePage(
             apiKey: apiKey,
             environment: XLabLocalization.shared.environment,
-            model: _activeModel,
+            model: _selectedModel,
             localInput: XLabRealtimeExternalVideoInput(
               path: video.path,
               name: video.name,
@@ -431,7 +422,7 @@ class _HomePageState extends State<HomePage> {
             Text(
               XLabLocalization.shared.formatCount(
                 'feed.model.count',
-                _availableModels.length,
+                RealtimeModel.values.length,
               ),
               style: TextStyle(
                 color: Color(0x70FFFFFF),
@@ -557,11 +548,11 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
         const SizedBox(height: 12),
-        for (final model in _availableModels) ...<Widget>[
-          if (model != _availableModels.first) const SizedBox(height: 4),
+        for (final model in RealtimeModel.values) ...<Widget>[
+          if (model != RealtimeModel.values.first) const SizedBox(height: 4),
           _ModelOptionRow(
             model: model,
-            selected: model == _activeModel,
+            selected: model == _selectedModel,
             onTap: () => _selectModel(model),
           ),
         ],

@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Show all supported models on the XLab home page and preserve model selection independently of the service environment.
 - Resolve camera and external preview bindings through the RTC interface, removing concrete-manager checks and alternate binding constructors.
 - Add opt-in `setRemoteMediaFrameListener` for owned I420 video and premixing PCM, shared receiver timestamps, sample-based audio continuity, bounded serial delivery, and stale-stream rejection.
 - Add XLab external-capture recording controls with background H.264/AAC encoding, timestamp-preserving MP4 muxing, and photo-library saving.

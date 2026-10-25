@@ -17,13 +17,13 @@ void main() {
 
     await tester.pumpWidget(const XLabApp());
     await tester.pumpAndSettle();
-    final proRow = find.byKey(
+    final modelRow = find.byKey(
       const ValueKey<String>('model-x2.1.1-preview-us'),
     );
     expect(
       tester
           .widget<Semantics>(
-            find.ancestor(of: proRow, matching: find.byType(Semantics)).first,
+            find.ancestor(of: modelRow, matching: find.byType(Semantics)).first,
           )
           .properties
           .selected,
@@ -32,7 +32,7 @@ void main() {
   });
 
   testWidgets(
-    'XLab falls back from a retired model and opens the global preview',
+    'retired model fallback retains the full catalog and camera uses the selected model',
     (tester) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.withData(<String, Object>{
@@ -44,20 +44,39 @@ void main() {
 
       await tester.pumpWidget(const XLabApp());
       await tester.pumpAndSettle();
-      expect(find.text('MODELS: 1'), findsOneWidget);
+      expect(find.text('MODELS: 2'), findsOneWidget);
       expect(find.text('X2.0 PRO'), findsNothing);
-      expect(find.text('X2.1.1-preview-cn'), findsNothing);
+      expect(find.text('X2.1.1-preview-cn'), findsOneWidget);
       expect(find.text('X2.1.1-preview-us'), findsOneWidget);
 
-      final proRow = find.byKey(
+      final defaultRow = find.byKey(
+        const ValueKey<String>('model-x2.1.1-preview-cn'),
+      );
+      expect(
+        tester
+            .widget<Semantics>(
+              find
+                  .ancestor(of: defaultRow, matching: find.byType(Semantics))
+                  .first,
+            )
+            .properties
+            .selected,
+        isTrue,
+      );
+
+      final modelRow = find.byKey(
         const ValueKey<String>('model-x2.1.1-preview-us'),
       );
-      await tester.tap(proRow);
+      await tester.ensureVisible(modelRow);
+      await tester.pumpAndSettle();
+      await tester.tap(modelRow);
       await tester.pump();
       expect(
         tester
             .widget<Semantics>(
-              find.ancestor(of: proRow, matching: find.byType(Semantics)).first,
+              find
+                  .ancestor(of: modelRow, matching: find.byType(Semantics))
+                  .first,
             )
             .properties
             .selected,

@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
+import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk_example/features/home/home_page.dart';
 import 'package:xmax_sdk_example/features/realtime/realtime_local_input.dart';
 import 'package:xmax_sdk_example/features/realtime/realtime_page.dart';
@@ -63,6 +64,8 @@ void main() {
               route.builder(tester.element(find.byType(HomePage)))
                   as RealtimePage;
           expect(page.apiKey, 'test-key');
+          expect(page.model, RealtimeModel.x2_1_1_preview_cn);
+          expect(page.environment, XmaxEnvironment.global);
           expect(page.localInput, isA<XLabRealtimeExternalVideoInput>());
           final input = page.localInput! as XLabRealtimeExternalVideoInput;
           expect(input.path, '/tmp/external.mp4');

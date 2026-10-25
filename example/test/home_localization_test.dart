@@ -26,7 +26,7 @@ void main() {
     expect(find.text('实时交互视频模型'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.china);
     expect(find.text('X2.1.1-preview-cn'), findsOneWidget);
-    expect(find.text('X2.1.1-preview-us'), findsNothing);
+    expect(find.text('X2.1.1-preview-us'), findsOneWidget);
 
     tester.binding.platformDispatcher.localeTestValue = const Locale('en');
     XLabLocalization.shared.systemLocaleDidChange();
@@ -34,8 +34,79 @@ void main() {
     expect(find.text('Realtime Interactive Video'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.global);
     expect(find.text('X2.1.1-preview-us'), findsOneWidget);
-    expect(find.text('X2.1.1-preview-cn'), findsNothing);
+    expect(find.text('X2.1.1-preview-cn'), findsOneWidget);
   });
+
+  for (final (language, savedModel) in [
+    (XLabLanguage.english, RealtimeModel.x2_1_1_preview_cn),
+    (XLabLanguage.simplifiedChinese, RealtimeModel.x2_1_1_preview_us),
+  ]) {
+    testWidgets('model selection persists independently of ${language.name}', (
+      tester,
+    ) async {
+      SharedPreferencesAsyncPlatform
+          .instance = InMemorySharedPreferencesAsync.withData(<String, Object>{
+        'xlab.language': language == XLabLanguage.english ? 'en' : 'zh-Hans',
+        'xlab.realtime.model': savedModel.value,
+      });
+      addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
+      await XLabLocalization.shared.setLanguage(language);
+      await tester.pumpWidget(const XLabApp());
+      await tester.pumpAndSettle();
+
+      void expectSelected(RealtimeModel model) {
+        for (final item in RealtimeModel.values) {
+          expect(find.text(item.displayName), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byKey(ValueKey<String>('model-${item.value}')),
+              matching: find.text(
+                XLabLocalization.shared.text('feed.selected'),
+              ),
+            ),
+            item == model ? findsOneWidget : findsNothing,
+          );
+        }
+        expect(
+          find.text(
+            XLabLocalization.shared.formatCount(
+              'feed.model.count',
+              RealtimeModel.values.length,
+            ),
+          ),
+          findsOneWidget,
+        );
+      }
+
+      expectSelected(savedModel);
+      final nextModel = RealtimeModel.values.firstWhere(
+        (model) => model != savedModel,
+      );
+      final row = find.byKey(ValueKey<String>('model-${nextModel.value}'));
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+      expectSelected(nextModel);
+      expect(
+        await SharedPreferencesAsync().getString('xlab.realtime.model'),
+        nextModel.value,
+      );
+
+      await XLabLocalization.shared.setLanguage(
+        language == XLabLanguage.english
+            ? XLabLanguage.simplifiedChinese
+            : XLabLanguage.english,
+      );
+      await tester.pumpAndSettle();
+      expectSelected(nextModel);
+
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpWidget(const XLabApp());
+      await tester.pumpAndSettle();
+      expectSelected(nextModel);
+    });
+  }
 
   testWidgets(
     'language selection translates the home page and selects region',
