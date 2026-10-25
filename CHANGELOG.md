@@ -6,7 +6,7 @@
 - Display XLab external video with aspect-fit scaling to preserve the complete frame, while retaining the camera's aspect-fill layout.
 - Fix XLab external-file preview starvation after slow decoding, retain a shared audio/video clock, and optimize Android NV12 conversion while preserving crop, rotation, and scaling.
 - Add optional built-in microphone capture with `createLocalCameraStream(useMicrophone: true)`, connection-scoped audio publication, permission checks, and automatic cleanup while preserving camera preview. Enable microphone input in XLab's camera example.
-- Rename the single-track view to `XmaxRealtimeVideoView` and the recommended local/remote overlay to `XmaxRealtimeDualVideoView`. Remove `XmaxVideoView` and migrate dual-track usages to the new name.
+- Rename the single-track widget to `XmaxRealtimeVideo` and the recommended local/remote overlay to `XmaxRealtimeDualVideo`. Remove the previous `View`-suffixed component names and migrate all usages to the new names.
 - Add `remoteVideoFadeInDuration` in seconds, defaulting to 0.3; zero, negative, or nonfinite values disable fade-in, and changes apply to the next transition.
 - Raise the downlink minimum bitrate to 500 kbps and clamp the maximum to 500–10000 kbps for generation start and target-size changes.
 - Migrate realtime transport and texture rendering to Agora RTC 4.6.4 through the Flutter 6.6.4 plugin.

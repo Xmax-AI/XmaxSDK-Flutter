@@ -87,8 +87,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(manager.useMicrophone, isTrue);
       expect(
-        tester.widget<XmaxRealtimeDualVideoView>(
-          find.byType(XmaxRealtimeDualVideoView),
+        tester.widget<XmaxRealtimeDualVideo>(
+          find.byType(XmaxRealtimeDualVideo),
         ).videoContentMode,
         VideoContentMode.fill,
       );
@@ -166,8 +166,8 @@ void main() {
       await tester.pumpAndSettle();
       expect(manager.volume, 1);
       expect(
-        tester.widget<XmaxRealtimeDualVideoView>(
-          find.byType(XmaxRealtimeDualVideoView),
+        tester.widget<XmaxRealtimeDualVideo>(
+          find.byType(XmaxRealtimeDualVideo),
         ).videoContentMode,
         VideoContentMode.fit,
       );

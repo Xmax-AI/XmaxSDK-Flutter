@@ -10,8 +10,8 @@ import 'package:xmax_sdk/src/render/trajectory/TrajectoryBinding.dart';
 import 'package:xmax_sdk/src/render/trajectory/TrajectoryRegistry.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderRegistry.dart';
-import 'package:xmax_sdk/src/render/video/XmaxRealtimeDualVideoView.dart';
-import 'package:xmax_sdk/src/render/video/XmaxRealtimeVideoView.dart';
+import 'package:xmax_sdk/src/render/video/XmaxRealtimeDualVideo.dart';
+import 'package:xmax_sdk/src/render/video/XmaxRealtimeVideo.dart';
 import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 
 void main() {
@@ -29,7 +29,7 @@ void main() {
     addTearDown(() => VideoRenderRegistry.unregister(remote));
     await tester.pumpWidget(
       MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           remoteTrack: remote,
           remoteVideoFadeInDuration: 0.8,
         ),
@@ -64,7 +64,7 @@ void main() {
         }
       });
       Widget view(RealtimeVideoTrack remote) => MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           localTrack: local,
           remoteTrack: remote,
           remoteVideoFadeInDuration: 0.8,
@@ -74,12 +74,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 800));
       expect(_remoteOpacity(tester), 1);
       final localElement = tester.element(
-        find.byType(XmaxRealtimeVideoView).first,
+        find.byType(XmaxRealtimeVideo).first,
       );
       await tester.pumpWidget(view(second));
       expect(_remoteOpacity(tester), lessThan(0.01));
       expect(
-        tester.element(find.byType(XmaxRealtimeVideoView).first),
+        tester.element(find.byType(XmaxRealtimeVideo).first),
         same(localElement),
       );
       await tester.pump(const Duration(milliseconds: 400));
@@ -105,7 +105,7 @@ void main() {
     addTearDown(() => VideoRenderRegistry.unregister(remote));
     await tester.pumpWidget(
       MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           remoteTrack: remote,
           remoteVideoFadeInDuration: 0.8,
         ),
@@ -145,7 +145,7 @@ void main() {
       var readyCount = 0;
       await tester.pumpWidget(
         MaterialApp(
-          home: XmaxRealtimeDualVideoView(
+          home: XmaxRealtimeDualVideo(
             remoteTrack: remote,
             remoteVideoFadeInDuration: seconds,
             onRemoteVideoReady: () => readyCount += 1,
@@ -184,7 +184,7 @@ void main() {
       );
       addTearDown(() => VideoRenderRegistry.unregister(remote));
       Widget view(double seconds) => MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           remoteTrack: remote,
           remoteVideoFadeInDuration: seconds,
         ),
@@ -251,7 +251,7 @@ void main() {
             builder: (context, setState) => Stack(
               fit: StackFit.expand,
               children: [
-                XmaxRealtimeDualVideoView(
+                XmaxRealtimeDualVideo(
                   remoteTrack: remote,
                   onRemoteVideoReady: () => setState(() => loading = false),
                 ),
@@ -292,7 +292,7 @@ void main() {
       addTearDown(() => VideoRenderRegistry.unregister(remote));
       var calls = 0;
       Widget view() => MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           remoteTrack: remote,
           onRemoteVideoReady: () => calls += 1,
         ),
@@ -350,7 +350,7 @@ void main() {
           home: StatefulBuilder(
             builder: (context, setState) => Stack(
               children: [
-                XmaxRealtimeDualVideoView(
+                XmaxRealtimeDualVideo(
                   remoteTrack: remote,
                   onRemoteVideoReady: () => setState(() => loading = false),
                 ),
@@ -376,7 +376,7 @@ void main() {
       var calls = 0;
       await tester.pumpWidget(
         MaterialApp(
-          home: XmaxRealtimeDualVideoView(
+          home: XmaxRealtimeDualVideo(
             remoteTrack: remote,
             onRemoteVideoReady: () => calls += 1,
           ),
@@ -397,7 +397,7 @@ void main() {
         case 'replace':
           await tester.pumpWidget(
             MaterialApp(
-              home: XmaxRealtimeDualVideoView(
+              home: XmaxRealtimeDualVideo(
                 onRemoteVideoReady: () => calls += 1,
               ),
             ),
@@ -429,11 +429,11 @@ void main() {
     addTearDown(() => VideoRenderRegistry.unregister(remote));
     var calls = 0;
     await tester.pumpWidget(
-      MaterialApp(home: XmaxRealtimeDualVideoView(remoteTrack: remote)),
+      MaterialApp(home: XmaxRealtimeDualVideo(remoteTrack: remote)),
     );
     await tester.pumpWidget(
       MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           remoteTrack: remote,
           onRemoteVideoReady: () => calls += 1,
         ),
@@ -462,7 +462,7 @@ void main() {
       });
       await tester.pumpWidget(
         MaterialApp(
-          home: XmaxRealtimeDualVideoView(
+          home: XmaxRealtimeDualVideo(
             localTrack: local,
             remoteTrack: remote,
           ),
@@ -532,7 +532,7 @@ void main() {
     );
     addTearDown(() => VideoRenderRegistry.unregister(remote));
     await tester.pumpWidget(
-      MaterialApp(home: XmaxRealtimeDualVideoView(remoteTrack: remote)),
+      MaterialApp(home: XmaxRealtimeDualVideo(remoteTrack: remote)),
     );
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await VideoRenderRegistry.handleFor(remote)!.prepareForRemoval();
@@ -553,7 +553,7 @@ void main() {
     addTearDown(() => VideoRenderRegistry.unregister(localTrack));
 
     await tester.pumpWidget(
-      MaterialApp(home: XmaxRealtimeVideoView(track: localTrack)),
+      MaterialApp(home: XmaxRealtimeVideo(track: localTrack)),
     );
     expect(attachments, 0);
 
@@ -569,7 +569,7 @@ void main() {
     addTearDown(() => VideoRenderRegistry.unregister(remoteTrack));
 
     await tester.pumpWidget(
-      MaterialApp(home: XmaxRealtimeDualVideoView(remoteTrack: remoteTrack)),
+      MaterialApp(home: XmaxRealtimeDualVideo(remoteTrack: remoteTrack)),
     );
 
     expect(_remoteOpacity(tester), lessThan(0.01));
@@ -627,22 +627,22 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: XmaxRealtimeDualVideoView(
+        home: XmaxRealtimeDualVideo(
           localTrack: localTrack,
           remoteTrack: remoteTrack,
         ),
       ),
     );
     final localElement = tester.element(
-      find.byType(XmaxRealtimeVideoView).first,
+      find.byType(XmaxRealtimeVideo).first,
     );
 
     await tester.pumpWidget(
-      MaterialApp(home: XmaxRealtimeDualVideoView(localTrack: localTrack)),
+      MaterialApp(home: XmaxRealtimeDualVideo(localTrack: localTrack)),
     );
 
     expect(
-      tester.element(find.byType(XmaxRealtimeVideoView)),
+      tester.element(find.byType(XmaxRealtimeVideo)),
       same(localElement),
     );
   });
@@ -672,14 +672,14 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: SizedBox.expand(
-            child: XmaxRealtimeDualVideoView(remoteTrack: remoteTrack),
+            child: XmaxRealtimeDualVideo(remoteTrack: remoteTrack),
           ),
         ),
       );
       await tester.pump();
 
       final gesture = await tester.startGesture(
-        tester.getCenter(find.byType(XmaxRealtimeDualVideoView)),
+        tester.getCenter(find.byType(XmaxRealtimeDualVideo)),
       );
 
       // Touch-down is sent immediately, even before the first sampling tick.

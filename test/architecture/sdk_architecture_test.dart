@@ -15,24 +15,31 @@ import 'package:xmax_sdk/src/stream/quality/RealtimeQualityLevel.dart'
 
 void main() {
   test(
-    'public video views distinguish single-track and dual-track rendering',
+    'public video widgets distinguish single-track and dual-track rendering',
     () {
-      const single = XmaxRealtimeVideoView();
-      const dual = XmaxRealtimeDualVideoView();
+      const single = XmaxRealtimeVideo();
+      const dual = XmaxRealtimeDualVideo();
       expect(single.track, isNull);
       expect(dual.localTrack, isNull);
       expect(dual.remoteTrack, isNull);
       expect(dual.remoteVideoFadeInDuration, 0.3);
       expect(
-        const compatibility.XmaxRealtimeVideoView(),
-        isA<XmaxRealtimeVideoView>(),
+        const compatibility.XmaxRealtimeVideo(),
+        isA<XmaxRealtimeVideo>(),
       );
       expect(
-        const compatibility.XmaxRealtimeDualVideoView(),
-        isA<XmaxRealtimeDualVideoView>(),
+        const compatibility.XmaxRealtimeDualVideo(),
+        isA<XmaxRealtimeDualVideo>(),
       );
     },
   );
+
+  test('video widget sources use the public component names', () {
+    for (final name in ['XmaxRealtimeVideo', 'XmaxRealtimeDualVideo']) {
+      expect(File('lib/src/render/video/$name.dart').existsSync(), isTrue);
+      expect(File('lib/src/render/video/${name}View.dart').existsSync(), isFalse);
+    }
+  });
 
   test('public entry points expose the same relocated domain types', () {
     expect(

@@ -1,5 +1,5 @@
 //
-//  XmaxRealtimeVideoView.dart
+//  XmaxRealtimeVideo.dart
 //  XmaxSDK
 //
 //  Author: 翁跃庭 (Yueting Weng)
@@ -21,11 +21,11 @@ import 'VideoRenderBinding.dart';
 import 'VideoRenderRegistry.dart';
 import 'VideoRenderSurface.dart';
 
-/// A Flutter view that displays a local or remote realtime video track.
-final class XmaxRealtimeVideoView extends StatefulWidget {
+/// A Flutter widget displaying a single local or remote video track.
+final class XmaxRealtimeVideo extends StatefulWidget {
 
-  /// Creates a single-track video view.
-  const XmaxRealtimeVideoView({
+  /// Creates a single-track realtime video widget.
+  const XmaxRealtimeVideo({
     super.key,
     this.track,
     this.videoContentMode = VideoContentMode.fill,
@@ -49,11 +49,11 @@ final class XmaxRealtimeVideoView extends StatefulWidget {
 
   /// Creates the state managing single-track video and interaction resources.
   @override
-  State<XmaxRealtimeVideoView> createState() => _XmaxRealtimeVideoViewState();
+  State<XmaxRealtimeVideo> createState() => _XmaxRealtimeVideoState();
 }
 
 /// Manages video rendering, interaction sampling, and trail effect resources.
-final class _XmaxRealtimeVideoViewState extends State<XmaxRealtimeVideoView>
+final class _XmaxRealtimeVideoState extends State<XmaxRealtimeVideo>
     with SingleTickerProviderStateMixin {
 
   /// The sampling interval, allowing at most 30 periodic interaction samples per second.
@@ -103,7 +103,7 @@ final class _XmaxRealtimeVideoViewState extends State<XmaxRealtimeVideoView>
   /// - [oldWidget]: The previous widget configuration.
   @override
   void didUpdateWidget(
-    covariant XmaxRealtimeVideoView oldWidget,
+    covariant XmaxRealtimeVideo oldWidget,
   ) {
     super.didUpdateWidget(oldWidget);
 

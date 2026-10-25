@@ -49,7 +49,7 @@ export 'src/stream/quality/RealtimeQualityLevel.dart';
 export 'src/render/trajectory/DefaultTrajectoryEffectRenderer.dart';
 export 'src/render/trajectory/TrajectoryEffectRendering.dart'
     show TrajectoryEffectRendering, TrajectoryID, TrajectoryPoint;
-export 'src/render/video/XmaxRealtimeDualVideoView.dart';
-export 'src/render/video/XmaxRealtimeVideoView.dart';
+export 'src/render/video/XmaxRealtimeDualVideo.dart';
+export 'src/render/video/XmaxRealtimeVideo.dart';
 
 export 'src/XmaxSDKInfo.dart';

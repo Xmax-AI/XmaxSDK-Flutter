@@ -1,5 +1,5 @@
 //
-//  XmaxRealtimeDualVideoView.dart
+//  XmaxRealtimeDualVideo.dart
 //  XmaxSDK
 //
 //  Author: 翁跃庭 (Yueting Weng)
@@ -15,9 +15,9 @@ import '../../service/realtime/RealtimeVideoTrack.dart';
 import '../trajectory/TrajectoryEffectRendering.dart';
 import 'VideoRenderBinding.dart';
 import 'VideoRenderRegistry.dart';
-import 'XmaxRealtimeVideoView.dart';
+import 'XmaxRealtimeVideo.dart';
 
-/// A Flutter view that overlays local and remote video tracks and switches between them.
+/// A Flutter widget that overlays local and remote video tracks and switches between them.
 ///
 /// The local preview remains underneath. After [remoteTrack] renders its first frame,
 /// the result appears above the preview. Stopping or unbinding the remote stream restores local
@@ -25,11 +25,11 @@ import 'XmaxRealtimeVideoView.dart';
 /// When generation stops, remote video is hidden before resources are released to avoid black
 /// flashes.
 ///
-/// For picture-in-picture or custom layouts, compose multiple [XmaxRealtimeVideoView] widgets instead.
-final class XmaxRealtimeDualVideoView extends StatefulWidget {
+/// For picture-in-picture or custom layouts, compose multiple [XmaxRealtimeVideo] widgets instead.
+final class XmaxRealtimeDualVideo extends StatefulWidget {
 
-  /// Creates a video view that automatically switches between local preview and generation results.
-  const XmaxRealtimeDualVideoView({
+  /// Creates a dual-track realtime video widget.
+  const XmaxRealtimeDualVideo({
     super.key,
     this.localTrack,
     this.remoteTrack,
@@ -77,13 +77,13 @@ final class XmaxRealtimeDualVideoView extends StatefulWidget {
 
   /// Creates the state managing preview transitions and remote readiness notifications.
   @override
-  State<XmaxRealtimeDualVideoView> createState() =>
-      _XmaxRealtimeDualVideoViewState();
+  State<XmaxRealtimeDualVideo> createState() =>
+      _XmaxRealtimeDualVideoState();
 }
 
 /// Manages transitions between local preview and remote results, including readiness notifications.
-final class _XmaxRealtimeDualVideoViewState
-    extends State<XmaxRealtimeDualVideoView> {
+final class _XmaxRealtimeDualVideoState
+    extends State<XmaxRealtimeDualVideo> {
 
   /// The remote layer opacity before its first frame is ready.
   ///
@@ -127,7 +127,7 @@ final class _XmaxRealtimeDualVideoViewState
   /// - [oldWidget]: The previous widget configuration.
   @override
   void didUpdateWidget(
-    covariant XmaxRealtimeDualVideoView oldWidget,
+    covariant XmaxRealtimeDualVideo oldWidget,
   ) {
     super.didUpdateWidget(oldWidget);
 
@@ -160,7 +160,7 @@ final class _XmaxRealtimeDualVideoViewState
   ) => Stack(
     fit: StackFit.expand,
     children: <Widget>[
-      XmaxRealtimeVideoView(
+      XmaxRealtimeVideo(
         track: widget.localTrack,
         videoContentMode: widget.videoContentMode,
         isInteractionEnabled: false,
@@ -186,7 +186,7 @@ final class _XmaxRealtimeDualVideoViewState
                   opacity: opacity,
                   child: child,
                 ),
-            child: XmaxRealtimeVideoView(
+            child: XmaxRealtimeVideo(
               track: widget.remoteTrack,
               videoContentMode: widget.videoContentMode,
               isInteractionEnabled:
