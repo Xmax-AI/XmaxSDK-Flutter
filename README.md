@@ -17,17 +17,6 @@ We introduce XmaxSDK, a Flutter SDK designed for real-time interactive video gen
 
 <br>
 
-## What XmaxSDK does
-
-XmaxSDK offers a complete workflow that covers media acquisition, low-latency video
-communication, frame-by-frame generation, and in-app rendering. When processing
-live camera feeds, it streams media to our cloud inference service, applies
-on-device enhancement to the returned video, and renders the result to screen.
-With the entire workflow abstracted into simple API calls, integrating real-time
-video generation is seamless and intuitive.
-
-<br>
-
 ## What you can build with XmaxSDK
 
 <table>
