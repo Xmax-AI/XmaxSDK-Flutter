@@ -57,9 +57,41 @@ void main() {
             as AgoraVideoView;
     expect(view.controller.rtcEngine, same(engine));
     expect(view.controller.canvas.uid, 0);
+    expect(
+      view.controller.canvas.sourceType,
+      VideoSourceType.videoSourceCamera,
+    );
     expect(view.controller.connection?.channelId, isNull);
     expect(view.controller.connection?.localUid, isNull);
   });
+
+  testWidgets(
+    'external preview binds the custom video input without mirroring',
+    (tester) async {
+      await tester.pumpWidget(const SizedBox());
+      final context = tester.element(find.byType(SizedBox));
+      final view =
+          VideoRenderSurface(
+                binding: LocalVideoRenderBinding(
+                  engine: _Engine(),
+                  sourceType: VideoSourceType.videoSourceCustom,
+                ),
+                track: null,
+                contentMode: VideoContentMode.fit,
+              ).build(context)
+              as AgoraVideoView;
+      expect(
+        view.controller.canvas.sourceType,
+        VideoSourceType.videoSourceCustom,
+      );
+      expect(
+        view.controller.canvas.mirrorMode,
+        VideoMirrorModeType.videoMirrorModeDisabled,
+      );
+      expect(view.controller.canvas.uid, 0);
+      expect(view.controller.connection?.channelId, isNull);
+    },
+  );
 
   testWidgets(
     'remote rendering does not substitute UID zero for an unknown connection',

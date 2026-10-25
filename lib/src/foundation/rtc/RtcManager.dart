@@ -444,7 +444,7 @@ final class RtcManager implements RtcManaging {
       enabled: true,
       useTexture: false,
     );
-    await _engine.enableLocalVideo(true);
+
     if (hasAudio) {
       final trackID = await _engine.getMediaEngine().createCustomAudioTrack(
         trackType: AudioTrackType.audioTrackDirect,
@@ -461,7 +461,10 @@ final class RtcManager implements RtcManaging {
       }
       _externalAudioTrackID = trackID;
     }
-    await _engine.startPreview();
+
+    await _engine.startPreview(
+      sourceType: VideoSourceType.videoSourceCustom,
+    );
   }
 
   /// Stops custom preview and releases audio before the engine lease is returned.
@@ -474,7 +477,9 @@ final class RtcManager implements RtcManaging {
     final audio = _externalAudioTrackID;
     _externalAudioTrackID = null;
     try {
-      await _engine.stopPreview();
+      await _engine.stopPreview(
+        sourceType: VideoSourceType.videoSourceCustom,
+      );
     } finally {
       try {
         if (audio != null) {

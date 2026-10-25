@@ -73,8 +73,21 @@ void main() {
       expect(engine.previewStarts, 1);
       expect(engine.previewStops, 0);
       expect(engine.captureConfigurations, 0);
+      expect(engine.localVideoChanges, isEmpty);
+      expect(
+        engine.calls
+            .singleWhere((call) => call.memberName == #startPreview)
+            .namedArguments[#sourceType],
+        VideoSourceType.videoSourceCustom,
+      );
       await manager.stopExternalVideoSource();
-      expect(engine.localVideoChanges, [true, false]);
+      expect(engine.localVideoChanges, [false]);
+      expect(
+        engine.calls
+            .singleWhere((call) => call.memberName == #stopPreview)
+            .namedArguments[#sourceType],
+        VideoSourceType.videoSourceCustom,
+      );
       expect(engine.media.destroyedTracks, [12]);
       expect(engine.media.audioConfiguration!.enableLocalPlayback, isFalse);
       await manager.destroy();

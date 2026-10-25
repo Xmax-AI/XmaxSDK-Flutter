@@ -20,17 +20,21 @@ sealed class VideoRenderBinding {
   const VideoRenderBinding();
 }
 
-/// The local camera RTC engine and preview mount callback.
+/// The local media RTC engine, source type, and preview mount callback.
 final class LocalVideoRenderBinding extends VideoRenderBinding {
 
   /// Creates a local preview binding.
   const LocalVideoRenderBinding({
     this.onPreviewAttached,
     this.engine,
+    this.sourceType = VideoSourceType.videoSourceCamera,
   });
 
   /// The RTC engine for local preview; without an engine, rendering displays a black background.
   final RtcEngine? engine;
+
+  /// The native input rendered by this preview, independent of channel publication.
+  final VideoSourceType sourceType;
 
   /// The callback invoked after the native preview view mounts.
   final void Function()? onPreviewAttached;

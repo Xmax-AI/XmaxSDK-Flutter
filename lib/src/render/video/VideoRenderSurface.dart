@@ -63,6 +63,7 @@ final class VideoRenderSurface extends StatelessWidget {
     // Use Flutter textures to preserve opacity and stacked video compositing.
     final canvas = VideoCanvas(
       uid: remote?.uid ?? 0,
+      sourceType: local?.sourceType,
       renderMode: contentMode == VideoContentMode.fit
           ? RenderModeType.renderModeFit
           : RenderModeType.renderModeHidden,

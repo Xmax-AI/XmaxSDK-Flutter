@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RtcManaging.dart';
@@ -9,6 +10,7 @@ import 'package:xmax_sdk/src/media/external/ExternalVideoController.dart';
 import 'package:xmax_sdk/src/media/external/ExternalVideoFrameSink.dart';
 import 'package:xmax_sdk/src/media/MediaController.dart';
 import 'package:xmax_sdk/src/render/video/VideoRenderRegistry.dart';
+import 'package:xmax_sdk/src/render/video/VideoRenderBinding.dart';
 
 const format = RealtimeVideoFormat(width: 640, height: 480, fps: 30);
 
@@ -104,8 +106,10 @@ void main() {
       expect(controller.currentTrack!.position, isNull);
       expect(controller.hasAudio, isFalse);
       expect(
-        VideoRenderRegistry.handleFor(stream.videoTrack!)!.value,
-        isNotNull,
+        (VideoRenderRegistry.handleFor(stream.videoTrack!)!.value
+                as LocalVideoRenderBinding)
+            .sourceType,
+        VideoSourceType.videoSourceCustom,
       );
       expect(source.sink!.isRequestingFrames, isTrue);
       expect(rtc.videos, isEmpty);
