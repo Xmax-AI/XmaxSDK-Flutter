@@ -25,7 +25,7 @@ void main() {
                 statisticsVisible: true,
                 onGallery: () => gallery++,
                 onMute: () => mute++,
-                onVolume: () {},
+                onVolume: (_) {},
                 onStatistics: () => statistics++,
               ),
             ),

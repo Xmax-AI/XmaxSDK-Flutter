@@ -13,6 +13,7 @@ void main() {
     await XLabLocalization.shared.setLanguage(XLabLanguage.simplifiedChinese);
     var statisticsTaps = 0;
     var cameraTaps = 0;
+    var volumeTaps = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -24,6 +25,7 @@ void main() {
               statisticsVisible: true,
               onSwitchCamera: () => cameraTaps++,
               onToggleStatistics: () => statisticsTaps++,
+              onOpenAudioVolume: (_) => volumeTaps++,
             ),
           ),
         ),
@@ -35,19 +37,27 @@ void main() {
     final statistics = find.byIcon(Icons.bar_chart_rounded);
     expect(tester.getCenter(statistics).dx, tester.getCenter(camera).dx);
     expect(format, findsNothing);
-    expect(tester.getCenter(statistics).dy - tester.getCenter(camera).dy, 62);
+    expect(tester.getCenter(statistics).dy - tester.getCenter(camera).dy, 124);
     expect(
       tester.getSize(find.byType(RealtimeCameraActionBar)),
-      const Size(58, 124),
+      const Size(58, 186),
     );
     expect(find.text('翻转'), findsOneWidget);
     expect(find.text('统计'), findsOneWidget);
+    expect(find.text('音量'), findsOneWidget);
+    expect(
+      tester.getCenter(find.byIcon(Icons.tune_rounded)).dy -
+          tester.getCenter(camera).dy,
+      62,
+    );
     expect(tester.widget<Icon>(statistics).color, const Color(0xFF007AFF));
     expect(tester.widget<Text>(find.text('统计')).style?.fontSize, 11);
     await tester.tap(camera);
     await tester.tap(statistics);
+    await tester.tap(find.text('音量'));
     expect(cameraTaps, 0);
     expect(statisticsTaps, 1);
+    expect(volumeTaps, 1);
     expect(tester.takeException(), isNull);
   });
 }

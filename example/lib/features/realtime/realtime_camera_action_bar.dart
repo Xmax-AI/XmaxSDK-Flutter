@@ -8,6 +8,7 @@ class RealtimeCameraActionBar extends StatelessWidget {
     required this.statisticsVisible,
     required this.onSwitchCamera,
     required this.onToggleStatistics,
+    required this.onOpenAudioVolume,
     super.key,
   });
 
@@ -15,6 +16,7 @@ class RealtimeCameraActionBar extends StatelessWidget {
   final bool statisticsVisible;
   final VoidCallback onSwitchCamera;
   final VoidCallback onToggleStatistics;
+  final ValueChanged<BuildContext> onOpenAudioVolume;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -25,6 +27,12 @@ class RealtimeCameraActionBar extends StatelessWidget {
         label: XLabLocalization.shared.text('realtime.flip'),
         tooltip: XLabLocalization.shared.text('realtime.flipCamera'),
         onPressed: cameraEnabled ? onSwitchCamera : null,
+      ),
+      _CameraActionButton(
+        icon: Icons.tune_rounded,
+        label: XLabLocalization.shared.text('realtime.volume'),
+        tooltip: XLabLocalization.shared.text('realtime.volume.remote.adjust'),
+        onPressedWithContext: onOpenAudioVolume,
       ),
       _CameraActionButton(
         icon: Icons.bar_chart_rounded,
@@ -42,7 +50,8 @@ class _CameraActionButton extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.tooltip,
-    required this.onPressed,
+    this.onPressed,
+    this.onPressedWithContext,
     this.selected = false,
   });
 
@@ -50,6 +59,7 @@ class _CameraActionButton extends StatelessWidget {
   final String label;
   final String tooltip;
   final VoidCallback? onPressed;
+  final ValueChanged<BuildContext>? onPressedWithContext;
   final bool selected;
 
   @override
@@ -58,15 +68,19 @@ class _CameraActionButton extends StatelessWidget {
     height: 62,
     child: Semantics(
       button: true,
-      enabled: onPressed != null,
+      enabled: onPressed != null || onPressedWithContext != null,
       selected: selected,
       child: Tooltip(
         message: tooltip,
         child: InkResponse(
-          onTap: onPressed,
+          onTap: onPressedWithContext != null
+              ? () => onPressedWithContext!(context)
+              : onPressed,
           radius: 29,
           child: Opacity(
-            opacity: onPressed != null ? 1 : 0.45,
+            opacity: onPressed != null || onPressedWithContext != null
+                ? 1
+                : 0.45,
             child: Column(
               children: <Widget>[
                 const SizedBox(height: 9),

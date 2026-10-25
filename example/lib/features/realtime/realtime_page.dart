@@ -14,6 +14,8 @@ import 'realtime_statistics_panel.dart';
 import 'realtime_local_input.dart';
 import 'realtime_file_video_source.dart';
 import 'realtime_media_top_bar.dart';
+import 'realtime_audio_controls.dart';
+import 'realtime_audio_volume_menu.dart';
 import 'xlab_trajectory_renderer.dart';
 
 /// Resolves the initial generation mode from the media input only.
@@ -33,6 +35,7 @@ class RealtimePage extends StatefulWidget {
     this.model = RealtimeModel.x2_1_1_preview_cn,
     this.customTrajectory = false,
     this.localInput,
+    this.realtimeManager,
     super.key,
   });
 
@@ -41,6 +44,9 @@ class RealtimePage extends StatefulWidget {
   final RealtimeModel model;
   final bool customTrajectory;
   final XLabRealtimeLocalInput? localInput;
+
+  /// Uses the supplied manager for this page's complete media lifecycle, including cleanup.
+  final XmaxRealtimeManaging? realtimeManager;
 
   @override
   State<RealtimePage> createState() => _RealtimePageState();
@@ -67,8 +73,9 @@ class _RealtimePageState extends State<RealtimePage>
   RealtimeNetworkQuality? _networkQuality;
   bool _isStatisticsVisible = false;
   String? _externalVideoPath;
-  bool _isAudioMuted = true;
-  double _remoteAudioVolume = 1;
+  late RealtimeAudioControls _audioControls;
+  Route<void>? _audioVolumeRoute;
+  bool _isOpeningAudioVolume = false;
   RealtimeQualityLevel? _uplinkLevel;
   RealtimeQualityLevel? _downlinkLevel;
   bool _isAdjustingQuality = false;
@@ -169,9 +176,18 @@ class _RealtimePageState extends State<RealtimePage>
     );
     _storageManager = client.createStorageManager();
     _mediaService = client.createMediaService(model: widget.model);
-    _manager = client.createRealtimeManager(
-      options: RealtimeConfiguration(model: widget.model),
-    );
+    _manager =
+        widget.realtimeManager ??
+        client.createRealtimeManager(
+          options: RealtimeConfiguration(model: widget.model),
+        );
+    _audioControls = RealtimeAudioControls(
+      readVolume: () => _manager.remoteAudioVolume,
+      writeVolume: _manager.setRemoteAudioVolume,
+      onError: (error) {
+        if (mounted && !_isSuspendedForBackground) _showError(error);
+      },
+    )..addListener(_audioControlsDidChange);
     _manager.setUplinkVideoStatisticsListener((statistics) {
       if (mounted && !_isSuspendedForBackground) {
         setState(() => _uplinkStatistics = statistics);
@@ -237,6 +253,11 @@ class _RealtimePageState extends State<RealtimePage>
       _lastError = null;
     });
     try {
+      await _audioControls.settled;
+      if (!_isCurrentRealtimeOperation(operation) ||
+          _isSuspendedForBackground) {
+        return;
+      }
       final path = _externalVideoPath;
       final RealtimeMediaStream stream;
       if (path != null) {
@@ -252,16 +273,22 @@ class _RealtimePageState extends State<RealtimePage>
         stream = await _manager.createExternalVideoStream(source: source);
         if (_isCurrentRealtimeOperation(operation) &&
             !_isSuspendedForBackground) {
-          _isAudioMuted = !source.hasAudio;
-          _remoteAudioVolume = 1;
-          try {
-            await _manager.setRemoteAudioVolume(source.hasAudio ? 1 : 0);
-          } catch (error) {
-            if (_isCurrentRealtimeOperation(operation)) _showError(error);
+          var volume = 0.0;
+          if (source.hasAudio) {
+            try {
+              await _manager.setRemoteAudioVolume(1);
+              volume = 1;
+            } catch (error) {
+              if (_isCurrentRealtimeOperation(operation)) _showError(error);
+            }
+          }
+          if (_isCurrentRealtimeOperation(operation)) {
+            _audioControls.reset(volume);
           }
         }
       } else {
         stream = await _manager.createLocalCameraStream();
+        if (_isCurrentRealtimeOperation(operation)) _audioControls.reset(0);
       }
       if (_isCurrentRealtimeOperation(operation)) {
         setState(() => _localStream = stream);
@@ -667,58 +694,47 @@ class _RealtimePageState extends State<RealtimePage>
     }
   }
 
-  Future<void> _toggleExternalAudio() async {
+  void _audioControlsDidChange() {
+    if (mounted && !_isSuspendedForBackground) setState(() {});
+  }
+
+  Future<void> _showAudioVolume(
+    BuildContext sourceContext, {
+    required bool preferLeft,
+  }) async {
+    if (_isOpeningAudioVolume ||
+        _audioVolumeRoute != null ||
+        _isSuspendedForBackground) {
+      return;
+    }
+    _isOpeningAudioVolume = true;
+    final operation = _realtimeOperationVersion;
     try {
-      final muted = !_isAudioMuted;
-      await _manager.setRemoteAudioVolume(muted ? 0 : _remoteAudioVolume);
-      if (mounted) setState(() => _isAudioMuted = muted);
-    } catch (error) {
-      if (mounted) _showError(error);
+      final refreshed = await _audioControls.refresh();
+      if (!mounted ||
+          !refreshed ||
+          !_isCurrentRealtimeOperation(operation) ||
+          _isSuspendedForBackground ||
+          !sourceContext.mounted) {
+        return;
+      }
+      await showRealtimeAudioVolumeMenu(
+        context: context,
+        sourceContext: sourceContext,
+        controls: _audioControls,
+        preferLeft: preferLeft,
+        onPresented: (route) => _audioVolumeRoute = route,
+      );
+    } finally {
+      _audioVolumeRoute = null;
+      _isOpeningAudioVolume = false;
     }
   }
 
-  Future<void> _showExternalVolume() async {
-    var value = await _manager.remoteAudioVolume;
-    if (!mounted) return;
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: const Color(0xFF202024),
-      builder: (context) => SafeArea(
-        child: StatefulBuilder(
-          builder: (context, update) => Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  XLabLocalization.shared.text('realtime.volume.remote'),
-                  style: const TextStyle(color: Colors.white),
-                ),
-                Slider(
-                  value: value,
-                  divisions: 100,
-                  label: '${(value * 100).round()}%',
-                  onChanged: (next) => update(() => value = next),
-                  onChangeEnd: (next) async {
-                    try {
-                      await _manager.setRemoteAudioVolume(next);
-                      if (mounted) {
-                        setState(() {
-                          _remoteAudioVolume = next;
-                          _isAudioMuted = next == 0;
-                        });
-                      }
-                    } catch (error) {
-                      if (mounted) _showError(error);
-                    }
-                  },
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  void _dismissAudioVolume() {
+    final route = _audioVolumeRoute;
+    _audioVolumeRoute = null;
+    if (route != null) route.navigator?.removeRoute(route);
   }
 
   bool _isCurrentRealtimeOperation(int operation) =>
@@ -749,6 +765,8 @@ class _RealtimePageState extends State<RealtimePage>
     _isSuspendedForBackground = true;
     _isResumingFromBackground = false;
     _realtimeOperationVersion += 1;
+    _audioControls.reset(0);
+    _dismissAudioVolume();
     FocusManager.instance.primaryFocus?.unfocus();
 
     // Clear the active realtime session immediately while
@@ -818,6 +836,8 @@ class _RealtimePageState extends State<RealtimePage>
   @override
   void dispose() {
     _realtimeOperationVersion += 1;
+    _audioControls.removeListener(_audioControlsDidChange);
+    _audioControls.dispose();
     _routeAnimation?.removeStatusListener(_routeAnimationDidChange);
     WidgetsBinding.instance.removeObserver(this);
     _manager.setStateListener(null);
@@ -988,6 +1008,9 @@ class _RealtimePageState extends State<RealtimePage>
                       cameraEnabled: !_busy && _localStream != null,
                       statisticsVisible: _isStatisticsVisible,
                       onSwitchCamera: _switchCamera,
+                      onOpenAudioVolume: (context) => unawaited(
+                        _showAudioVolume(context, preferLeft: true),
+                      ),
                       onToggleStatistics: () => setState(
                         () => _isStatisticsVisible = !_isStatisticsVisible,
                       ),
@@ -999,11 +1022,13 @@ class _RealtimePageState extends State<RealtimePage>
                     top: 5,
                     child: RealtimeMediaTopBar(
                       enabled: !_busy,
-                      isMuted: _isAudioMuted,
+                      isMuted: _audioControls.isMuted,
                       statisticsVisible: _isStatisticsVisible,
                       onGallery: () => unawaited(_replaceExternalVideo()),
-                      onMute: () => unawaited(_toggleExternalAudio()),
-                      onVolume: () => unawaited(_showExternalVolume()),
+                      onMute: () => unawaited(_audioControls.toggleMute()),
+                      onVolume: (context) => unawaited(
+                        _showAudioVolume(context, preferLeft: false),
+                      ),
                       onStatistics: () => setState(
                         () => _isStatisticsVisible = !_isStatisticsVisible,
                       ),

@@ -18,7 +18,7 @@ class RealtimeMediaTopBar extends StatelessWidget {
   final bool statisticsVisible;
   final VoidCallback onGallery;
   final VoidCallback onMute;
-  final VoidCallback onVolume;
+  final ValueChanged<BuildContext> onVolume;
   final VoidCallback onStatistics;
 
   @override
@@ -90,7 +90,13 @@ class RealtimeMediaTopBar extends StatelessWidget {
           onStatistics,
           selected: statisticsVisible,
         ),
-        action(Icons.tune_rounded, t('realtime.volume'), onVolume),
+        Builder(
+          builder: (context) => action(
+            Icons.tune_rounded,
+            t('realtime.volume'),
+            () => onVolume(context),
+          ),
+        ),
         action(
           isMuted ? Icons.volume_off_outlined : Icons.volume_up_outlined,
           t(isMuted ? 'realtime.mute' : 'realtime.audio'),

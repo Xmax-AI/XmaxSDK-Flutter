@@ -92,6 +92,7 @@ final class XLabLocalization extends ChangeNotifier {
     'realtime.mute': '静音',
     'realtime.volume': '音量',
     'realtime.volume.remote': '生成声音',
+    'realtime.volume.remote.adjust': '调节生成声音音量',
     'statistics.title': '统计',
     'statistics.level.hint': 'L1 最高 · L5 最低，手动调整后仍会自动调档。',
     'statistics.uplink': '上行视频',
@@ -210,6 +211,7 @@ final class XLabLocalization extends ChangeNotifier {
     'realtime.mute': 'Mute',
     'realtime.volume': 'Volume',
     'realtime.volume.remote': 'Generated audio',
+    'realtime.volume.remote.adjust': 'Adjust generated audio volume',
     'statistics.title': 'Stats',
     'statistics.level.hint':
         'L1 highest · L5 lowest. Automatic adaptation remains active.',
