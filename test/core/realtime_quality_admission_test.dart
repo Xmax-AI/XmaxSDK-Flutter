@@ -439,6 +439,7 @@ class _Media implements MediaControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
     Future<void>? cancellation,
   }) async {
     stream = createRealtimeMediaStream(

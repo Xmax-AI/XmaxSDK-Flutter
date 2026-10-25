@@ -85,6 +85,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      expect(manager.useMicrophone, isTrue);
       expect(find.text('音量'), findsOneWidget);
       expect(find.byIcon(Icons.aspect_ratio_rounded), findsNothing);
       expect(find.byIcon(Icons.bolt), findsNothing);
@@ -206,7 +207,13 @@ class _Manager implements XmaxRealtimeManaging {
     RealtimeVideoFormat? videoFormat,
     CameraPosition position = CameraPosition.front,
     RealtimeCameraPreset? preset,
-  }) => _create();
+    bool useMicrophone = false,
+  }) {
+    this.useMicrophone = useMicrophone;
+    return _create();
+  }
+
+  bool? useMicrophone;
 
   @override
   Future<RealtimeMediaStream> createExternalVideoStream({

@@ -365,6 +365,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     RealtimeVideoFormat? videoFormat,
     CameraPosition position = CameraPosition.front,
     RealtimeCameraPreset? preset,
+    bool useMicrophone = false,
   }) => _lifecycleManager.run(
     kind: RealtimeOperationKind.media,
     operation: (
@@ -399,6 +400,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       final stream = await _mediaController.createLocalCameraStream(
         videoFormat: format,
         position: position,
+        useMicrophone: useMicrophone,
         cancellation: token.cancellation,
       );
       token.ensureCurrent();
@@ -667,6 +669,11 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       options: options,
       ensureCurrent: token.ensureCurrent,
     );
+    token.ensureCurrent();
+
+    await _mediaController.startMicrophoneCapture();
+    token.ensureCurrent();
+
     final remote = await _connectionManager.connect(
       model: options.model,
       videoFormat: videoFormat,

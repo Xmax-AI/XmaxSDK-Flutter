@@ -287,7 +287,7 @@ class _RealtimePageState extends State<RealtimePage>
           }
         }
       } else {
-        stream = await _manager.createLocalCameraStream();
+        stream = await _manager.createLocalCameraStream(useMicrophone: true);
         if (_isCurrentRealtimeOperation(operation)) _audioControls.reset(0);
       }
       if (_isCurrentRealtimeOperation(operation)) {

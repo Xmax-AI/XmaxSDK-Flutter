@@ -217,6 +217,13 @@ class _Fixture {
 }
 
 class _Camera implements CameraControlling {
+  @override
+  bool get useMicrophone => false;
+  @override
+  Future<void> startMicrophoneCapture() async {}
+  @override
+  Future<void> stopMicrophoneCapture() async {}
+
   int creations = 0, stops = 0, switches = 0;
   final formats = <RealtimeVideoFormat>[];
   RealtimeCameraPreviewReadyListener? preview;
@@ -232,6 +239,7 @@ class _Camera implements CameraControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
   }) async {
     creations++;
     stream = createRealtimeMediaStream(

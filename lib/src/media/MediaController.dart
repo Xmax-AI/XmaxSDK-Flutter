@@ -100,9 +100,10 @@ final class MediaController implements MediaControlling {
   @override
   RealtimeVideoFormat? get currentVideoFormat => currentTrack?.videoFormat;
 
-  /// Whether local media supplies audio for realtime upload; false for camera sources.
+  /// Whether the active source opts into microphone or external audio for realtime upload.
   @override
-  bool get hasAudio => _hasActiveSource && _isExternalSource && _externalController.hasAudio;
+  bool get hasAudio => _hasActiveSource &&
+      (_isExternalSource ? _externalController.hasAudio : _cameraController.useMicrophone);
 
   // Without a local file player, report the fixed preview volume.
 
@@ -128,6 +129,7 @@ final class MediaController implements MediaControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
     Future<void>? cancellation,
   }) => _createSource(
     isExternal: false,
@@ -136,9 +138,26 @@ final class MediaController implements MediaControlling {
     ) => _cameraController.createLocalCameraStream(
       videoFormat: videoFormat,
       position: position,
+      useMicrophone: useMicrophone,
     ),
     cancellation: cancellation,
   );
+
+  /// Starts opted-in camera microphone capture without affecting external audio delivery.
+  @override
+  Future<void> startMicrophoneCapture() async {
+    if (_hasActiveSource && !_isExternalSource) {
+      await _cameraController.startMicrophoneCapture();
+    }
+  }
+
+  /// Stops camera microphone capture while retaining the local source and preview.
+  @override
+  Future<void> stopMicrophoneCapture() async {
+    if (_hasActiveSource && !_isExternalSource) {
+      await _cameraController.stopMicrophoneCapture();
+    }
+  }
 
   /// Binds external capture with the same exclusive engine ownership as camera capture.
   ///

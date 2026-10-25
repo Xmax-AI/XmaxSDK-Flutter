@@ -401,9 +401,9 @@ final class AgoraRtcRoom implements RtcRoom {
     _listener?.call(event);
   }
 
-  /// Changes camera or custom publication for this connection only.
+  /// Changes local video and enabled microphone or custom audio publication for this connection.
   ///
-  /// [publish] controls video and the source's opted-in external audio.
+  /// [publish] controls video and the source's opted-in audio input.
   @override
   Future<void> publishLocalVideo(
     bool publish,
@@ -414,7 +414,9 @@ final class AgoraRtcRoom implements RtcRoom {
           publishCameraTrack: publish && !platform.usesExternalVideo,
           publishCustomVideoTrack: publish && platform.usesExternalVideo,
           customVideoTrackId: 0,
-          publishMicrophoneTrack: false,
+          publishMicrophoneTrack:
+              publish && !platform.usesExternalVideo && platform.isMicrophoneCapturing,
+          enableAudioRecordingOrPlayout: true,
           publishCustomAudioTrack: publish && platform.externalAudioTrackID != null,
           publishCustomAudioTrackId: platform.externalAudioTrackID,
         ),

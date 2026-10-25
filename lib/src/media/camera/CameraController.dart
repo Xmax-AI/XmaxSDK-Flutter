@@ -67,6 +67,12 @@ final class CameraController implements CameraControlling {
   /// The video track being created but not yet activated.
   RealtimeVideoTrack? _preparingTrack;
 
+  /// Whether the current camera source requests microphone capture while connected.
+  bool _useMicrophone = false;
+
+  /// Whether microphone startup has begun and requires a matching stop, including failed startup.
+  bool _isMicrophoneCapturing = false;
+
   /// The callback invoked after both camera first-frame capture and preview mounting.
   RealtimeCameraPreviewReadyListener? _previewReadyListener;
 
@@ -82,6 +88,10 @@ final class CameraController implements CameraControlling {
   /// The active local video track; null before creation or after stopping.
   @override
   RealtimeVideoTrack? get currentTrack => _activeTrack;
+
+  /// Whether the current camera stream opts into microphone input.
+  @override
+  bool get useMicrophone => _activeTrack != null && _useMicrophone;
 
   /// Sets the callback for first-frame capture and native preview readiness.
   ///
@@ -103,6 +113,7 @@ final class CameraController implements CameraControlling {
   /// Parameters:
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   /// - [position]: The camera position, initially front-facing when a stream is created.
+  /// - [useMicrophone]: Whether to request microphone access and capture audio while connected.
   ///
   /// Returns the new local camera stream; the future fails on invalid arguments or denied
   /// permission.
@@ -110,6 +121,7 @@ final class CameraController implements CameraControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
   }) async {
     if (_activeTrack != null) {
       throw const XmaxError(
@@ -134,6 +146,10 @@ final class CameraController implements CameraControlling {
     try {
       await _permissionManager.ensureCameraPermission();
 
+      if (useMicrophone) {
+        await _permissionManager.ensureMicrophonePermission();
+      }
+
       // RtcManager.destroy() clears native callbacks.
       // Retain the preview listener and register it again when recreating the camera stream.
       _rtcManager.setCameraPreviewReadyListener(() => _capturedFrame(track));
@@ -157,6 +173,7 @@ final class CameraController implements CameraControlling {
             ),
       );
       _activeTrack = track;
+      _useMicrophone = useMicrophone;
       _notifyPreviewReady(track);
 
       return createRealtimeMediaStream(
@@ -188,14 +205,48 @@ final class CameraController implements CameraControlling {
     }
   }
 
+  /// Starts configured microphone capture without local audio playback.
+  @override
+  Future<void> startMicrophoneCapture() async {
+    if (!useMicrophone || _isMicrophoneCapturing) {
+      return;
+    }
+
+    // A failed native start may still acquire the device; retain stop eligibility for cleanup.
+    _isMicrophoneCapturing = true;
+    await _rtcManager.startAudioCapture();
+  }
+
+  /// Stops microphone capture while retaining its configuration and camera preview.
+  @override
+  Future<void> stopMicrophoneCapture() async {
+    if (!_isMicrophoneCapturing) {
+      return;
+    }
+
+    await _rtcManager.stopAudioCapture();
+    _isMicrophoneCapturing = false;
+  }
+
   /// Stops local camera capture and releases resources; the public manager requires a disconnected
   /// session.
   @override
   Future<void> stopLocalCameraStream() async {
+    try {
+      await stopMicrophoneCapture();
+    } catch (error) {
+      XmaxLogger.error(
+        category: XmaxLoggerCategory.realtime,
+        message: '停止麦克风采集失败 (Failed to Stop Microphone Capture)\n└─ $error',
+      );
+    }
+
     final track = _activeTrack;
 
     _activeTrack = null;
     _preparingTrack = null;
+    _useMicrophone = false;
+    _isMicrophoneCapturing = false;
     _hasCapturedFrame = false;
     _isPreviewAttached = false;
     _didNotifyPreviewReady = false;

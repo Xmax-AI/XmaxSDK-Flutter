@@ -243,7 +243,7 @@ target 'Runner' do
 end
 ```
 
-Enable the camera permission handler in the existing `post_install` block:
+Enable camera and optional microphone permission handlers in the existing `post_install` block:
 
 ```ruby
 post_install do |installer|
@@ -253,24 +253,34 @@ post_install do |installer|
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
         'PERMISSION_CAMERA=1',
+        'PERMISSION_MICROPHONE=1',
       ]
     end
   end
 end
 ```
 
-Add a camera usage description to `ios/Runner/Info.plist`:
+Add a camera usage description to `ios/Runner/Info.plist`. Include the microphone
+description if your app enables microphone input:
 
 ```xml
 <key>NSCameraUsageDescription</key>
 <string>This app uses the camera for real-time video input.</string>
+<key>NSMicrophoneUsageDescription</key>
+<string>This app uses the microphone for real-time audio input.</string>
 ```
 
 Customize this message to match your application's user experience. XmaxSDK
-automatically prompts for camera access when creating the video stream and throws
-an `XmaxError` if permission is denied or unavailable.
+automatically requests camera access when creating the video stream. With
+`useMicrophone: true`, it also requests microphone access. Stream creation fails
+with an `XmaxError` if a required permission is denied or unavailable.
 
 See the complete [`example/ios/Podfile`](example/ios/Podfile) for a working setup.
+
+With Swift Package Manager, the permission plugin derives its enabled permissions
+from the usage descriptions in `Info.plist`. After adding a permission, refresh
+the Swift package manifest and the app's derived build caches once, then rebuild;
+an existing cached configuration can otherwise keep that permission disabled.
 
 ### Android
 
@@ -327,11 +337,12 @@ Declare the required permissions in `android/app/src/main/AndroidManifest.xml`:
 ```xml
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
 
-The SDK does not capture microphone audio. External sources can submit their
-own PCM audio without microphone permission. The example's
+`RECORD_AUDIO` is required only when using `useMicrophone: true`. External sources
+can submit their own PCM audio without microphone permission. The example's
 [`AndroidManifest.xml`](example/android/app/src/main/AndroidManifest.xml)
 removes unused capabilities during manifest merging.
 
@@ -456,6 +467,23 @@ Camera dimensions must exactly match an entry in `supportedVideoFormats`.
 The existing `RealtimeCameraPreset` values are model-dependent and are not
 supported by these preview models; use the default or an explicit format.
 Providing both `videoFormat` and `preset` is invalid.
+
+To include microphone audio, opt in when creating the camera stream:
+
+```dart
+final localStream = await realtime.createLocalCameraStream(useMicrophone: true);
+```
+
+The default is `false`. Microphone permission is requested during stream creation,
+but capture starts only when connecting to realtime. The SDK uses Agora's built-in
+microphone capture and publishes the audio with the camera stream, without local
+microphone playback. Disconnecting stops microphone capture while retaining camera
+preview; reconnecting the same stream starts capture again. Closing the manager or
+stopping the camera stream also releases microphone capture.
+
+`setLocalAudioVolume` does not control microphone input. `setRemoteAudioVolume`
+controls generated audio playback independently and remains muted after stream
+creation until your app enables it.
 
 `XmaxRealtimeDualVideoView` is the recommended video container. It keeps local
 preview mounted beneath the remote result, reveals the result after its first

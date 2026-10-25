@@ -269,7 +269,7 @@ final class RtcManager implements RtcManaging {
     VideoEncodingConfiguration configuration,
   ) => _platform.configureVideoEncoding(configuration);
 
-  /// Starts camera capture and preview without enabling microphone input.
+  /// Starts camera capture and preview without changing microphone capture.
   ///
   /// See [RtcManaging.startVideoCapture] for the usage contract.
   @override
@@ -301,6 +301,16 @@ final class RtcManager implements RtcManaging {
   @override
   Future<void> stopVideoCapture() async {
     await _lease?.engine.stopVideoCapture();
+  }
+
+  /// Starts built-in microphone capture through the current platform adapter.
+  @override
+  Future<void> startAudioCapture() => _platform.startAudioCapture();
+
+  /// Stops microphone capture if this manager owns a platform.
+  @override
+  Future<void> stopAudioCapture() async {
+    await _lease?.engine.stopAudioCapture();
   }
 
   /// Selects external media without starting camera or microphone capture.

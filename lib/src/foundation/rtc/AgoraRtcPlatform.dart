@@ -101,6 +101,9 @@ class AgoraRtcPlatform implements RtcPlatform {
   /// Whether the current local input is caller-owned external video.
   bool _usesExternalVideo = false;
 
+  /// Whether built-in microphone capture has started successfully.
+  bool _isMicrophoneCapturing = false;
+
   /// The optional custom audio track configured for external input.
   int? _externalAudioTrackID;
 
@@ -112,6 +115,9 @@ class AgoraRtcPlatform implements RtcPlatform {
 
   /// Whether local publication uses custom rather than camera video.
   bool get usesExternalVideo => _usesExternalVideo;
+
+  /// Whether the current camera input has enabled microphone capture for room publication.
+  bool get isMicrophoneCapturing => _isMicrophoneCapturing;
 
   /// Reapplies retained encoding after room publication changes its native connection.
   Future<void> reapplyVideoConfiguration() async {
@@ -260,7 +266,7 @@ class AgoraRtcPlatform implements RtcPlatform {
     );
   }
 
-  /// Starts camera capture and preview with the specified format, leaving the microphone disabled.
+  /// Starts camera capture and preview without changing microphone capture.
   ///
   /// See [RtcManaging.startVideoCapture] for the usage contract.
   @override
@@ -315,6 +321,34 @@ class AgoraRtcPlatform implements RtcPlatform {
     await check(() => engine.enableLocalVideo(false));
   }
 
+  /// Starts built-in microphone capture without monitoring it locally.
+  @override
+  Future<void> startAudioCapture() async {
+    if (_usesExternalVideo) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Microphone capture cannot be combined with an external media source',
+      );
+    }
+    if (_isMicrophoneCapturing) {
+      return;
+    }
+
+    await check(() => engine.enableLocalAudio(true));
+    _isMicrophoneCapturing = true;
+  }
+
+  /// Stops built-in microphone capture without affecting video capture or remote audio playback.
+  @override
+  Future<void> stopAudioCapture() async {
+    if (_isClosed) {
+      return;
+    }
+
+    await check(() => engine.enableLocalAudio(false));
+    _isMicrophoneCapturing = false;
+  }
+
   /// Configures custom media with native camera and microphone capture disabled.
   ///
   /// See [RtcManaging.startExternalVideoSource] for the usage contract.
@@ -322,6 +356,10 @@ class AgoraRtcPlatform implements RtcPlatform {
   Future<void> startExternalVideoSource({
     required bool hasAudio,
   }) async {
+    if (_isMicrophoneCapturing) {
+      await stopAudioCapture();
+    }
+
     _usesExternalVideo = true;
     await engine.getMediaEngine().setExternalVideoSource(
       enabled: true,
@@ -530,6 +568,7 @@ class AgoraRtcPlatform implements RtcPlatform {
         _room = null;
         _encoding = null;
         _externalAudioTrackID = null;
+        _isMicrophoneCapturing = false;
         isPublishingLocalMedia = false;
         await engine.release();
       }

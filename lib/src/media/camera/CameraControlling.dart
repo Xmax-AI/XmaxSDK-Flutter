@@ -13,11 +13,14 @@ import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../service/realtime/RealtimeVideoTrack.dart';
 
-/// An interface for camera streams and preview resources.
+/// An interface for camera streams, microphone capture, and preview resources.
 abstract interface class CameraControlling {
 
   /// The current camera track, or null before creation or after stopping.
   RealtimeVideoTrack? get currentTrack;
+
+  /// Whether the current camera stream opts into microphone input.
+  bool get useMicrophone;
 
   /// Sets a one-shot readiness listener requiring a valid frame and an attached preview.
   ///
@@ -32,6 +35,7 @@ abstract interface class CameraControlling {
   /// Parameters:
   /// - [videoFormat]: The capture and encoding settings, subject to the model's dimension rules.
   /// - [position]: The camera position to use initially.
+  /// - [useMicrophone]: Whether to request microphone access and capture audio while connected.
   ///
   /// Returns the local camera stream.
   ///
@@ -40,9 +44,20 @@ abstract interface class CameraControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
   });
 
-  /// Stops camera capture and releases preview resources.
+  /// Starts configured microphone capture without local audio playback.
+  ///
+  /// The returned future completes with an error if RTC microphone capture cannot start.
+  Future<void> startMicrophoneCapture();
+
+  /// Stops microphone capture while retaining its configuration and camera preview.
+  ///
+  /// The returned future completes with an error if RTC microphone capture cannot stop.
+  Future<void> stopMicrophoneCapture();
+
+  /// Stops camera and microphone capture and releases preview resources.
   Future<void> stopLocalCameraStream();
 
   /// Switches cameras while retaining the video track.

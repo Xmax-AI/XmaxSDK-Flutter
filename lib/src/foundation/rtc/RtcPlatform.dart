@@ -29,7 +29,7 @@ abstract interface class RtcPlatform {
     VideoEncodingConfiguration configuration,
   );
 
-  /// Starts camera capture and preview with the specified format, leaving the microphone disabled.
+  /// Starts camera capture and preview without changing microphone capture.
   ///
   /// Parameters:
   /// - [width]: The video width, in pixels.
@@ -43,6 +43,12 @@ abstract interface class RtcPlatform {
 
   /// Stops local preview and camera capture.
   Future<void> stopVideoCapture();
+
+  /// Starts built-in microphone capture without local audio playback.
+  Future<void> startAudioCapture();
+
+  /// Stops built-in microphone capture without stopping camera preview or remote playback.
+  Future<void> stopAudioCapture();
 
   /// Selects external video and optional custom audio without starting camera or microphone capture.
   ///

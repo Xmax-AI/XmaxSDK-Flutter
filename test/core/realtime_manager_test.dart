@@ -37,6 +37,167 @@ import 'package:xmax_sdk/src/stream/StreamControlling.dart';
 
 void main() {
   test(
+    'condition update errors do not interrupt microphone capture on an active connection',
+    () async {
+      final deps = _Dependencies();
+      final local = await deps.manager.createLocalCameraStream(
+        useMicrophone: true,
+      );
+      await deps.manager.startGeneration(
+        localStream: local,
+        context: RealtimeContext(prompt: 'first'),
+      );
+      deps.stream.updateError = StateError('condition failed');
+      await expectLater(
+        deps.manager.startGeneration(
+          context: RealtimeContext(prompt: 'second'),
+        ),
+        throwsA(isA<XmaxError>()),
+      );
+      expect(deps.media.microphoneStarts, 1);
+      expect(deps.media.microphoneStops, 0);
+      expect(deps.media.microphoneActive, isTrue);
+      expect(deps.stream.disconnectCount, 0);
+      await deps.manager.close();
+      expect(deps.media.microphoneStops, 1);
+    },
+  );
+
+  test(
+    'microphone opt-in survives disconnect and reconnect without stopping preview',
+    () async {
+      final deps = _Dependencies();
+      final local = await deps.manager.createLocalCameraStream(
+        useMicrophone: true,
+      );
+      expect(deps.media.useMicrophone, isTrue);
+      expect(deps.media.microphoneStarts, 0);
+      deps.media.notifyPreviewReady();
+      await deps.manager.connect(localStream: local);
+      expect(deps.media.microphoneActive, isTrue);
+      await deps.manager.disconnect();
+      expect(deps.media.microphoneStops, 1);
+      expect(deps.media.microphoneActive, isFalse);
+      expect(deps.media.currentTrack, same(local.videoTrack));
+      expect(deps.media.stopCount, 0);
+      expect(
+        (await deps.manager.currentState).connectionState,
+        RealtimeConnectionState.ready,
+      );
+      await deps.manager.connect(localStream: local);
+      expect(deps.media.microphoneStarts, 2);
+      await deps.manager.close();
+      expect(deps.media.microphoneStops, 2);
+      expect(deps.media.stopCount, 1);
+    },
+  );
+
+  test('default camera connections never start microphone capture', () async {
+    final deps = _Dependencies();
+    final local = await deps.manager.createLocalCameraStream();
+    expect(deps.media.useMicrophone, isFalse);
+    await deps.manager.connect(localStream: local);
+    await deps.manager.disconnect();
+    await deps.manager.close();
+    expect(deps.media.microphoneStarts, 0);
+    expect(deps.media.microphoneStops, 0);
+  });
+
+  for (final failure in ['microphone', 'connection', 'generation']) {
+    test(
+      '$failure startup failure stops microphone and retains camera preview',
+      () async {
+        final deps = _Dependencies();
+        final local = await deps.manager.createLocalCameraStream(
+          useMicrophone: true,
+        );
+        deps.media.notifyPreviewReady();
+        switch (failure) {
+          case 'microphone':
+            deps.media.microphoneStartError = StateError('capture failed');
+          case 'connection':
+            deps.stream.connectError = StateError('join failed');
+          case 'generation':
+            deps.stream.generationStartError = StateError('generation failed');
+        }
+        await expectLater(
+          deps.manager.startGeneration(
+            localStream: local,
+            context: RealtimeContext(prompt: 'test'),
+          ),
+          throwsA(isA<XmaxError>()),
+        );
+        expect(deps.media.microphoneStarts, 1);
+        expect(deps.media.microphoneStops, 1);
+        expect(deps.media.microphoneActive, isFalse);
+        expect(deps.media.currentTrack, same(local.videoTrack));
+        expect(deps.media.stopCount, 0);
+        expect(
+          (await deps.manager.currentState).connectionState,
+          RealtimeConnectionState.ready,
+        );
+        await deps.manager.close();
+      },
+    );
+  }
+
+  test(
+    'closing during microphone startup cancels connection and releases capture',
+    () async {
+      final deps = _Dependencies();
+      final local = await deps.manager.createLocalCameraStream(
+        useMicrophone: true,
+      );
+      final gate = deps.media.microphoneStartGate = Completer<void>();
+      final pending = expectLater(
+        deps.manager.connect(localStream: local),
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.cancelled,
+          ),
+        ),
+      );
+      for (var i = 0; i < 10 && !deps.media.microphoneActive; i++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(deps.media.microphoneActive, isTrue);
+      final close = deps.manager.close();
+      gate.complete();
+      await close;
+      await pending;
+      expect(deps.media.microphoneActive, isFalse);
+      expect(deps.media.microphoneStops, 1);
+      expect(deps.media.currentTrack, isNull);
+      expect(
+        (await deps.manager.currentState).connectionState,
+        RealtimeConnectionState.idle,
+      );
+    },
+  );
+
+  test(
+    'microphone stop failure does not prevent disconnect and can retry on close',
+    () async {
+      final deps = _Dependencies();
+      final local = await deps.manager.createLocalCameraStream(
+        useMicrophone: true,
+      );
+      await deps.manager.connect(localStream: local);
+      deps.media.microphoneStopError = StateError('stop failed');
+      await deps.manager.disconnect();
+      expect(deps.stream.disconnectCount, greaterThan(0));
+      expect(deps.media.microphoneStops, 1);
+      expect(deps.media.currentTrack, same(local.videoTrack));
+      deps.media.microphoneStopError = null;
+      await deps.manager.close();
+      expect(deps.media.microphoneStops, 2);
+      expect(deps.media.microphoneActive, isFalse);
+    },
+  );
+
+  test(
     'external binding becomes ready without camera frames or view mounting',
     () async {
       final dependencies = _Dependencies();
@@ -1335,6 +1496,36 @@ final class _Dependencies {
 }
 
 final class _FakeMedia implements MediaControlling {
+  bool useMicrophone = false;
+  bool microphoneActive = false;
+  int microphoneStarts = 0;
+  int microphoneStops = 0;
+  Object? microphoneStartError;
+  Object? microphoneStopError;
+  Completer<void>? microphoneStartGate;
+
+  @override
+  Future<void> startMicrophoneCapture() async {
+    if (!useMicrophone ||
+        !_active ||
+        externalStream != null ||
+        microphoneActive) {
+      return;
+    }
+    microphoneStarts++;
+    microphoneActive = true;
+    await microphoneStartGate?.future;
+    if (microphoneStartError case final error?) throw error;
+  }
+
+  @override
+  Future<void> stopMicrophoneCapture() async {
+    if (!microphoneActive) return;
+    microphoneStops++;
+    if (microphoneStopError case final error?) throw error;
+    microphoneActive = false;
+  }
+
   @override
   Future<RealtimeMediaStream> createExternalVideoStream({
     required RealtimeExternalVideoSource source,
@@ -1393,7 +1584,7 @@ final class _FakeMedia implements MediaControlling {
   RealtimeVideoTrack? get currentTrack =>
       _active ? externalStream?.videoTrack ?? track : null;
   @override
-  bool get hasAudio => false;
+  bool get hasAudio => _active && useMicrophone;
 
   @override
   Future<double> get localAudioVolume async => 0.45;
@@ -1401,8 +1592,10 @@ final class _FakeMedia implements MediaControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
     Future<void>? cancellation,
   }) async {
+    this.useMicrophone = useMicrophone;
     createCount++;
     await createGate?.future;
     if (createError case final error?) throw error;

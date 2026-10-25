@@ -20,6 +20,179 @@ import 'package:xmax_sdk/src/service/media/RealtimeMediaSource.dart';
 
 void main() {
   test(
+    'microphone remains disabled and permission is skipped by default',
+    () async {
+      final rtc = _FakeRtc();
+      final permissions = _MicrophonePermissions()..denyMicrophone = true;
+      final camera = CameraController(
+        rtcManager: rtc,
+        permissionManager: permissions,
+      );
+      await camera.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+      );
+      expect(permissions.requests, ['camera']);
+      expect(camera.useMicrophone, isFalse);
+      await camera.startMicrophoneCapture();
+      await camera.stopMicrophoneCapture();
+      expect(rtc.audioStarts, 0);
+      expect(rtc.audioStops, 0);
+      await camera.stopLocalCameraStream();
+    },
+  );
+
+  test(
+    'opted-in microphone starts on demand and preserves preview across reconnects',
+    () async {
+      final rtc = _FakeRtc();
+      final permissions = _MicrophonePermissions();
+      final camera = CameraController(
+        rtcManager: rtc,
+        permissionManager: permissions,
+      );
+      final media = MediaController(
+        rtcManager: rtc,
+        cameraController: camera,
+        interactionListener: (_, _) async {},
+      );
+      final local = await media.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+        useMicrophone: true,
+      );
+      final handle = VideoRenderRegistry.handleFor(local.videoTrack!);
+      expect(permissions.requests, ['camera', 'microphone']);
+      expect(media.hasAudio, isTrue);
+      expect(rtc.audioStarts, 0);
+      await media.startMicrophoneCapture();
+      await media.startMicrophoneCapture();
+      expect(rtc.audioStarts, 1);
+      await media.switchCamera();
+      expect(camera.useMicrophone, isTrue);
+      expect(rtc.audioStarts, 1);
+      expect(rtc.audioStops, 0);
+      await media.stopMicrophoneCapture();
+      await media.stopMicrophoneCapture();
+      expect(rtc.audioStops, 1);
+      expect(rtc.captureStops, 0);
+      expect(media.currentTrack, same(local.videoTrack));
+      expect(VideoRenderRegistry.handleFor(local.videoTrack!), same(handle));
+      expect(media.hasAudio, isTrue);
+      await media.startMicrophoneCapture();
+      expect(rtc.audioStarts, 2);
+      await media.stopLocalStream();
+      expect(rtc.audioStops, 2);
+      expect(rtc.captureStops, 1);
+      expect(media.hasAudio, isFalse);
+      expect(camera.useMicrophone, isFalse);
+    },
+  );
+
+  test(
+    'denied microphone permission fails before starting camera or microphone',
+    () async {
+      final rtc = _FakeRtc();
+      final permissions = _MicrophonePermissions()..denyMicrophone = true;
+      final camera = CameraController(
+        rtcManager: rtc,
+        permissionManager: permissions,
+      );
+      await expectLater(
+        camera.createLocalCameraStream(
+          videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+          position: CameraPosition.front,
+          useMicrophone: true,
+        ),
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.microphonePermissionDenied,
+          ),
+        ),
+      );
+      expect(rtc.audioStarts, 0);
+      expect(rtc.captureStarts, 0);
+      expect(camera.currentTrack, isNull);
+      expect(camera.useMicrophone, isFalse);
+      permissions.denyMicrophone = false;
+      await camera.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+        useMicrophone: true,
+      );
+      await camera.stopLocalCameraStream();
+    },
+  );
+
+  test(
+    'partial microphone startup is stopped and stop failures remain retryable',
+    () async {
+      final rtc = _FakeRtc();
+      final camera = CameraController(
+        rtcManager: rtc,
+        permissionManager: const _AllowedPermissions(),
+      );
+      await camera.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+        useMicrophone: true,
+      );
+      rtc.audioStartError = StateError('start failed');
+      await expectLater(camera.startMicrophoneCapture(), throwsStateError);
+      await camera.stopMicrophoneCapture();
+      expect(rtc.audioStops, 1);
+      rtc.audioStartError = null;
+      await camera.startMicrophoneCapture();
+      rtc.audioStopError = StateError('stop failed');
+      await expectLater(camera.stopMicrophoneCapture(), throwsStateError);
+      rtc.audioStopError = null;
+      await camera.stopMicrophoneCapture();
+      expect(rtc.audioStops, 3);
+      await camera.stopLocalCameraStream();
+      expect(rtc.audioStops, 3);
+    },
+  );
+
+  test(
+    'microphone stop failure does not prevent camera cleanup and engine release',
+    () async {
+      final rtc = _FakeRtc();
+      final camera = CameraController(
+        rtcManager: rtc,
+        permissionManager: const _AllowedPermissions(),
+      );
+      final media = MediaController(
+        rtcManager: rtc,
+        cameraController: camera,
+        interactionListener: (_, _) async {},
+      );
+      await media.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+        useMicrophone: true,
+      );
+      await media.startMicrophoneCapture();
+      rtc.audioStopError = StateError('stop failed');
+      await media.stopLocalStream();
+      expect(rtc.audioStops, 1);
+      expect(rtc.captureStops, 1);
+      expect(rtc.destroyCount, 1);
+      expect(camera.currentTrack, isNull);
+      expect(camera.useMicrophone, isFalse);
+      await media.createLocalCameraStream(
+        videoFormat: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        position: CameraPosition.front,
+      );
+      expect(media.hasAudio, isFalse);
+      await media.startMicrophoneCapture();
+      expect(rtc.audioStarts, 1);
+      await media.stopLocalStream();
+    },
+  );
+
+  test(
     'format updates retain the track and render binding without restarting capture',
     () async {
       final rtc = _FakeRtc();
@@ -309,6 +482,23 @@ final class _AllowedPermissions implements PermissionManaging {
   Future<void> ensureMicrophonePermission() async {}
 }
 
+class _MicrophonePermissions implements PermissionManaging {
+  final requests = <String>[];
+  bool denyMicrophone = false;
+  @override
+  Future<void> ensureCameraPermission() async => requests.add('camera');
+  @override
+  Future<void> ensureMicrophonePermission() async {
+    requests.add('microphone');
+    if (denyMicrophone) {
+      throw const XmaxError(
+        code: XmaxErrorCode.microphonePermissionDenied,
+        message: 'Microphone permission denied',
+      );
+    }
+  }
+}
+
 final class _IdentityMediaService implements MediaServicing {
   const _IdentityMediaService();
 
@@ -336,6 +526,23 @@ final class _ResizingMediaService implements MediaServicing {
 }
 
 final class _FakeRtc implements RtcManaging {
+  int audioStarts = 0;
+  int audioStops = 0;
+  Object? audioStartError;
+  Object? audioStopError;
+
+  @override
+  Future<void> startAudioCapture() async {
+    audioStarts++;
+    if (audioStartError case final error?) throw error;
+  }
+
+  @override
+  Future<void> stopAudioCapture() async {
+    audioStops++;
+    if (audioStopError case final error?) throw error;
+  }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => throw StateError(
     'Unexpected external media call: ${invocation.memberName}',

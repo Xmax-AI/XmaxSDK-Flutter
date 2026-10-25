@@ -42,7 +42,7 @@ abstract interface class RtcManaging {
     VideoEncodingConfiguration configuration,
   );
 
-  /// Starts camera capture and preview with the specified format, leaving the microphone disabled.
+  /// Starts camera capture and preview without changing microphone capture.
   ///
   /// Parameters:
   /// - [width]: The video width, in pixels.
@@ -56,6 +56,12 @@ abstract interface class RtcManaging {
 
   /// Stops local preview and camera capture.
   Future<void> stopVideoCapture();
+
+  /// Starts built-in microphone capture without local audio playback.
+  Future<void> startAudioCapture();
+
+  /// Stops built-in microphone capture without stopping camera preview or remote playback.
+  Future<void> stopAudioCapture();
 
   /// Selects external video and optional custom audio without starting camera or microphone capture.
   ///
@@ -118,10 +124,10 @@ abstract interface class RtcManaging {
   /// Leaves RTC and cancels pending signaling while preserving an active local camera preview.
   Future<void> leaveRoom();
 
-  /// Sets camera publication for the current room without publishing microphone audio.
+  /// Sets local video and opted-in microphone or external audio publication for the current room.
   ///
   /// Parameters:
-  /// - [publish]: Whether to publish local camera video.
+  /// - [publish]: Whether to publish local video and the source's enabled audio input.
   Future<void> publishLocalVideo({
     required bool publish,
   });

@@ -177,6 +177,8 @@ abstract interface class XmaxRealtimeManaging {
   /// - [position]: The initial camera position; defaults to the front camera.
   /// - [preset]: The resolution preset, using the matching model format's frame rate and encoding
   ///   settings.
+  /// - [useMicrophone]: Whether to request microphone access and capture audio during a realtime
+  ///   connection. Defaults to false. Disconnecting stops microphone capture without stopping preview.
   ///
   /// Returns the local camera stream.
   ///
@@ -185,6 +187,7 @@ abstract interface class XmaxRealtimeManaging {
     RealtimeVideoFormat? videoFormat,
     CameraPosition position = CameraPosition.front,
     RealtimeCameraPreset? preset,
+    bool useMicrophone = false,
   });
 
   /// Stops the camera and releases capture resources. Disconnect realtime before calling.

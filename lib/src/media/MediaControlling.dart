@@ -24,7 +24,7 @@ abstract interface class MediaControlling implements InteractionControlling {
   /// The current local track's video format; null before creation.
   RealtimeVideoFormat? get currentVideoFormat;
 
-  /// Whether local media supplies audio for realtime upload; false for camera sources.
+  /// Whether the active source opts into microphone or external audio for realtime upload.
   bool get hasAudio;
 
   /// The local preview volume; fixed at 0.45 because local sources have no audio player.
@@ -43,6 +43,7 @@ abstract interface class MediaControlling implements InteractionControlling {
   /// Parameters:
   /// - [videoFormat]: The video dimensions, frame rate, and encoding settings.
   /// - [position]: The camera position to use.
+  /// - [useMicrophone]: Whether to request microphone access and capture audio while connected.
   /// - [cancellation]: Completes to cancel pending engine acquisition before capture starts.
   ///
   /// Returns the new local camera stream; the future fails on invalid arguments or denied
@@ -50,8 +51,15 @@ abstract interface class MediaControlling implements InteractionControlling {
   Future<RealtimeMediaStream> createLocalCameraStream({
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
+    bool useMicrophone = false,
     Future<void>? cancellation,
   });
+
+  /// Starts microphone capture for a camera source that opted into audio, without local playback.
+  Future<void> startMicrophoneCapture();
+
+  /// Stops microphone capture while retaining camera preview and the source's audio configuration.
+  Future<void> stopMicrophoneCapture();
 
   /// Stops the local camera stream and releases capture resources.
   Future<void> stopLocalCameraStream();

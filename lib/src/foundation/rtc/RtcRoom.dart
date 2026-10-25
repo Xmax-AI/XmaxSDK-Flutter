@@ -36,9 +36,9 @@ abstract interface class RtcRoom {
   /// Closes signaling and awaits native leave without stopping local capture or preview.
   Future<void> destroy();
 
-  /// Publishes the current camera or external input without publishing the microphone.
+  /// Publishes the current camera or external input and its enabled audio source.
   ///
-  /// [publish] controls local video and any opted-in external audio.
+  /// [publish] controls local video and opted-in microphone or external audio.
   Future<void> publishLocalVideo(
     bool publish,
   );

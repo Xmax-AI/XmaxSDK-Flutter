@@ -183,6 +183,14 @@ abstract final class XmaxRealtimeFactory {
         String? sessionID = activeSessionID.isEmpty ? null : activeSessionID;
 
         // Every resource owner is given a cleanup opportunity even if another fails.
+        if (scope != RealtimeTerminationScope.generation) {
+          try {
+            await mediaController.stopMicrophoneCapture();
+          } catch (error) {
+            errorManager.report(error);
+          }
+        }
+
         try {
           if (scope == RealtimeTerminationScope.generation) {
             await generationManager.stop(taskID: taskID);

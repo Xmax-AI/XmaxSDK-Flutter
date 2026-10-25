@@ -19,6 +19,102 @@ const _configuration = RoomJoinConfiguration(
 );
 
 void main() {
+  test(
+    'camera microphone publication is opt-in and stops without restarting preview',
+    () async {
+      final platform = _Platform();
+      final engine = platform.engine..autoCompleteLeave = true;
+      final manager = _manager(platform);
+      await manager.initialize();
+      await manager.startVideoCapture(width: 1024, height: 1920, frameRate: 30);
+      await manager.joinRoom(configuration: _configuration);
+      ChannelMediaOptions options() =>
+          engine.calls
+                  .lastWhere(
+                    (call) => call.memberName == #updateChannelMediaOptionsEx,
+                  )
+                  .namedArguments[#options]
+              as ChannelMediaOptions;
+      await manager.publishLocalVideo(publish: true);
+      expect(options().publishCameraTrack, isTrue);
+      expect(options().publishMicrophoneTrack, isFalse);
+      await manager.publishLocalVideo(publish: false);
+
+      await manager.startAudioCapture();
+      await manager.startAudioCapture();
+      expect(
+        engine.calls
+            .where((call) => call.memberName == #enableLocalAudio)
+            .map((call) => call.positionalArguments.single),
+        [true],
+      );
+      await manager.publishLocalVideo(publish: true);
+      expect(options().publishMicrophoneTrack, isTrue);
+      expect(options().enableAudioRecordingOrPlayout, isTrue);
+      expect(options().publishCustomAudioTrack, isFalse);
+      await manager.stopAudioCapture();
+      await manager.publishLocalVideo(publish: false);
+      expect(options().publishMicrophoneTrack, isFalse);
+      expect(options().enableAudioRecordingOrPlayout, isTrue);
+      await manager.leaveRoom();
+      expect(engine.previewStarts, 1);
+      expect(engine.previewStops, 0);
+      expect(engine.localVideoChanges, [true]);
+      expect(
+        engine.calls
+            .where((call) => call.memberName == #enableLocalAudio)
+            .map((call) => call.positionalArguments.single),
+        [true, false],
+      );
+      await manager.startAudioCapture();
+      await manager.joinRoom(configuration: _configuration);
+      await manager.publishLocalVideo(publish: true);
+      expect(options().publishMicrophoneTrack, isTrue);
+      await manager.stopAudioCapture();
+      await manager.destroy();
+    },
+  );
+
+  test(
+    'microphone errors retain cleanup eligibility and do not enable publication',
+    () async {
+      final platform = _Platform();
+      final engine = platform.engine..autoCompleteLeave = true;
+      final manager = _manager(platform);
+      await manager.initialize();
+      engine.rejectAudioStart = true;
+      await expectLater(manager.startAudioCapture(), throwsA(isA<XmaxError>()));
+      expect(platform.isMicrophoneCapturing, isFalse);
+      await manager.stopAudioCapture();
+      engine.rejectAudioStart = false;
+      await manager.startAudioCapture();
+      engine.rejectAudioStop = true;
+      await expectLater(manager.stopAudioCapture(), throwsA(isA<XmaxError>()));
+      expect(platform.isMicrophoneCapturing, isTrue);
+      engine.rejectAudioStop = false;
+      await manager.stopAudioCapture();
+      expect(platform.isMicrophoneCapturing, isFalse);
+      await manager.destroy();
+    },
+  );
+
+  test(
+    'external audio excludes microphone capture and stops any previous microphone',
+    () async {
+      final platform = _Platform();
+      final manager = _manager(platform);
+      await manager.initialize();
+      await manager.startAudioCapture();
+      await manager.startExternalVideoSource(hasAudio: true);
+      expect(platform.isMicrophoneCapturing, isFalse);
+      expect(platform.externalAudioTrackID, 12);
+      await expectLater(manager.startAudioCapture(), throwsA(isA<XmaxError>()));
+      expect(platform.isMicrophoneCapturing, isFalse);
+      await manager.stopExternalVideoSource();
+      await manager.destroy();
+    },
+  );
+
   test('released platform suppresses stale engine callbacks', () async {
     final platform = _Platform();
     final manager = _manager(platform);
@@ -583,6 +679,8 @@ class _Platform extends AgoraRtcPlatform {
 }
 
 class _Engine implements RtcEngineEx {
+  bool rejectAudioStart = false;
+  bool rejectAudioStop = false;
   final media = _MediaEngine();
   @override
   MediaEngine getMediaEngine() => media;
@@ -618,6 +716,13 @@ class _Engine implements RtcEngineEx {
   dynamic noSuchMethod(Invocation call) {
     calls.add(call);
     switch (call.memberName) {
+      case #enableLocalAudio:
+        final enabled = call.positionalArguments.single as bool;
+        if (enabled ? rejectAudioStart : rejectAudioStop) {
+          return Future<void>.error(
+            AgoraRtcException(code: -2, message: 'audio rejected'),
+          );
+        }
       case #joinChannelWithUserAccount:
       case #leaveChannel:
       case #createDataStream:
