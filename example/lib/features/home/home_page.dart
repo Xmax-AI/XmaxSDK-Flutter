@@ -14,9 +14,10 @@ import '../realtime/realtime_page.dart';
 import '../storage/storage_page.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({this.pickImage, super.key});
+  const HomePage({this.pickImage, this.pickVideo, super.key});
 
   final Future<XFile?> Function()? pickImage;
+  final Future<XFile?> Function()? pickVideo;
 
   @override
   State<HomePage> createState() => _HomePageState();
@@ -183,6 +184,42 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<void> _openExternalCapture() async {
+    if (_isPickingImage) return;
+    final apiKey = _apiKeyForNavigation();
+    if (apiKey == null) return;
+    _isPickingImage = true;
+    try {
+      final video =
+          await (widget.pickVideo?.call() ??
+              ImagePicker().pickVideo(source: ImageSource.gallery));
+      if (video == null || !mounted) return;
+      Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => RealtimePage(
+            apiKey: apiKey,
+            environment: XLabLocalization.shared.environment,
+            model: _activeModel,
+            localInput: XLabRealtimeExternalVideoInput(
+              path: video.path,
+              name: video.name,
+            ),
+          ),
+        ),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(XLabLocalization.shared.text('feed.external.error')),
+          ),
+        );
+      }
+    } finally {
+      _isPickingImage = false;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Depend on MaterialApp's locale so changing language refreshes this page.
@@ -278,6 +315,18 @@ class _HomePageState extends State<HomePage> {
               _SectionHeader(
                 title: t('feed.features'),
                 subtitle: t('feed.examples'),
+              ),
+              const SizedBox(height: 14),
+              _FeatureCard(
+                category: 'SDK MEDIA / EXTERNAL',
+                watermark: 'PCM',
+                title: t('feed.external.title'),
+                subtitle: t('feed.external.subtitle'),
+                tags: const ['EXTERNAL SOURCE', 'VIDEO', 'PCM AUDIO'],
+                color: XLabPalette.mint,
+                icon: Icons.videocam_outlined,
+                iconLabel: 'EXTERNAL',
+                onTap: () => unawaited(_openExternalCapture()),
               ),
               const SizedBox(height: 14),
               _FeatureCard(

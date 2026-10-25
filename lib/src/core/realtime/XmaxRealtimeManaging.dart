@@ -18,6 +18,7 @@ import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeState.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../stream/quality/RealtimeQualityLevel.dart';
+import '../../media/external/RealtimeExternalVideoSource.dart';
 import 'RealtimeConfiguration.dart';
 
 /// An interface for local media, realtime connections, and video generation.
@@ -84,11 +85,11 @@ abstract interface class XmaxRealtimeManaging {
   );
 
   /// The local media preview volume, from 0 to 1.
-  /// Camera streams have no local audio player and return the default value of 0.45.
+  /// Camera and external sources have no local audio player and return the default value of 0.45.
   Future<double> get localAudioVolume;
 
   /// The remote audio playback volume, from 0 to 1 in increments of 0.01.
-  /// Initially 1.0; resets to 0 after each successful camera stream creation.
+  /// Initially 1.0; camera and external source bindings reset it to 0.
   Future<double> get remoteAudioVolume;
 
   /// Sets the state listener and immediately delivers the current state.
@@ -143,7 +144,7 @@ abstract interface class XmaxRealtimeManaging {
 
   /// Sets the local media preview volume.
   ///
-  /// Camera streams have no local audio player. Valid settings do not change the reported value of
+  /// Camera and external sources have no local audio player. Valid settings do not change the reported value of
   /// 0.45.
   ///
   /// Parameters:
@@ -156,7 +157,7 @@ abstract interface class XmaxRealtimeManaging {
   ///
   /// Retains settings before audio subscription and applies them before playback; failed RTC writes
   /// retain the last successful value.
-  /// Camera stream creation resets remote volume to 0. Set the volume after creating the stream to
+  /// Camera or external stream creation resets remote volume to 0. Set the volume after binding to
   /// enable playback.
   ///
   /// Parameters:
@@ -188,6 +189,33 @@ abstract interface class XmaxRealtimeManaging {
 
   /// Stops the camera and releases capture resources. Disconnect realtime before calling.
   Future<void> stopLocalCameraStream();
+
+  /// Binds video and optional PCM audio captured, decoded, or processed by your app.
+  ///
+  /// Retains the source frame rate and encoding settings. Dimensions are scaled within the
+  /// model's area limits and aligned to four pixels, without camera resolution buckets.
+  /// Submit original source dimensions; native transport scales them for encoding.
+  ///
+  /// Binding completes in ready state without waiting for a frame or a view. Disconnecting
+  /// preserves delivery and preview. Stopping or closing detaches the source without disposing
+  /// caller-owned capture devices or players. No camera or microphone permission is requested.
+  /// Remote audio volume resets to zero; set it after binding to enable generated audio.
+  ///
+  /// [source] is the frame producer implemented and owned by your app.
+  ///
+  /// Returns a local stream for SDK video views and realtime generation.
+  ///
+  /// The returned future completes with an error for invalid formats, an existing local stream,
+  /// conflicting operations, cancellation, or source startup failure.
+  Future<RealtimeMediaStream> createExternalVideoStream({
+    required RealtimeExternalVideoSource source,
+  });
+
+  /// Stops external frame delivery and clears preview without disposing caller-owned resources.
+  ///
+  /// The returned future completes with an error while connected, on conflicting operations,
+  /// or if the operation is cancelled.
+  Future<void> stopExternalVideoStream();
 
   /// Switches between the front and rear cameras.
   ///

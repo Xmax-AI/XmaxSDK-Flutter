@@ -13,4 +13,7 @@ enum RealtimeMediaSource {
 
   /// Video captured by the device camera.
   camera,
+
+  /// Video frames supplied by an app-owned source.
+  external,
 }

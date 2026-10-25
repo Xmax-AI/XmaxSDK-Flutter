@@ -22,4 +22,16 @@ void main() {
       XLabRealtimePanelMode.touch,
     );
   });
+
+  test('external video keeps camera-style generation conditions', () {
+    expect(
+      initialRealtimePanelMode(
+        localInput: const XLabRealtimeExternalVideoInput(
+          path: '/test/video.mp4',
+          name: 'video.mp4',
+        ),
+      ),
+      XLabRealtimePanelMode.character,
+    );
+  });
 }

@@ -84,6 +84,14 @@ final class XLabLocalization extends ChangeNotifier {
       text(key).replaceFirst('%d', count.toString()).replaceAll('%%', '%');
 
   static const _chinese = <String, String>{
+    'feed.external.title': '外部采集',
+    'feed.external.subtitle': '选择视频，通过外部源提交解码后的视频帧和 PCM 音频。',
+    'feed.external.error': '读取视频失败，请重试',
+    'realtime.gallery': '相册',
+    'realtime.audio': '声音',
+    'realtime.mute': '静音',
+    'realtime.volume': '音量',
+    'realtime.volume.remote': '生成声音',
     'statistics.title': '统计',
     'statistics.level.hint': 'L1 最高 · L5 最低，手动调整后仍会自动调档。',
     'statistics.uplink': '上行视频',
@@ -192,6 +200,16 @@ final class XLabLocalization extends ChangeNotifier {
   };
 
   static const _english = <String, String>{
+    'feed.external.title': 'External Capture',
+    'feed.external.subtitle':
+        'Choose a video and supply decoded video and PCM audio through an external source.',
+    'feed.external.error':
+        'Could not read the selected video. Please try again.',
+    'realtime.gallery': 'Gallery',
+    'realtime.audio': 'Sound',
+    'realtime.mute': 'Mute',
+    'realtime.volume': 'Volume',
+    'realtime.volume.remote': 'Generated audio',
     'statistics.title': 'Stats',
     'statistics.level.hint':
         'L1 highest · L5 lowest. Automatic adaptation remains active.',

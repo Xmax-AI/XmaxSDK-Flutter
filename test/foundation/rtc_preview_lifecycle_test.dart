@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,6 +18,92 @@ const _configuration = RoomJoinConfiguration(
 );
 
 void main() {
+  test(
+    'external input publishes custom tracks and preserves preview after leaving',
+    () async {
+      final platform = _Platform();
+      final engine = platform.engine..autoCompleteLeave = true;
+      final manager = _manager(platform);
+      await manager.initialize();
+      await manager.startExternalVideoSource(hasAudio: true);
+      await manager.pushExternalAudioFrame(
+        Uint8List(960),
+        timestamp: Duration.zero,
+      );
+      expect(engine.media.audioPackets, 0);
+      await manager.joinRoom(configuration: _configuration);
+      await manager.publishLocalVideo(publish: true);
+      final publication = engine.calls.lastWhere(
+        (call) => call.memberName == #updateChannelMediaOptionsEx,
+      );
+      final options =
+          publication.namedArguments[#options] as ChannelMediaOptions;
+      expect(options.publishCameraTrack, isFalse);
+      expect(options.publishMicrophoneTrack, isFalse);
+      expect(options.publishCustomVideoTrack, isTrue);
+      expect(options.customVideoTrackId, 0);
+      expect(options.publishCustomAudioTrack, isTrue);
+      expect(options.publishCustomAudioTrackId, 12);
+      await manager.pushExternalAudioFrame(
+        Uint8List(960),
+        timestamp: const Duration(seconds: 1),
+      );
+      expect(engine.media.audioPackets, 1);
+      expect(engine.media.lastAudio!.samplesPerChannel, 480);
+      expect(engine.media.lastAudio!.channels, 1);
+      expect(engine.media.lastAudio!.samplesPerSec, 48000);
+      expect(engine.media.lastAudio!.renderTimeMs, 1000);
+      await manager.publishLocalVideo(publish: false);
+      await manager.leaveRoom();
+      await manager.pushExternalVideoFrame(
+        RealtimeExternalVideoFrame(
+          data: Uint8List(16),
+          width: 2,
+          height: 2,
+          pixelFormat: RealtimeExternalVideoPixelFormat.bgra,
+        ),
+        timestamp: const Duration(seconds: 2),
+      );
+      await manager.pushExternalAudioFrame(
+        Uint8List(960),
+        timestamp: const Duration(seconds: 2),
+      );
+      expect(engine.media.audioPackets, 1);
+      expect(engine.media.videoPackets, 1);
+      expect(engine.previewStarts, 1);
+      expect(engine.previewStops, 0);
+      expect(engine.captureConfigurations, 0);
+      await manager.stopExternalVideoSource();
+      expect(engine.localVideoChanges, [true, false]);
+      expect(engine.media.destroyedTracks, [12]);
+      expect(engine.media.audioConfiguration!.enableLocalPlayback, isFalse);
+      await manager.destroy();
+    },
+  );
+
+  test('external encoding is not mirrored and audio remains opt-in', () async {
+    final platform = _Platform();
+    final engine = platform.engine;
+    final manager = _manager(platform);
+    await manager.initialize();
+    await manager.startExternalVideoSource(hasAudio: false);
+    await manager.configureVideoEncoding(
+      const VideoEncodingConfiguration(width: 640, height: 480, frameRate: 30),
+    );
+    final encoding =
+        engine.calls
+                .lastWhere(
+                  (call) => call.memberName == #setVideoEncoderConfiguration,
+                )
+                .positionalArguments
+                .single
+            as VideoEncoderConfiguration;
+    expect(encoding.mirrorMode, VideoMirrorModeType.videoMirrorModeDisabled);
+    expect(engine.media.audioConfiguration, isNull);
+    await manager.stopExternalVideoSource();
+    await manager.destroy();
+  });
+
   test('transport and public video formats default to frame-rate priority', () {
     expect(
       const VideoEncodingConfiguration(
@@ -448,6 +535,9 @@ class _Platform implements RtcPlatform {
 }
 
 class _Engine implements RtcEngineEx {
+  final media = _MediaEngine();
+  @override
+  MediaEngine getMediaEngine() => media;
   final calls = <Invocation>[];
   final handlers = <RtcEngineEventHandler>{};
   final leaveRequested = Completer<void>();
@@ -536,4 +626,51 @@ class _Engine implements RtcEngineEx {
     }
     return Future<void>.value();
   }
+}
+
+class _MediaEngine implements MediaEngine {
+  AudioFrame? lastAudio;
+  AudioTrackConfig? audioConfiguration;
+  int audioPackets = 0, videoPackets = 0;
+  final destroyedTracks = <int>[];
+  @override
+  Future<void> setExternalVideoSource({
+    required bool enabled,
+    required bool useTexture,
+    ExternalVideoSourceType sourceType = ExternalVideoSourceType.videoFrame,
+    SenderOptions encodedVideoOption = const SenderOptions(),
+  }) async {}
+  @override
+  Future<int> createCustomAudioTrack({
+    required AudioTrackType trackType,
+    required AudioTrackConfig config,
+  }) async {
+    audioConfiguration = config;
+    return 12;
+  }
+
+  @override
+  Future<void> destroyCustomAudioTrack(int trackId) async =>
+      destroyedTracks.add(trackId);
+  @override
+  Future<void> pushVideoFrame({
+    required ExternalVideoFrame frame,
+    int videoTrackId = 0,
+  }) async {
+    videoPackets++;
+  }
+
+  @override
+  Future<void> pushAudioFrame({
+    required AudioFrame frame,
+    int trackId = 0,
+  }) async {
+    lastAudio = frame;
+    audioPackets++;
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError(
+    'Unexpected native media call: ${invocation.memberName}',
+  );
 }

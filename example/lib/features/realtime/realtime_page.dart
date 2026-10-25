@@ -12,6 +12,8 @@ import 'realtime_camera_switch_transition.dart';
 import 'realtime_loading_overlay.dart';
 import 'realtime_statistics_panel.dart';
 import 'realtime_local_input.dart';
+import 'realtime_file_video_source.dart';
+import 'realtime_media_top_bar.dart';
 import 'xlab_trajectory_renderer.dart';
 
 /// Resolves the initial generation mode from the media input only.
@@ -48,6 +50,7 @@ class _RealtimePageState extends State<RealtimePage>
     with WidgetsBindingObserver {
   late XmaxRealtimeManaging _manager;
   late XmaxStorageManaging _storageManager;
+  late MediaServicing _mediaService;
   final _promptController = TextEditingController();
   final _referencesByCategory = <String, List<XLabRealtimeReference>>{
     for (final mode in XLabRealtimePanelMode.values)
@@ -63,6 +66,9 @@ class _RealtimePageState extends State<RealtimePage>
   DownlinkVideoStatistics? _downlinkStatistics;
   RealtimeNetworkQuality? _networkQuality;
   bool _isStatisticsVisible = false;
+  String? _externalVideoPath;
+  bool _isAudioMuted = true;
+  double _remoteAudioVolume = 1;
   RealtimeQualityLevel? _uplinkLevel;
   RealtimeQualityLevel? _downlinkLevel;
   bool _isAdjustingQuality = false;
@@ -91,8 +97,11 @@ class _RealtimePageState extends State<RealtimePage>
   void initState() {
     super.initState();
     _panelMode = initialRealtimePanelMode(localInput: widget.localInput);
-    if (widget.localInput != null) {
+    if (widget.localInput is XLabRealtimeImageInput) {
       _isLoading = false;
+    }
+    if (widget.localInput case XLabRealtimeExternalVideoInput input) {
+      _externalVideoPath = input.path;
     }
     _promptController.addListener(_promptDidChange);
     WidgetsBinding.instance.addObserver(this);
@@ -125,14 +134,15 @@ class _RealtimePageState extends State<RealtimePage>
   }
 
   void _scheduleInitialCameraStart() {
-    if (_hasScheduledInitialCameraStart || widget.localInput != null) {
+    if (_hasScheduledInitialCameraStart ||
+        widget.localInput is XLabRealtimeImageInput) {
       return;
     }
 
     _hasScheduledInitialCameraStart = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        unawaited(_startCamera());
+        unawaited(_startLocalMedia());
       }
     });
   }
@@ -158,6 +168,7 @@ class _RealtimePageState extends State<RealtimePage>
       ),
     );
     _storageManager = client.createStorageManager();
+    _mediaService = client.createMediaService(model: widget.model);
     _manager = client.createRealtimeManager(
       options: RealtimeConfiguration(model: widget.model),
     );
@@ -215,7 +226,7 @@ class _RealtimePageState extends State<RealtimePage>
     // transient quality warnings to user-facing errors.
   }
 
-  Future<void> _startCamera() async {
+  Future<void> _startLocalMedia() async {
     if (_isSuspendedForBackground || _busy || _localStream != null) return;
 
     final operation = ++_realtimeOperationVersion;
@@ -226,7 +237,32 @@ class _RealtimePageState extends State<RealtimePage>
       _lastError = null;
     });
     try {
-      final stream = await _manager.createLocalCameraStream();
+      final path = _externalVideoPath;
+      final RealtimeMediaStream stream;
+      if (path != null) {
+        final source = await RealtimeFileVideoSource.make(
+          path: path,
+          frameRate: widget.model.defaultFrameRate,
+          mediaService: _mediaService,
+        );
+        if (!_isCurrentRealtimeOperation(operation) ||
+            _isSuspendedForBackground) {
+          return;
+        }
+        stream = await _manager.createExternalVideoStream(source: source);
+        if (_isCurrentRealtimeOperation(operation) &&
+            !_isSuspendedForBackground) {
+          _isAudioMuted = !source.hasAudio;
+          _remoteAudioVolume = 1;
+          try {
+            await _manager.setRemoteAudioVolume(source.hasAudio ? 1 : 0);
+          } catch (error) {
+            if (_isCurrentRealtimeOperation(operation)) _showError(error);
+          }
+        }
+      } else {
+        stream = await _manager.createLocalCameraStream();
+      }
       if (_isCurrentRealtimeOperation(operation)) {
         setState(() => _localStream = stream);
       }
@@ -597,6 +633,94 @@ class _RealtimePageState extends State<RealtimePage>
     }
   }
 
+  Future<void> _replaceExternalVideo() async {
+    if (_busy || _isSuspendedForBackground) return;
+    // The system picker may temporarily background the app; select before closing the source.
+    final selected = await ImagePicker().pickVideo(source: ImageSource.gallery);
+    if (selected == null || !mounted) return;
+    final operation = ++_realtimeOperationVersion;
+    setState(() {
+      _busy = true;
+      _isLoading = true;
+    });
+    try {
+      await _manager.close();
+      if (!_isCurrentRealtimeOperation(operation) ||
+          _isSuspendedForBackground) {
+        return;
+      }
+      setState(() {
+        _externalVideoPath = selected.path;
+        _localStream = null;
+        _remoteStream = null;
+        _selectedReference = null;
+        _cameraReady = false;
+        _isWaitingForRemoteVideo = false;
+      });
+    } catch (error) {
+      if (_isCurrentRealtimeOperation(operation)) _showError(error);
+    } finally {
+      if (_isCurrentRealtimeOperation(operation)) setState(() => _busy = false);
+    }
+    if (_isCurrentRealtimeOperation(operation) && !_isSuspendedForBackground) {
+      await _startLocalMedia();
+    }
+  }
+
+  Future<void> _toggleExternalAudio() async {
+    try {
+      final muted = !_isAudioMuted;
+      await _manager.setRemoteAudioVolume(muted ? 0 : _remoteAudioVolume);
+      if (mounted) setState(() => _isAudioMuted = muted);
+    } catch (error) {
+      if (mounted) _showError(error);
+    }
+  }
+
+  Future<void> _showExternalVolume() async {
+    var value = await _manager.remoteAudioVolume;
+    if (!mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: const Color(0xFF202024),
+      builder: (context) => SafeArea(
+        child: StatefulBuilder(
+          builder: (context, update) => Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  XLabLocalization.shared.text('realtime.volume.remote'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+                Slider(
+                  value: value,
+                  divisions: 100,
+                  label: '${(value * 100).round()}%',
+                  onChanged: (next) => update(() => value = next),
+                  onChangeEnd: (next) async {
+                    try {
+                      await _manager.setRemoteAudioVolume(next);
+                      if (mounted) {
+                        setState(() {
+                          _remoteAudioVolume = next;
+                          _isAudioMuted = next == 0;
+                        });
+                      }
+                    } catch (error) {
+                      if (mounted) _showError(error);
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   bool _isCurrentRealtimeOperation(int operation) =>
       mounted && operation == _realtimeOperationVersion;
 
@@ -627,7 +751,7 @@ class _RealtimePageState extends State<RealtimePage>
     _realtimeOperationVersion += 1;
     FocusManager.instance.primaryFocus?.unfocus();
 
-    // Match iOS XLab: clear the active realtime session immediately while
+    // Clear the active realtime session immediately while
     // preserving the reference catalog, prompt reference, and COS uploads.
     if (mounted) {
       setState(() {
@@ -667,7 +791,7 @@ class _RealtimePageState extends State<RealtimePage>
     if (!_isSuspendedForBackground || _isResumingFromBackground) return;
 
     _isResumingFromBackground = true;
-    if (mounted && widget.localInput == null) {
+    if (mounted && widget.localInput is! XLabRealtimeImageInput) {
       setState(() => _isLoading = true);
     }
 
@@ -682,8 +806,8 @@ class _RealtimePageState extends State<RealtimePage>
     _isSuspendedForBackground = false;
     _isResumingFromBackground = false;
 
-    if (widget.localInput == null) {
-      await _startCamera();
+    if (widget.localInput is! XLabRealtimeImageInput) {
+      await _startLocalMedia();
     } else {
       // File input is already retained by the page and can be displayed again
       // without reopening the camera.
@@ -865,6 +989,22 @@ class _RealtimePageState extends State<RealtimePage>
                       statisticsVisible: _isStatisticsVisible,
                       onSwitchCamera: _switchCamera,
                       onToggleStatistics: () => setState(
+                        () => _isStatisticsVisible = !_isStatisticsVisible,
+                      ),
+                    ),
+                  ),
+                if (_externalVideoPath != null)
+                  Positioned(
+                    right: 12,
+                    top: 5,
+                    child: RealtimeMediaTopBar(
+                      enabled: !_busy,
+                      isMuted: _isAudioMuted,
+                      statisticsVisible: _isStatisticsVisible,
+                      onGallery: () => unawaited(_replaceExternalVideo()),
+                      onMute: () => unawaited(_toggleExternalAudio()),
+                      onVolume: () => unawaited(_showExternalVolume()),
+                      onStatistics: () => setState(
                         () => _isStatisticsVisible = !_isStatisticsVisible,
                       ),
                     ),

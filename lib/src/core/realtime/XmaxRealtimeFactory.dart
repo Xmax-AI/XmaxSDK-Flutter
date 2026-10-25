@@ -12,6 +12,7 @@ import '../../foundation/rtc/RtcManager.dart';
 import '../../media/MediaController.dart';
 import '../../media/MediaControlling.dart';
 import '../../media/camera/CameraController.dart';
+import '../../media/external/ExternalVideoController.dart';
 import '../../render/RenderController.dart';
 import '../../render/RenderControlling.dart';
 import '../../service/media/MediaService.dart';
@@ -115,6 +116,16 @@ abstract final class XmaxRealtimeFactory {
       ) => streamController.sendTracks(
         taskID: taskID,
         points: points,
+      ),
+      externalController: ExternalVideoController(
+        rtcManager: rtcManager,
+        mediaService: mediaService,
+        errorListener: (
+          error,
+        ) => errorManager.forward(
+          error,
+          scope: RealtimeFailureScope.all,
+        ),
       ),
     );
     final connectionManager = XmaxRealtimeConnectionManager(

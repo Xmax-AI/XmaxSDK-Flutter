@@ -36,6 +36,7 @@ import 'XmaxRealtimeFactory.dart';
 import 'XmaxRealtimeGenerationManager.dart';
 import 'XmaxRealtimeLifecycleManager.dart';
 import 'XmaxRealtimeManaging.dart';
+import '../../media/external/RealtimeExternalVideoSource.dart';
 
 /// Implements the public realtime API and sequences media, connection, and generation workflows.
 final class XmaxRealtimeManager implements XmaxRealtimeManaging {
@@ -244,6 +245,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     ) async {
       final current = _mediaController.currentVideoFormat;
       if ((videoFormat == null) == (preset == null) || current == null ||
+          _mediaController.currentTrack?.position == null ||
           _state.connectionState != RealtimeConnectionState.ready ||
           _connectionManager.currentSessionID.isNotEmpty) {
         throw const XmaxError(
@@ -465,7 +467,85 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
       await _mediaController.stopLocalCameraStream();
       token.ensureCurrent();
       _lifecycleManager.complete(
-        const RealtimeState(connectionState: RealtimeConnectionState.idle),
+        RealtimeState(
+          connectionState: _mediaController.currentTrack == null
+              ? RealtimeConnectionState.idle
+              : RealtimeConnectionState.ready,
+        ),
+        token: token,
+      );
+    },
+  );
+
+  /// Binds an app-owned source inside exclusive local media admission.
+  ///
+  /// See [XmaxRealtimeManaging.createExternalVideoStream] for the usage contract.
+  @override
+  Future<RealtimeMediaStream> createExternalVideoStream({
+    required RealtimeExternalVideoSource source,
+  }) => _lifecycleManager.run(
+    kind: RealtimeOperationKind.media,
+    operation: (
+      token,
+    ) async {
+      if (_connectionManager.currentSessionID.isNotEmpty ||
+          _mediaController.currentTrack != null ||
+          _state.connectionState == RealtimeConnectionState.connecting ||
+          _state.connectionState == RealtimeConnectionState.disconnecting) {
+        throw const XmaxError(
+          code: XmaxErrorCode.invalidConfiguration,
+          message: 'Stop local media and disconnect before binding an external source',
+        );
+      }
+      source.videoFormat.validate();
+      _errorManager.invalidatePendingFailures();
+      _lifecycleManager.commit(
+        const RealtimeState(connectionState: RealtimeConnectionState.preparing),
+        token: token,
+      );
+      token.ensureCurrent();
+      final stream = await _mediaController.createExternalVideoStream(
+        source: source,
+        cancellation: token.cancellation,
+      );
+      token.ensureCurrent();
+      token.setFailureScope(RealtimeTerminationScope.all);
+      await _streamController.setRemoteAudioVolume(0);
+      token.ensureCurrent();
+      _lifecycleManager.complete(
+        const RealtimeState(connectionState: RealtimeConnectionState.ready),
+        token: token,
+      );
+      return stream;
+    },
+  );
+
+  /// Detaches an external source only after connection resources have been released.
+  ///
+  /// See [XmaxRealtimeManaging.stopExternalVideoStream] for the usage contract.
+  @override
+  Future<void> stopExternalVideoStream() => _lifecycleManager.run(
+    kind: RealtimeOperationKind.media,
+    operation: (
+      token,
+    ) async {
+      if (_connectionManager.currentSessionID.isNotEmpty ||
+          _state.connectionState == RealtimeConnectionState.connecting ||
+          _state.connectionState == RealtimeConnectionState.disconnecting) {
+        throw const XmaxError(
+          code: XmaxErrorCode.invalidConfiguration,
+          message: 'Disconnect realtime before stopping the external source',
+        );
+      }
+      _errorManager.invalidatePendingFailures();
+      await _mediaController.stopExternalVideoStream();
+      token.ensureCurrent();
+      _lifecycleManager.complete(
+        RealtimeState(
+          connectionState: _mediaController.currentTrack == null
+              ? RealtimeConnectionState.idle
+              : RealtimeConnectionState.ready,
+        ),
         token: token,
       );
     },
@@ -480,6 +560,12 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
     operation: (
       token,
     ) async {
+      if (_mediaController.currentTrack?.position == null) {
+        throw const XmaxError(
+          code: XmaxErrorCode.invalidConfiguration,
+          message: 'Camera switching requires an active camera source',
+        );
+      }
       if (_state.connectionState == RealtimeConnectionState.connecting ||
           _state.connectionState == RealtimeConnectionState.disconnecting ||
           (_state.connectionState != RealtimeConnectionState.generating &&

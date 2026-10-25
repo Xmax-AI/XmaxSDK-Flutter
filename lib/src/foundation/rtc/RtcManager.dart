@@ -9,6 +9,7 @@
 //
 
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
@@ -16,6 +17,7 @@ import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../errors/XmaxError.dart';
 import '../logging/XmaxLogger.dart';
 import '../media/camera/CameraPosition.dart';
+import '../media/video/RealtimeExternalVideoFrame.dart';
 import 'AgoraRtcRoom.dart';
 import 'RoomJoinConfiguration.dart';
 import 'RtcEngineManager.dart';
@@ -76,6 +78,15 @@ final class RtcManager implements RtcManaging {
 
   /// The camera position, initially front-facing when a stream is created.
   CameraPosition _position = CameraPosition.front;
+
+  /// Whether local input comes from an app-owned external source.
+  bool _usesExternalVideo = false;
+
+  /// The custom audio track, absent for video-only sources.
+  int? _externalAudioTrackID;
+
+  /// Whether external media can currently upload audio.
+  bool _isPublishingLocalMedia = false;
 
   /// The most recently applied RTC encoding configuration.
   VideoEncodingConfiguration? _encoding;
@@ -297,6 +308,9 @@ final class RtcManager implements RtcManaging {
       _handler = null;
       _encoding = null;
       _position = CameraPosition.front;
+      _usesExternalVideo = false;
+      _externalAudioTrackID = null;
+      _isPublishingLocalMedia = false;
     }
   }
 
@@ -318,7 +332,7 @@ final class RtcManager implements RtcManaging {
       minBitrate: configuration.minimumBitrate,
       bitrate: configuration.maximumBitrate,
       orientationMode: OrientationMode.orientationModeAdaptive,
-      mirrorMode: _position == CameraPosition.front
+      mirrorMode: !_usesExternalVideo && _position == CameraPosition.front
           ? VideoMirrorModeType.videoMirrorModeEnabled
           : VideoMirrorModeType.videoMirrorModeDisabled,
       degradationPreference: switch (configuration.encoderPreference) {
@@ -418,6 +432,117 @@ final class RtcManager implements RtcManaging {
     await _checked(() => _engine.enableLocalVideo(false));
   }
 
+  /// Configures custom media with native camera and microphone capture disabled.
+  ///
+  /// See [RtcManaging.startExternalVideoSource] for the usage contract.
+  @override
+  Future<void> startExternalVideoSource({
+    required bool hasAudio,
+  }) async {
+    _usesExternalVideo = true;
+    await _engine.getMediaEngine().setExternalVideoSource(
+      enabled: true,
+      useTexture: false,
+    );
+    await _engine.enableLocalVideo(true);
+    if (hasAudio) {
+      final trackID = await _engine.getMediaEngine().createCustomAudioTrack(
+        trackType: AudioTrackType.audioTrackDirect,
+        config: const AudioTrackConfig(
+          enableLocalPlayback: false,
+          enableAudioProcessing: false,
+        ),
+      );
+      if (trackID < 0 || trackID == 0xffffffff) {
+        throw const XmaxError(
+          code: XmaxErrorCode.rtcError,
+          message: 'Could not create the external audio track',
+        );
+      }
+      _externalAudioTrackID = trackID;
+    }
+    await _engine.startPreview();
+  }
+
+  /// Stops custom preview and releases audio before the engine lease is returned.
+  @override
+  Future<void> stopExternalVideoSource() async {
+    _isPublishingLocalMedia = false;
+    if (_lease == null) {
+      return;
+    }
+    final audio = _externalAudioTrackID;
+    _externalAudioTrackID = null;
+    try {
+      await _engine.stopPreview();
+    } finally {
+      try {
+        if (audio != null) {
+          await _engine.getMediaEngine().destroyCustomAudioTrack(audio);
+        }
+      } finally {
+        await _engine.enableLocalVideo(false);
+        await _engine.getMediaEngine().setExternalVideoSource(
+          enabled: false,
+          useTexture: false,
+        );
+        _usesExternalVideo = false;
+      }
+    }
+  }
+
+  /// Pushes custom pixels through the native media engine, retaining native scaling and rendering.
+  ///
+  /// See [RtcManaging.pushExternalVideoFrame] for the usage contract.
+  @override
+  Future<void> pushExternalVideoFrame(
+    RealtimeExternalVideoFrame frame, {
+    required Duration timestamp,
+  }) {
+    final bgra = frame.pixelFormat == RealtimeExternalVideoPixelFormat.bgra;
+    final stride = frame.rowBytes ~/ (bgra ? 4 : 1);
+
+    return _engine.getMediaEngine().pushVideoFrame(
+      frame: ExternalVideoFrame(
+        type: VideoBufferType.videoBufferRawData,
+        format: bgra ? VideoPixelFormat.videoPixelBgra : VideoPixelFormat.videoPixelNv12,
+        buffer: frame.data,
+        stride: stride,
+        height: frame.height,
+        cropRight: stride - frame.width,
+        rotation: 0,
+        timestamp: timestamp.inMilliseconds,
+        colorSpace: ColorSpace(range: bgra ? RangeID.rangeidFull : RangeID.rangeidLimited),
+      ),
+    );
+  }
+
+  /// Pushes opted-in audio without local playback or buffering while disconnected.
+  ///
+  /// See [RtcManaging.pushExternalAudioFrame] for the usage contract.
+  @override
+  Future<void> pushExternalAudioFrame(
+    Uint8List data, {
+    required Duration timestamp,
+  }) async {
+    final trackID = _externalAudioTrackID;
+    if (!_isPublishingLocalMedia || trackID == null) {
+      return;
+    }
+    await _engine.getMediaEngine().pushAudioFrame(
+      frame: AudioFrame(
+        type: AudioFrameType.frameTypePcm16,
+        samplesPerChannel: 480,
+        bytesPerSample: BytesPerSample.twoBytesPerSample,
+        channels: 1,
+        samplesPerSec: 48000,
+        buffer: data,
+        renderTimeMs: timestamp.inMilliseconds,
+      ),
+      trackId: trackID,
+    );
+  }
+
   /// Switches the native camera and reapplies the encoding mirror setting.
   ///
   /// Completes after camera switching and mirror configuration both succeed.
@@ -474,6 +599,7 @@ final class RtcManager implements RtcManaging {
   /// Leaves RTC and cancels pending signaling while preserving an active local camera preview.
   @override
   Future<void> leaveRoom() {
+    _isPublishingLocalMedia = false;
     if (_leavingRoom case final active?) {
       return active;
     }
@@ -527,13 +653,17 @@ final class RtcManager implements RtcManaging {
     await _checked(
       () => room.engine.updateChannelMediaOptionsEx(
         options: ChannelMediaOptions(
-          publishCameraTrack: publish,
-          publishCustomVideoTrack: false,
+          publishCameraTrack: publish && !_usesExternalVideo,
+          publishCustomVideoTrack: publish && _usesExternalVideo,
+          customVideoTrackId: 0,
           publishMicrophoneTrack: false,
+          publishCustomAudioTrack: publish && _externalAudioTrackID != null,
+          publishCustomAudioTrackId: _externalAudioTrackID,
         ),
         connection: room.connection,
       ),
     );
+    _isPublishingLocalMedia = publish;
     if (publish && _encoding != null) {
       await configureVideoEncoding(_encoding!);
     }

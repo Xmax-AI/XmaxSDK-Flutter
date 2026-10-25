@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:xmax_sdk/src/media/external/RealtimeExternalVideoSource.dart';
 import 'package:xmax_sdk/src/stream/quality/QualityConfiguration.dart';
 import 'dart:ui';
 
@@ -35,6 +36,78 @@ import 'package:xmax_sdk/src/service/realtime/RealtimeVideoTrack.dart';
 import 'package:xmax_sdk/src/stream/StreamControlling.dart';
 
 void main() {
+  test(
+    'external binding becomes ready without camera frames or view mounting',
+    () async {
+      final dependencies = _Dependencies();
+      final manager = dependencies.manager;
+      final states = <RealtimeConnectionState>[];
+      await manager.setStateListener(
+        (state) => states.add(state.connectionState),
+      );
+      final local = await manager.createExternalVideoStream(
+        source: _ExternalSource(),
+      );
+      expect(states, [
+        RealtimeConnectionState.idle,
+        RealtimeConnectionState.preparing,
+        RealtimeConnectionState.ready,
+      ]);
+      expect(local.videoTrack!.position, isNull);
+      expect(await manager.currentCameraVideoFormat, isNull);
+      expect(await manager.currentCameraPreset, isNull);
+      expect(await manager.remoteAudioVolume, 0);
+      await expectLater(
+        manager.createLocalCameraStream(),
+        throwsA(isA<XmaxError>()),
+      );
+      await manager.stopLocalCameraStream();
+      expect(
+        (await manager.currentState).connectionState,
+        RealtimeConnectionState.ready,
+      );
+      expect(dependencies.media.currentTrack, same(local.videoTrack));
+      await manager.stopExternalVideoStream();
+      expect(
+        (await manager.currentState).connectionState,
+        RealtimeConnectionState.idle,
+      );
+      await manager.close();
+    },
+  );
+
+  test(
+    'disconnect retains external input and camera operations do not stop its generation',
+    () async {
+      final dependencies = _Dependencies();
+      final manager = dependencies.manager;
+      final local = await manager.createExternalVideoStream(
+        source: _ExternalSource(),
+      );
+      await manager.startGeneration(
+        localStream: local,
+        context: RealtimeContext(prompt: 'external'),
+      );
+      await expectLater(
+        manager.stopExternalVideoStream(),
+        throwsA(isA<XmaxError>()),
+      );
+      await expectLater(manager.switchCamera(), throwsA(isA<XmaxError>()));
+      expect(
+        (await manager.currentState).connectionState,
+        RealtimeConnectionState.generating,
+      );
+      await manager.disconnect();
+      expect(
+        (await manager.currentState).connectionState,
+        RealtimeConnectionState.ready,
+      );
+      expect(dependencies.media.currentTrack, same(local.videoTrack));
+      await manager.close();
+      expect(dependencies.media.currentTrack, isNull);
+    },
+  );
+
   for (final source in [
     RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
     _Dependencies.format,
@@ -1263,6 +1336,34 @@ final class _Dependencies {
 
 final class _FakeMedia implements MediaControlling {
   @override
+  Future<RealtimeMediaStream> createExternalVideoStream({
+    required RealtimeExternalVideoSource source,
+    Future<void>? cancellation,
+  }) async {
+    createCount++;
+    await createGate?.future;
+    if (createError case final error?) throw error;
+    externalStream = createRealtimeMediaStream(
+      id: 'external',
+      videoTrack: createRealtimeVideoTrack(
+        id: 'external0',
+        videoFormat: source.videoFormat,
+      ),
+    );
+    _active = true;
+    return externalStream!;
+  }
+
+  @override
+  Future<void> stopExternalVideoStream() async {
+    if (externalStream == null) return;
+    externalStream = null;
+    _active = false;
+  }
+
+  RealtimeMediaStream? externalStream;
+
+  @override
   Future<void> updateCameraFormat(RealtimeVideoFormat videoFormat) async {
     updateRealtimeVideoTrack(track: track, videoFormat: videoFormat);
   }
@@ -1287,10 +1388,10 @@ final class _FakeMedia implements MediaControlling {
   int switchCount = 0;
 
   @override
-  RealtimeVideoFormat? get currentVideoFormat =>
-      _active ? track.videoFormat : null;
+  RealtimeVideoFormat? get currentVideoFormat => currentTrack?.videoFormat;
   @override
-  RealtimeVideoTrack? get currentTrack => _active ? track : null;
+  RealtimeVideoTrack? get currentTrack =>
+      _active ? externalStream?.videoTrack ?? track : null;
   @override
   bool get hasAudio => false;
 
@@ -1316,7 +1417,7 @@ final class _FakeMedia implements MediaControlling {
 
   @override
   bool owns(RealtimeMediaStream stream) =>
-      _active && identical(this.stream, stream);
+      _active && identical(externalStream ?? this.stream, stream);
   @override
   Future<void> setLocalAudioVolume(double volume) async {}
   @override
@@ -1339,12 +1440,14 @@ final class _FakeMedia implements MediaControlling {
   void stopInteraction() {}
   @override
   Future<void> stopLocalCameraStream() async {
+    if (externalStream != null) return;
     stopCount += 1;
     _active = false;
   }
 
   @override
   Future<void> stopLocalStream() async {
+    externalStream = null;
     stopCount += 1;
     _active = false;
   }
@@ -1356,6 +1459,16 @@ final class _FakeMedia implements MediaControlling {
     switchCount += 1;
     return stream;
   }
+}
+
+class _ExternalSource extends RealtimeExternalVideoSource {
+  @override
+  RealtimeVideoFormat get videoFormat =>
+      const RealtimeVideoFormat(width: 800, height: 800, fps: 30);
+  @override
+  Future<void> start({required RealtimeExternalFrameSink sink}) async {}
+  @override
+  Future<void> stop() async {}
 }
 
 final class _FakeStream implements StreamControlling {

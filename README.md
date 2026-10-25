@@ -330,7 +330,8 @@ Declare the required permissions in `android/app/src/main/AndroidManifest.xml`:
 <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 ```
 
-The camera-only SDK does not capture microphone audio. The example's
+The SDK does not capture microphone audio. External sources can submit their
+own PCM audio without microphone permission. The example's
 [`AndroidManifest.xml`](example/android/app/src/main/AndroidManifest.xml)
 removes unused capabilities during manifest merging.
 
@@ -526,10 +527,10 @@ Camera generation audio is muted by default. To hear it, call
 `await _realtime.setRemoteAudioVolume(0.8)` after creating the local stream;
 the setting is applied when the generated stream is selected. Read it with
 `await _realtime.remoteAudioVolume` (rounded to hundredths). Stopping generation
-or disconnecting preserves the setting; creating a new camera stream resets it
+or disconnecting preserves the setting; creating a new camera or external stream resets it
 to zero. Before the first stream is created, remote volume defaults to `1.0`.
 
-The camera-only SDK has no local file-video audio preview. Matching iOS,
+Neither camera input nor external PCM input has local audio playback.
 `await _realtime.localAudioVolume` returns `0.45`, and valid calls to
 `setLocalAudioVolume()` succeed without changing it. Both volume setters reject
 non-finite values and values outside `0...1`.
@@ -551,6 +552,65 @@ Switch between the front and rear cameras without rebuilding the manager:
 ```dart
 final switchedStream = await realtime.switchCamera();
 ```
+
+<br>
+
+### External capture
+
+Extend `RealtimeExternalVideoSource` to provide video captured, decoded, or processed
+by your app. Keep `videoFormat` unchanged until delivery stops. In `start(sink:)`,
+install your frame callback and return once the source is ready to deliver frames;
+do not wait for generation or the first frame. In `stop()`, stop delivery and release
+the sink reference. Your app retains ownership of its capture devices and players.
+
+```dart
+final localStream = await realtime.createExternalVideoStream(source: source);
+
+// Bind localStream.videoTrack to XmaxRealtimeVideoView.localTrack as usual.
+final remoteStream = await realtime.startGeneration(
+  localStream: localStream,
+  context: RealtimeContext(prompt: 'Transform the supplied video'),
+);
+
+await realtime.disconnect(); // External delivery and local preview continue.
+await realtime.stopExternalVideoStream(); // Detach after disconnecting.
+```
+
+Submit `RealtimeExternalVideoFrame` buffers through
+`sink.pushVideo(frame, timestamp: timestamp)`. Accepted layouts are upright BGRA
+and video-range NV12, with orientation and mirroring already applied. Timestamps
+are nonnegative, strictly increasing `Duration` values from one monotonic clock;
+keep them increasing across seeks and playback loops. The sink copies buffers
+before returning and drops concurrent video input rather than building a queue.
+Await submission futures to apply backpressure.
+
+External input dimensions are not restricted to camera presets. The SDK resolves
+an encoding format within the model's pixel-area limits, aligned to four pixels;
+`sink.videoFormat` exposes it. Continue submitting the source dimensions: native
+transport scales frames for encoding. Binding becomes `ready` without waiting for
+a frame or a mounted view. No camera or microphone permission is requested.
+Remote audio starts muted after binding; call `setRemoteAudioVolume` to enable it.
+
+To supply audio, override `hasAudio` with `true` before binding and call
+`sink.pushAudio(frame, timestamp: timestamp)` with interleaved, little-endian PCM16
+or Float32 in a `RealtimeExternalAudioFrame`. Audio and video share the same
+monotonic timeline. The SDK converts audio to 48 kHz mono PCM16 in 10 ms packets,
+without local playback or an upload backlog while disconnected. Input audio
+format must remain fixed; overlapping buffers are ignored and gaps start a new
+segment without inserting silence. Await each audio submission before the next.
+
+Report unrecoverable capture or decoding failures using `sink.reportError(error)`;
+the SDK closes the realtime connection and detaches the local source. Detached
+sinks ignore late frames. `close()` also detaches the source, but does not dispose
+your app's devices or players.
+
+XLab's **External Capture** entry selects a video from Photos and implements
+`RealtimeFileVideoSource` in the example app. AVFoundation and MediaCodec decode
+video and optional PCM, loop playback on a monotonic timeline, and submit through
+the same public source/sink interfaces available to integrating apps. File decoding
+is not part of the SDK's external-source API. The example uses
+`client.createMediaService(model: model)` to select decoder dimensions before
+binding, keeping raw frame transfers within the model's media limits.
 
 <br>
 
@@ -729,7 +789,8 @@ logging is registered automatically with the SDK; no host-app setup is required.
 
 A complete example application for both iOS and Android is available in
 [`example`](https://github.com/Xmax-AI/XmaxSDK-Flutter/tree/main/example). It
-demonstrates real-time generation using live camera feeds.
+demonstrates real-time generation using live camera feeds and app-owned external
+video sources, including decoded video and optional PCM audio.
 
 <p align="center"><img src="./materials/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./materials/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./materials/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./materials/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./materials/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 

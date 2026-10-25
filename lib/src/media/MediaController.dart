@@ -21,6 +21,9 @@ import 'camera/CameraController.dart';
 import 'camera/CameraControlling.dart';
 import 'interaction/InteractionController.dart';
 import 'interaction/InteractionFrame.dart';
+import 'external/ExternalVideoController.dart';
+import 'external/ExternalVideoControlling.dart';
+import 'external/RealtimeExternalVideoSource.dart';
 import 'MediaControlling.dart';
 
 /// Coordinates local media ownership and the RTC engine lifecycle.
@@ -33,13 +36,25 @@ final class MediaController implements MediaControlling {
   /// - [cameraController]: The camera controller; defaults to one using the same RTC manager.
   /// - [interactionListener]: The handler receiving task identifiers and normalized interaction
   ///   points.
+  /// - [externalController]: The external source lifecycle controller.
+  /// - [externalErrorListener]: The receiver for unrecoverable external source failures.
   MediaController({
     required RtcManaging rtcManager,
     CameraControlling? cameraController,
     required InteractionListener interactionListener,
+    ExternalVideoControlling? externalController,
+    void Function(
+      XmaxError error,
+    )? externalErrorListener,
   }) : _rtcManager = rtcManager,
        _cameraController =
            cameraController ?? CameraController(rtcManager: rtcManager),
+       _externalController = externalController ?? ExternalVideoController(
+         rtcManager: rtcManager,
+         errorListener: externalErrorListener ?? (
+           _,
+         ) {},
+       ),
        _interactionController = InteractionController(
          listener: interactionListener,
        );
@@ -49,6 +64,12 @@ final class MediaController implements MediaControlling {
 
   /// The controller for camera track creation, preview readiness, and camera switching.
   final CameraControlling _cameraController;
+
+  /// The controller binding caller-owned video and optional audio.
+  final ExternalVideoControlling _externalController;
+
+  /// Whether the active or preparing local source is external rather than a camera.
+  bool _isExternalSource = false;
 
   /// The controller that samples and maps interactions for the generation task.
   final InteractionController _interactionController;
@@ -67,16 +88,21 @@ final class MediaController implements MediaControlling {
 
   /// The active local video track; null before creation or after stopping.
   @override
-  RealtimeVideoTrack? get currentTrack =>
-      _hasActiveSource ? _cameraController.currentTrack : null;
+  RealtimeVideoTrack? get currentTrack {
+    if (!_hasActiveSource) {
+      return null;
+    }
+
+    return _isExternalSource ? _externalController.currentTrack : _cameraController.currentTrack;
+  }
 
   /// The current local track's video format; null before creation.
   @override
   RealtimeVideoFormat? get currentVideoFormat => currentTrack?.videoFormat;
 
-  /// Whether local media has playable audio; false for camera sources.
+  /// Whether local media supplies audio for realtime upload; false for camera sources.
   @override
-  bool get hasAudio => false;
+  bool get hasAudio => _hasActiveSource && _isExternalSource && _externalController.hasAudio;
 
   // Without a local file player, report the fixed preview volume.
 
@@ -103,6 +129,49 @@ final class MediaController implements MediaControlling {
     required RealtimeVideoFormat videoFormat,
     required CameraPosition position,
     Future<void>? cancellation,
+  }) => _createSource(
+    isExternal: false,
+    create: (
+      _,
+    ) => _cameraController.createLocalCameraStream(
+      videoFormat: videoFormat,
+      position: position,
+    ),
+    cancellation: cancellation,
+  );
+
+  /// Binds external capture with the same exclusive engine ownership as camera capture.
+  ///
+  /// See [MediaControlling.createExternalVideoStream] for the usage contract.
+  @override
+  Future<RealtimeMediaStream> createExternalVideoStream({
+    required RealtimeExternalVideoSource source,
+    Future<void>? cancellation,
+  }) => _createSource(
+    isExternal: true,
+    create: (
+      signal,
+    ) => _externalController.createExternalVideoStream(
+      source: source,
+      cancellation: signal,
+    ),
+    cancellation: cancellation,
+  );
+
+  /// Acquires the engine for one source, cancelling queued ownership and cleaning failed startup.
+  ///
+  /// Parameters:
+  /// - [isExternal]: Whether the new source supplies its own video frames.
+  /// - [create]: The source-specific binding operation.
+  /// - [cancellation]: The cancellation signal for engine acquisition and binding.
+  ///
+  /// Returns the admitted local stream.
+  Future<RealtimeMediaStream> _createSource({
+    required bool isExternal,
+    required Future<RealtimeMediaStream> Function(
+      Future<void>? cancellation,
+    ) create,
+    Future<void>? cancellation,
   }) async {
     if (_hasActiveSource) {
       throw const XmaxError(
@@ -120,6 +189,7 @@ final class MediaController implements MediaControlling {
     final completion = _operationCompletion = Completer<void>();
 
     _hasActiveSource = true;
+    _isExternalSource = isExternal;
     var isCancelled = false;
     final cancellationSignal = cancellation?.then<void>(
       (
@@ -140,14 +210,11 @@ final class MediaController implements MediaControlling {
       if (isCancelled) {
         throw const XmaxError(
           code: XmaxErrorCode.cancelled,
-          message: 'Local camera creation was cancelled',
+          message: 'Local media creation was cancelled',
         );
       }
 
-      return await _cameraController.createLocalCameraStream(
-        videoFormat: videoFormat,
-        position: position,
-      );
+      return await create(cancellationSignal);
     } catch (error) {
       _hasActiveSource = false;
       await _releaseEngine();
@@ -162,7 +229,7 @@ final class MediaController implements MediaControlling {
   /// session.
   @override
   Future<void> stopLocalCameraStream() async {
-    if (!_hasActiveSource) {
+    if (!_hasActiveSource || _isExternalSource) {
       return;
     }
 
@@ -171,7 +238,15 @@ final class MediaController implements MediaControlling {
 
   /// Stops the local media source and releases its ownership of the RTC engine.
   @override
-  Future<void> stopLocalStream() => stopLocalCameraStream();
+  Future<void> stopLocalStream() => _hasActiveSource
+      ? _stopCurrentSource()
+      : Future<void>.value();
+
+  /// Unbinds only an external source, leaving unrelated camera capture unchanged.
+  @override
+  Future<void> stopExternalVideoStream() => _hasActiveSource && _isExternalSource
+      ? _stopCurrentSource()
+      : Future<void>.value();
 
   /// Share an existing stop operation rather than starting duplicate cleanup.
   Future<void> _stopCurrentSource() {
@@ -196,10 +271,14 @@ final class MediaController implements MediaControlling {
 
     try {
       try {
-        await _cameraController.stopLocalCameraStream();
+        if (_isExternalSource) {
+          await _externalController.stopExternalVideoStream();
+        } else {
+          await _cameraController.stopLocalCameraStream();
+        }
       } catch (error) {
         _logCleanupFailure(
-          '停止相机采集失败 (Failed to Stop Camera Capture)',
+          '停止本地媒体失败 (Failed to Stop Local Media)',
           error,
         );
       }
@@ -207,6 +286,7 @@ final class MediaController implements MediaControlling {
       await _releaseEngine();
     } finally {
       _hasActiveSource = false;
+      _isExternalSource = false;
       _operationInProgress = false;
     }
   }
@@ -247,7 +327,7 @@ final class MediaController implements MediaControlling {
   /// Returns the local camera stream after switching cameras.
   @override
   Future<RealtimeMediaStream> switchCamera() async {
-    if (!_hasActiveSource) {
+    if (!_hasActiveSource || _isExternalSource) {
       throw const XmaxError(
         code: XmaxErrorCode.rtcError,
         message: 'Local camera preview is not started',
@@ -275,6 +355,12 @@ final class MediaController implements MediaControlling {
   Future<void> updateCameraFormat(
     RealtimeVideoFormat videoFormat,
   ) async {
+    if (_isExternalSource) {
+      throw const XmaxError(
+        code: XmaxErrorCode.invalidConfiguration,
+        message: 'Camera format changes require a camera source',
+      );
+    }
     _ensureNoOperation();
     _operationInProgress = true;
 

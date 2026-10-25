@@ -13,6 +13,7 @@ import '../service/realtime/RealtimeMediaStream.dart';
 import '../service/realtime/RealtimeVideoFormat.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
 import 'interaction/InteractionControlling.dart';
+import 'external/RealtimeExternalVideoSource.dart';
 
 /// The media layer interface used by Core.
 abstract interface class MediaControlling implements InteractionControlling {
@@ -23,10 +24,10 @@ abstract interface class MediaControlling implements InteractionControlling {
   /// The current local track's video format; null before creation.
   RealtimeVideoFormat? get currentVideoFormat;
 
-  /// Whether local media has playable audio; false for camera sources.
+  /// Whether local media supplies audio for realtime upload; false for camera sources.
   bool get hasAudio;
 
-  /// The local preview volume; fixed at 0.45 because camera sources have no audio player.
+  /// The local preview volume; fixed at 0.45 because local sources have no audio player.
   Future<double> get localAudioVolume;
 
   /// Sets the internal local camera first-frame callback.
@@ -54,6 +55,21 @@ abstract interface class MediaControlling implements InteractionControlling {
 
   /// Stops the local camera stream and releases capture resources.
   Future<void> stopLocalCameraStream();
+
+  /// Binds an app-owned external source without waiting for its first frame.
+  ///
+  /// Parameters:
+  /// - [source]: The caller-owned producer for preview and realtime input.
+  /// - [cancellation]: Completes to cancel engine acquisition or source startup.
+  ///
+  /// Returns the external local media stream.
+  Future<RealtimeMediaStream> createExternalVideoStream({
+    required RealtimeExternalVideoSource source,
+    Future<void>? cancellation,
+  });
+
+  /// Unbinds external media without releasing caller-owned devices or players.
+  Future<void> stopExternalVideoStream();
 
   /// Stops the local media source and releases its ownership of the RTC engine.
   Future<void> stopLocalStream();

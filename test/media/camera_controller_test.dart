@@ -336,6 +336,11 @@ final class _ResizingMediaService implements MediaServicing {
 }
 
 final class _FakeRtc implements RtcManaging {
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw StateError(
+    'Unexpected external media call: ${invocation.memberName}',
+  );
+
   int captureStarts = 0;
   int captureStops = 0;
   Object? formatError;

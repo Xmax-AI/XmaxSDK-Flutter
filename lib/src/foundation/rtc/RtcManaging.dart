@@ -8,7 +8,10 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import 'dart:typed_data';
+
 import '../media/camera/CameraPosition.dart';
+import '../media/video/RealtimeExternalVideoFrame.dart';
 import 'RoomJoinConfiguration.dart';
 import 'RtcEventListener.dart';
 import 'RtcQualityListener.dart';
@@ -53,6 +56,36 @@ abstract interface class RtcManaging {
 
   /// Stops local preview and camera capture.
   Future<void> stopVideoCapture();
+
+  /// Selects external video and optional custom audio without starting camera or microphone capture.
+  ///
+  /// [hasAudio] enables a custom audio track without local playback.
+  Future<void> startExternalVideoSource({
+    required bool hasAudio,
+  });
+
+  /// Stops external preview and releases its custom audio track.
+  Future<void> stopExternalVideoSource();
+
+  /// Supplies an owned external frame to preview and the active custom video publication.
+  ///
+  /// Parameters:
+  /// - [frame]: Upright BGRA or video-range NV12 pixels, including any row padding.
+  /// - [timestamp]: The monotonic presentation time.
+  Future<void> pushExternalVideoFrame(
+    RealtimeExternalVideoFrame frame, {
+    required Duration timestamp,
+  });
+
+  /// Uploads a 10 ms audio packet only while external media is published.
+  ///
+  /// Parameters:
+  /// - [data]: 48 kHz mono PCM16 samples in little-endian byte order.
+  /// - [timestamp]: The first sample's monotonic presentation time.
+  Future<void> pushExternalAudioFrame(
+    Uint8List data, {
+    required Duration timestamp,
+  });
 
   /// Updates camera capture settings without stopping capture or remounting preview.
   ///
