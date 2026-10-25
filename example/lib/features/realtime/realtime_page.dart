@@ -907,7 +907,9 @@ class _RealtimePageState extends State<RealtimePage>
                         localTrack: _localStream?.videoTrack,
                         remoteTrack: _remoteStream?.videoTrack,
                         onRemoteVideoReady: _remoteVideoDidBecomeReady,
-                        videoContentMode: VideoContentMode.fill,
+                        videoContentMode: _externalVideoPath != null
+                            ? VideoContentMode.fit
+                            : VideoContentMode.fill,
                         trajectoryRenderer: _customRenderer,
                       ),
                     ),

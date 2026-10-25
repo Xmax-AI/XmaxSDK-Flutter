@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Display XLab external video with aspect-fit scaling to preserve the complete frame, while retaining the camera's aspect-fill layout.
 - Fix XLab external-file preview starvation after slow decoding, retain a shared audio/video clock, and optimize Android NV12 conversion while preserving crop, rotation, and scaling.
 - Add optional built-in microphone capture with `createLocalCameraStream(useMicrophone: true)`, connection-scoped audio publication, permission checks, and automatic cleanup while preserving camera preview. Enable microphone input in XLab's camera example.
 - Rename the single-track view to `XmaxRealtimeVideoView` and the recommended local/remote overlay to `XmaxRealtimeDualVideoView`. Remove `XmaxVideoView` and migrate dual-track usages to the new name.
