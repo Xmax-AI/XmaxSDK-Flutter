@@ -11,9 +11,17 @@
 import '../foundation/rtc/RemoteStream.dart';
 import '../media/interaction/InteractionFrame.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
+import '../service/realtime/RealtimeMediaFrame.dart';
 
 /// The rendering interface used by Core.
 abstract interface class RenderControlling {
+
+  /// Sets serial owned media output without changing playback or subscriptions.
+  ///
+  /// [listener] receives current result frames, or null to discard queued output.
+  Future<void> setRemoteMediaFrameListener(
+    RealtimeMediaFrameListener? listener,
+  );
 
   /// Updates the result-stream binding for the current track.
   ///

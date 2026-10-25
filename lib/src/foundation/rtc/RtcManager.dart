@@ -10,6 +10,8 @@
 
 import 'dart:async';
 import 'dart:typed_data';
+import '../../service/realtime/RealtimeMediaFrame.dart';
+import 'RemoteStream.dart';
 
 import '../errors/XmaxError.dart';
 import '../logging/XmaxLogger.dart';
@@ -28,6 +30,26 @@ import 'VideoEncodingConfiguration.dart';
 
 /// Coordinates a shared engine lease, camera preview, and one room lifecycle.
 final class RtcManager implements RtcManaging {
+
+  /// Configures frame output for the current engine lease only.
+  ///
+  /// See [RtcManaging.setRemoteMediaFrameListener] for the delivery contract.
+  @override
+  Future<void> setRemoteMediaFrameListener({
+    required RemoteStream? stream,
+    required void Function(
+      RealtimeMediaFrameContent content,
+    )? listener,
+  }) async {
+    final lease = _lease;
+    if (lease == null && listener == null) {
+      return;
+    }
+    await _platform.setRemoteMediaFrameListener(
+      stream: stream,
+      listener: listener,
+    );
+  }
 
   /// Creates an RTC capture and room manager.
   ///

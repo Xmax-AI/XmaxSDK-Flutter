@@ -711,6 +711,50 @@ call. Runtime failures are reported through `state.reason?.error`.
 
 <br>
 
+### Remote audio and video frames
+
+Register one listener to receive the result user's decoded video and PCM audio:
+
+```dart
+await realtime.setRemoteMediaFrameListener((frame) async {
+  // Your recorder or processor should return a Future for asynchronous work.
+  await recorder.append(frame);
+});
+
+// Stop observation and discard queued delivery without changing playback.
+await realtime.setRemoteMediaFrameListener(null);
+```
+
+Each `RealtimeMediaFrame` carries a `streamID`, an `isDiscontinuous` flag, and
+`content`: either a `RealtimeVideoFrame` or a `RealtimeAudioFrame`. Video is
+owned, tightly packed planar I420 (Y, then U, then V), with dimensions and
+clockwise display rotation. Audio is owned, interleaved little-endian PCM16,
+with sample rate, channel count, and samples per channel. Treat the bytes as
+read-only.
+
+Both tracks use `presentationTimeStamp` on the same receiver rendering timeline,
+not the source file's timecode. Audio time advances by sample count, even when
+native callbacks arrive in batches. Schedule or mux both tracks using one origin;
+callbacks are delivered in arrival order, not sorted across tracks by timestamp.
+A changed stream identity, discontinuity, format change, or clock jump may require
+a new recording segment.
+
+Callbacks run serially on the manager's Dart isolate and do not require a mounted
+video widget. Keep synchronous work short; move encoding and blocking I/O to native
+code or another isolate. The SDK delivery queue retains at most 256 packets and
+32 MiB, including a running callback. A slow asynchronous consumer causes new
+packets to be dropped; the next admitted event of that track reports a
+discontinuity without compressing its timeline. These limits apply to SDK delivery,
+not memory retained by your app or the transport plugin. Listener removal discards
+queued events; an already-running callback may finish.
+
+Observation is disabled by default and does not change audio subscriptions or
+playback volume. XLab's external-capture page demonstrates recording these output
+frames as H.264/AAC MP4, with native background encoding and gallery saving.
+Recording stops when generation ends; changing video dimensions or stream identity
+ends the current recording. Gallery saving in the Android example requires
+Android 10 or later; this does not restrict the SDK's frame callback API.
+
 ### Touch interaction
 
 During an active generation task, `XmaxRealtimeDualVideo` captures multi-touch

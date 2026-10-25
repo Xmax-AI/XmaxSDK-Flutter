@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:xmax_sdk/src/service/realtime/RealtimeMediaFrame.dart';
 import 'package:xmax_sdk/src/media/external/RealtimeExternalVideoSource.dart';
 import 'package:xmax_sdk/src/stream/quality/QualityConfiguration.dart';
 import 'dart:ui';
@@ -1879,6 +1880,8 @@ final class _FakeStream implements StreamControlling {
 }
 
 final class _FakeRender implements RenderControlling {
+  @override
+  Future<void> setRemoteMediaFrameListener(RealtimeMediaFrameListener? listener) async {}
   Completer<void>? removalGate;
   final removalStarted = Completer<void>();
   @override

@@ -25,9 +25,70 @@ import 'RtcManaging.dart';
 import 'RtcPlatform.dart';
 import 'RtcRoom.dart';
 import 'VideoEncodingConfiguration.dart';
+import 'RemoteStream.dart';
+import 'AgoraRemoteMediaObserver.dart';
+import '../../service/realtime/RealtimeMediaFrame.dart';
 
 /// An Agora engine adapter for local media, encoding, rendering, and room creation.
 class AgoraRtcPlatform implements RtcPlatform {
+
+  /// The optional raw media observer; absent during ordinary texture-only rendering.
+  AgoraRemoteMediaObserver? _mediaObserver;
+
+  /// Rejects native callbacks and late UID lookups after observer replacement.
+  int _mediaObserverVersion = 0;
+
+  /// Enables copied I420 and PCM only for the requested result binding.
+  ///
+  /// See [RtcPlatform.setRemoteMediaFrameListener] for the delivery contract.
+  @override
+  Future<void> setRemoteMediaFrameListener({
+    required RemoteStream? stream,
+    required void Function(
+      RealtimeMediaFrameContent content,
+    )? listener,
+  }) async {
+    final version = ++_mediaObserverVersion;
+    final previous = _mediaObserver;
+    _mediaObserver = null;
+    if (previous != null) {
+      previous.active = false;
+      engine.getMediaEngine().unregisterVideoFrameObserver(previous.video);
+      engine.getMediaEngine().unregisterAudioFrameObserver(previous.audio);
+    }
+    if (_isClosed || stream == null || listener == null) {
+      return;
+    }
+
+    final room = _room;
+    if (room == null || !room.isJoined || room.roomID != stream.roomID) {
+      throw const XmaxError(
+        code: XmaxErrorCode.rtcError,
+        message: 'Remote media observation requires an active result room',
+      );
+    }
+    final uid = await room.resolveUID(stream.userID);
+    if (_isClosed || version != _mediaObserverVersion || room.isClosed) {
+      return;
+    }
+    await engine.setPlaybackAudioFrameBeforeMixingParameters(
+      sampleRate: 48000,
+      channel: 1,
+      samplesPerCall: 480,
+    );
+    if (_isClosed || version != _mediaObserverVersion || room.isClosed) {
+      return;
+    }
+
+    final observer = AgoraRemoteMediaObserver(
+      channelID: stream.roomID,
+      uid: uid,
+      listener: listener,
+    );
+    _mediaObserver = observer;
+    engine.getMediaEngine().registerVideoFrameObserver(observer.video);
+    engine.getMediaEngine().registerAudioFrameObserver(observer.audio);
+  }
 
   /// Wraps an initialized engine with local capture disabled.
   AgoraRtcPlatform(
@@ -549,6 +610,9 @@ class AgoraRtcPlatform implements RtcPlatform {
     }
 
     _isClosed = true;
+    _mediaObserverVersion++;
+    _mediaObserver?.active = false;
+    _mediaObserver = null;
     _eventListener = null;
     _cameraPreviewReadyListener = null;
     final future = _destroy();

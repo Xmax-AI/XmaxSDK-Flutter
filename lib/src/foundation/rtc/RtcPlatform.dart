@@ -9,6 +9,8 @@
 //
 
 import 'dart:typed_data';
+import '../../service/realtime/RealtimeMediaFrame.dart';
+import 'RemoteStream.dart';
 
 import '../media/camera/CameraPosition.dart';
 import '../media/video/RealtimeExternalVideoFrame.dart';
@@ -19,6 +21,18 @@ import 'VideoEncodingConfiguration.dart';
 
 /// An engine interface separate from connection waits, timeouts, and leases.
 abstract interface class RtcPlatform {
+
+  /// Configures owned remote frame output without changing media subscriptions or volume.
+  ///
+  /// Parameters:
+  /// - [stream]: The selected result binding, or null to detach.
+  /// - [listener]: The frame receiver, or null to disable observation.
+  Future<void> setRemoteMediaFrameListener({
+    required RemoteStream? stream,
+    required void Function(
+      RealtimeMediaFrameContent content,
+    )? listener,
+  });
 
   /// Applies video dimensions, frame rate, bitrate, and encoding preference to RTC.
   ///

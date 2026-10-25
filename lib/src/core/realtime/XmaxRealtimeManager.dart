@@ -14,6 +14,7 @@ import 'dart:ui';
 import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/media/camera/CameraPosition.dart';
 import '../../foundation/rtc/VideoStatistics.dart';
+import '../../render/RenderControlling.dart';
 import '../../media/MediaControlling.dart';
 import '../../foundation/logging/XmaxLogger.dart';
 import '../../service/media/MediaService.dart';
@@ -21,6 +22,7 @@ import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
 import '../../service/realtime/RealtimeCameraPreset.dart';
 import '../../service/realtime/RealtimeContext.dart';
+import '../../service/realtime/RealtimeMediaFrame.dart';
 import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
@@ -102,6 +104,7 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
        _errorManager = components.errorManager,
        _lifecycleManager = components.lifecycleManager,
        _mediaService = components.mediaService,
+       _renderController = components.renderController,
        _timing = components.timing;
 
   /// The realtime model configuration used by this manager.
@@ -128,6 +131,9 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
 
   /// The shared rules resolving generation canvases independently of capture dimensions.
   final MediaServicing _mediaService;
+
+  /// The controller for remote presentation, readiness, and owned media output.
+  final RenderControlling _renderController;
 
   /// The current realtime lifecycle state.
   RealtimeState get _state => _lifecycleManager.currentState;
@@ -306,6 +312,14 @@ final class XmaxRealtimeManager implements XmaxRealtimeManaging {
   Future<void> setDownlinkVideoStatisticsListener(
     DownlinkVideoStatisticsListener? listener,
   ) async => _streamController.setDownlinkVideoStatisticsListener(listener);
+
+  /// Sets bounded remote audio and video output independently of playback.
+  ///
+  /// See [XmaxRealtimeManaging.setRemoteMediaFrameListener] for the delivery contract.
+  @override
+  Future<void> setRemoteMediaFrameListener(
+    RealtimeMediaFrameListener? listener,
+  ) => _renderController.setRemoteMediaFrameListener(listener);
 
   /// Sets the network quality listener independently of automatic adaptation.
   ///

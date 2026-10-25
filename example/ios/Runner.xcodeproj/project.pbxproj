@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		B221B55B61D440D09134E4B0 /* RealtimeVideoRecorder.swift in Sources */ = {isa = PBXBuildFile; fileRef = B221B55B61D440D09134E4B1 /* RealtimeVideoRecorder.swift */; };
+		B221B55B61D440D09134E4B2 /* RealtimeRecordingPlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B221B55B61D440D09134E4B3 /* RealtimeRecordingPlugin.swift */; };
 		A181B55B61D440D09134E4B0 /* RealtimeFileVideoDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A181B55B61D440D09134E4B1 /* RealtimeFileVideoDecoder.swift */; };
 		1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */ = {isa = PBXBuildFile; fileRef = 1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */; };
 		331C808B294A63AB00263BE5 /* RunnerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 331C807B294A618700263BE5 /* RunnerTests.swift */; };
@@ -45,6 +47,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		B221B55B61D440D09134E4B1 /* RealtimeVideoRecorder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeVideoRecorder.swift; sourceTree = "<group>"; };
+		B221B55B61D440D09134E4B3 /* RealtimeRecordingPlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeRecordingPlugin.swift; sourceTree = "<group>"; };
 		A181B55B61D440D09134E4B1 /* RealtimeFileVideoDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeFileVideoDecoder.swift; sourceTree = "<group>"; };
 		1498D2321E8E86230040F4C2 /* GeneratedPluginRegistrant.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = GeneratedPluginRegistrant.h; sourceTree = "<group>"; };
 		1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = GeneratedPluginRegistrant.m; sourceTree = "<group>"; };
@@ -150,6 +154,8 @@
 				1498D2331E8E89220040F4C2 /* GeneratedPluginRegistrant.m */,
 				74858FAE1ED2DC5600515810 /* AppDelegate.swift */,
 				A181B55B61D440D09134E4B1 /* RealtimeFileVideoDecoder.swift */,
+				B221B55B61D440D09134E4B1 /* RealtimeVideoRecorder.swift */,
+				B221B55B61D440D09134E4B3 /* RealtimeRecordingPlugin.swift */,
 				7884E8672EC3CC0400C636F2 /* SceneDelegate.swift */,
 				74858FAD1ED2DC5600515810 /* Runner-Bridging-Header.h */,
 			);
@@ -380,6 +386,8 @@
 			files = (
 				74858FAF1ED2DC5600515810 /* AppDelegate.swift in Sources */,
 				A181B55B61D440D09134E4B0 /* RealtimeFileVideoDecoder.swift in Sources */,
+				B221B55B61D440D09134E4B0 /* RealtimeVideoRecorder.swift in Sources */,
+				B221B55B61D440D09134E4B2 /* RealtimeRecordingPlugin.swift in Sources */,
 				1498D2341E8E89220040F4C2 /* GeneratedPluginRegistrant.m in Sources */,
 				7884E8682EC3CC0700C636F2 /* SceneDelegate.swift in Sources */,
 			);

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../localization/xlab_localization.dart';
+import 'realtime_video_recorder.dart';
 
 class RealtimeMediaTopBar extends StatelessWidget {
   const RealtimeMediaTopBar({
@@ -11,6 +12,8 @@ class RealtimeMediaTopBar extends StatelessWidget {
     required this.onMute,
     required this.onVolume,
     required this.onStatistics,
+    this.recordingState = RealtimeRecordingState.idle,
+    this.onRecording,
   });
 
   final bool enabled;
@@ -20,6 +23,8 @@ class RealtimeMediaTopBar extends StatelessWidget {
   final VoidCallback onMute;
   final ValueChanged<BuildContext> onVolume;
   final VoidCallback onStatistics;
+  final RealtimeRecordingState recordingState;
+  final VoidCallback? onRecording;
 
   @override
   Widget build(BuildContext context) {
@@ -29,6 +34,7 @@ class RealtimeMediaTopBar extends StatelessWidget {
       String title,
       VoidCallback? callback, {
       bool selected = false,
+      Color? tint,
     }) => SizedBox(
       width: 48,
       height: 50,
@@ -49,7 +55,9 @@ class RealtimeMediaTopBar extends StatelessWidget {
                   child: Icon(
                     icon,
                     size: 17,
-                    color: selected ? const Color(0xFF007AFF) : Colors.white,
+                    color:
+                        tint ??
+                        (selected ? const Color(0xFF007AFF) : Colors.white),
                     shadows: const [
                       Shadow(
                         color: Colors.black54,
@@ -90,6 +98,29 @@ class RealtimeMediaTopBar extends StatelessWidget {
           onStatistics,
           selected: statisticsVisible,
         ),
+        if (onRecording != null)
+          action(
+            recordingState == RealtimeRecordingState.recording
+                ? Icons.stop_circle_outlined
+                : recordingState == RealtimeRecordingState.saving ||
+                      recordingState == RealtimeRecordingState.preparing
+                ? Icons.hourglass_top_rounded
+                : Icons.radio_button_checked,
+            t(
+              recordingState == RealtimeRecordingState.recording
+                  ? 'record.stop'
+                  : recordingState == RealtimeRecordingState.saving
+                  ? 'record.saving'
+                  : 'record.title',
+            ),
+            recordingState == RealtimeRecordingState.preparing ||
+                    recordingState == RealtimeRecordingState.saving
+                ? null
+                : onRecording,
+            tint: recordingState == RealtimeRecordingState.recording
+                ? const Color(0xFFFF3B30)
+                : null,
+          ),
         Builder(
           builder: (context) => action(
             Icons.tune_rounded,

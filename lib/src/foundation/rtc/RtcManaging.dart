@@ -9,6 +9,8 @@
 //
 
 import 'dart:typed_data';
+import '../../service/realtime/RealtimeMediaFrame.dart';
+import 'RemoteStream.dart';
 
 import '../media/camera/CameraPosition.dart';
 import '../media/video/RealtimeExternalVideoFrame.dart';
@@ -19,6 +21,18 @@ import 'VideoEncodingConfiguration.dart';
 
 /// An interface for RTC capture, encoding, rooms, publication, subscriptions, and volume.
 abstract interface class RtcManaging {
+
+  /// Observes decoded video and premixing PCM for one result binding without changing playback.
+  ///
+  /// Parameters:
+  /// - [stream]: The selected result stream, or null to detach.
+  /// - [listener]: The receiver for owned payloads, or null to disable native observers.
+  Future<void> setRemoteMediaFrameListener({
+    required RemoteStream? stream,
+    required void Function(
+      RealtimeMediaFrameContent content,
+    )? listener,
+  });
 
   /// Acquires and initializes the RTC engine for this lifecycle.
   ///

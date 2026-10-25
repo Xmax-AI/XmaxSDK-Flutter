@@ -9,6 +9,7 @@
 //
 
 import '../../foundation/rtc/RtcManager.dart';
+import '../../foundation/errors/XmaxError.dart';
 import '../../media/MediaController.dart';
 import '../../media/MediaControlling.dart';
 import '../../media/camera/CameraController.dart';
@@ -89,7 +90,12 @@ abstract final class XmaxRealtimeFactory {
     final errorManager = XmaxRealtimeErrorManager();
     final rtcManager = RtcManager();
     final mediaService = MediaService(model: options.model);
-    final renderController = RenderController();
+    final renderController = RenderController(
+      rtcManager: rtcManager,
+      onError: (
+        error,
+      ) => errorManager.forward(XmaxError.from(error)),
+    );
     final timing = RealtimeTiming();
     final streamController = StreamController(
       rtcManager: rtcManager,

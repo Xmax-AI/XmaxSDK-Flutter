@@ -14,6 +14,9 @@ import '../foundation/errors/XmaxError.dart';
 import '../foundation/rtc/RemoteStream.dart';
 import '../media/interaction/InteractionFrame.dart';
 import '../service/realtime/RealtimeVideoTrack.dart';
+import '../service/realtime/RealtimeMediaFrame.dart';
+import '../foundation/rtc/RtcManaging.dart';
+import 'video/RealtimeMediaFrameDispatcher.dart';
 import 'RenderControlling.dart';
 import 'trajectory/TrajectoryBinding.dart';
 import 'trajectory/TrajectoryRegistry.dart';
@@ -26,7 +29,104 @@ final class RenderController implements RenderControlling {
   /// Creates a remote video rendering controller.
   RenderController({
     this.remoteFrameReadyTimeout = const Duration(seconds: 10),
-  });
+    RtcManaging? rtcManager,
+    void Function(
+      Object error,
+    )? onError,
+  }) : _rtcManager = rtcManager,
+       _onOutputError = onError;
+
+  /// The native output adapter, independent of texture view mounting.
+  final RtcManaging? _rtcManager;
+
+  /// The failure receiver for automatic result binding changes.
+  final void Function(
+    Object error,
+  )? _onOutputError;
+
+  /// The serial bounded application delivery queue.
+  final _mediaDispatcher = RealtimeMediaFrameDispatcher();
+
+  /// The last requested callback, retained for rollback after failed native configuration.
+  RealtimeMediaFrameListener? _mediaListener;
+
+  /// The serial native observer configuration operation.
+  Future<void> _outputConfiguration = Future<void>.value();
+
+  /// Invalidates observer work queued for earlier result bindings.
+  int _outputVersion = 0;
+
+  /// Replaces output immediately and awaits current native configuration.
+  ///
+  /// See [RenderControlling.setRemoteMediaFrameListener] for the delivery contract.
+  @override
+  Future<void> setRemoteMediaFrameListener(
+    RealtimeMediaFrameListener? listener,
+  ) async {
+    final previous = _mediaListener;
+    _mediaListener = listener;
+    _mediaDispatcher.setListener(listener);
+    final configuration = _configureMediaOutput();
+    final version = _outputVersion;
+    try {
+      await configuration;
+    } catch (_) {
+      if (version != _outputVersion) {
+        return;
+      }
+      if (listener != null) {
+        _mediaListener = previous;
+        _mediaDispatcher.setListener(previous);
+        _refreshMediaOutput();
+      }
+      rethrow;
+    }
+  }
+
+  /// Serializes observer replacement and rejects stale producers before copying further output.
+  Future<void> _configureMediaOutput() {
+    final version = ++_outputVersion;
+    final previous = _outputConfiguration;
+    final work = () async {
+      await previous;
+      if (version != _outputVersion) {
+        return;
+      }
+      final stream = _remoteStream;
+      final token = _mediaDispatcher.streamID;
+      final enabled = _mediaDispatcher.hasListener && stream != null && token != null;
+      await _rtcManager?.setRemoteMediaFrameListener(
+        stream: enabled ? stream : null,
+        listener: !enabled ? null : (
+          content,
+        ) {
+          if (version == _outputVersion) {
+            _mediaDispatcher.dispatch(
+              content,
+              streamID: token,
+            );
+          }
+        },
+      );
+    }();
+    _outputConfiguration = work.catchError((
+      Object error,
+    ) {});
+    return work;
+  }
+
+  /// Rebinds native output after stream changes and routes configuration failures.
+  void _refreshMediaOutput() {
+    final configuration = _configureMediaOutput();
+    final version = _outputVersion;
+    unawaited(configuration.catchError((
+      Object error,
+    ) {
+      if (version == _outputVersion) {
+        _onOutputError?.call(error);
+      }
+    }));
+  }
 
   /// The maximum wait for the first decoded remote frame; defaults to 10 seconds.
   final Duration remoteFrameReadyTimeout;
@@ -89,6 +189,8 @@ final class RenderController implements RenderControlling {
   ) {
     _resetFrameReadiness();
     _remoteStream = stream;
+    _mediaDispatcher.setStream(stream != null);
+    _refreshMediaOutput();
 
     final track = _remoteTrack;
 
@@ -237,6 +339,8 @@ final class RenderController implements RenderControlling {
     RealtimeVideoTrack? track,
   ) {
     _resetFrameReadiness();
+    _mediaDispatcher.setStream(false);
+    _refreshMediaOutput();
 
     final target = track ?? _remoteTrack;
 

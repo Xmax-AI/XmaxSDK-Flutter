@@ -37,6 +37,7 @@ export 'src/service/media/RealtimeMediaSource.dart';
 export 'src/service/realtime/RealtimeCameraPreset.dart';
 export 'src/service/realtime/RealtimeContext.dart';
 export 'src/service/realtime/RealtimeMediaStream.dart' show RealtimeMediaStream;
+export 'src/service/realtime/RealtimeMediaFrame.dart';
 export 'src/service/realtime/RealtimeModel.dart';
 export 'src/service/realtime/RealtimeNetworkQuality.dart';
 export 'src/service/realtime/RealtimePerformanceAlarm.dart';

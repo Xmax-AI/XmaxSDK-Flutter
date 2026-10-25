@@ -16,6 +16,7 @@ import '../../service/realtime/RealtimeMediaStream.dart';
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../../service/realtime/RealtimeState.dart';
+import '../../service/realtime/RealtimeMediaFrame.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import '../../stream/quality/RealtimeQualityLevel.dart';
 import '../../media/external/RealtimeExternalVideoSource.dart';
@@ -23,6 +24,23 @@ import 'RealtimeConfiguration.dart';
 
 /// An interface for local media, realtime connections, and video generation.
 abstract interface class XmaxRealtimeManaging {
+
+  /// Sets one listener for result-user PCM and decoded video on their shared rendering timeline.
+  ///
+  /// Registration does not change audio subscriptions or playback volume. Frames are delivered
+  /// serially on the manager's isolate, independent of mounted video views. Return a future for
+  /// asynchronous work; move encoding and blocking work off the isolate.
+  ///
+  /// The SDK delivery queue retains at most 256 packets and 32 MiB, including a running callback.
+  /// Dropped output marks the next event of that track discontinuous without compressing time.
+  /// Listener or stream replacement discards queued events; an already-running callback may finish.
+  ///
+  /// [listener] receives owned read-only I420 video and premixing PCM, or null to disable output.
+  ///
+  /// The returned future completes with an error if native observation cannot be configured.
+  Future<void> setRemoteMediaFrameListener(
+    RealtimeMediaFrameListener? listener,
+  );
 
   /// The realtime configuration used by this manager.
   RealtimeConfiguration get options;

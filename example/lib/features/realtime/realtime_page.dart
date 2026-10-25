@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
@@ -16,6 +17,7 @@ import 'realtime_file_video_source.dart';
 import 'realtime_media_top_bar.dart';
 import 'realtime_audio_controls.dart';
 import 'realtime_audio_volume_menu.dart';
+import 'realtime_video_recorder.dart';
 import 'xlab_trajectory_renderer.dart';
 
 /// Resolves the initial generation mode from the media input only.
@@ -74,6 +76,7 @@ class _RealtimePageState extends State<RealtimePage>
   bool _isStatisticsVisible = false;
   String? _externalVideoPath;
   late RealtimeAudioControls _audioControls;
+  late RealtimeVideoRecorder _videoRecorder;
   Route<void>? _audioVolumeRoute;
   bool _isOpeningAudioVolume = false;
   RealtimeQualityLevel? _uplinkLevel;
@@ -181,6 +184,20 @@ class _RealtimePageState extends State<RealtimePage>
         client.createRealtimeManager(
           options: RealtimeConfiguration(model: widget.model),
         );
+    _videoRecorder = RealtimeVideoRecorder(
+      manager: _manager,
+      onError: (error) {
+        if (!mounted) return;
+        final key = error is String
+            ? error
+            : error is PlatformException
+            ? error.message ?? error.code
+            : '';
+        final translated = XLabLocalization.shared.text(key);
+        _showRecordingMessage(translated == key ? 'record.failed' : key);
+      },
+      onSaved: () => _showRecordingMessage('record.saved'),
+    )..addListener(_recordingDidChange);
     _audioControls = RealtimeAudioControls(
       readVolume: () => _manager.remoteAudioVolume,
       writeVolume: _manager.setRemoteAudioVolume,
@@ -208,6 +225,11 @@ class _RealtimePageState extends State<RealtimePage>
     });
     _manager.setStateListener((state) {
       if (!mounted || _isSuspendedForBackground) return;
+      if (state.connectionState != RealtimeConnectionState.generating &&
+          (_videoRecorder.state == RealtimeRecordingState.recording ||
+              _videoRecorder.state == RealtimeRecordingState.preparing)) {
+        unawaited(_videoRecorder.stop());
+      }
       unawaited(_refreshQualityLevels());
       setState(() {
         _state = state;
@@ -749,6 +771,26 @@ class _RealtimePageState extends State<RealtimePage>
     if (mounted) setState(() {});
   }
 
+  void _recordingDidChange() {
+    if (mounted) setState(() {});
+  }
+
+  void _showRecordingMessage(String key) {
+    if (!mounted || _isSuspendedForBackground) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(XLabLocalization.shared.text(key))));
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_videoRecorder.state == RealtimeRecordingState.idle &&
+        _state.connectionState != RealtimeConnectionState.generating) {
+      _showRecordingMessage('record.generation.required');
+      return;
+    }
+    await _videoRecorder.toggle();
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
@@ -798,6 +840,7 @@ class _RealtimePageState extends State<RealtimePage>
 
   Future<void> _closeRealtimeForBackground() async {
     try {
+      await _videoRecorder.stop();
       await _manager.close();
     } catch (_) {
       // Background cleanup must not surface a stale error after the next
@@ -836,6 +879,8 @@ class _RealtimePageState extends State<RealtimePage>
   @override
   void dispose() {
     _realtimeOperationVersion += 1;
+    _videoRecorder.removeListener(_recordingDidChange);
+    unawaited(_videoRecorder.stop().whenComplete(_videoRecorder.dispose));
     _audioControls.removeListener(_audioControlsDidChange);
     _audioControls.dispose();
     _routeAnimation?.removeStatusListener(_routeAnimationDidChange);
@@ -1026,6 +1071,8 @@ class _RealtimePageState extends State<RealtimePage>
                       enabled: !_busy,
                       isMuted: _audioControls.isMuted,
                       statisticsVisible: _isStatisticsVisible,
+                      recordingState: _videoRecorder.state,
+                      onRecording: () => unawaited(_toggleRecording()),
                       onGallery: () => unawaited(_replaceExternalVideo()),
                       onMute: () => unawaited(_audioControls.toggleMute()),
                       onVolume: (context) => unawaited(

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add opt-in `setRemoteMediaFrameListener` for owned I420 video and premixing PCM, shared receiver timestamps, sample-based audio continuity, bounded serial delivery, and stale-stream rejection.
+- Add XLab external-capture recording controls with background H.264/AAC encoding, timestamp-preserving MP4 muxing, and photo-library saving.
 - Separate realtime startup timing into session creation, RTC room join, local stream publication, and first-frame arrival, with consistent localized success and failure summaries.
 - Display XLab external video with aspect-fit scaling to preserve the complete frame, while retaining the camera's aspect-fill layout.
 - Fix XLab external-file preview starvation after slow decoding, retain a shared audio/video clock, and optimize Android NV12 conversion while preserving crop, rotation, and scaling.

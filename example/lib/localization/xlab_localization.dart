@@ -84,6 +84,21 @@ final class XLabLocalization extends ChangeNotifier {
       text(key).replaceFirst('%d', count.toString()).replaceAll('%%', '%');
 
   static const _chinese = <String, String>{
+    'record.title': '录制',
+    'record.stop': '停止',
+    'record.saving': '保存中',
+    'record.saved': '录制已保存到相册',
+    'record.generation.required': '请先开始生成再录制',
+    'record.failed': '录制失败，请重试',
+    'record.permission': '请允许添加视频到相册',
+    'record.noFrames': '未收到可录制的视频帧',
+    'record.sizeChanged': '视频规格已改变，请重新录制',
+    'record.timelineChanged': '音视频时间线已改变，请重新录制',
+    'record.bufferFull': '编码处理过慢，录制已停止',
+    'record.encoderFailed': '无法编码录制视频',
+    'record.requiresAndroid10': '相册录制需要 Android 10 或更高版本',
+    'record.alreadyRecording': '正在录制',
+    'record.notRecording': '当前没有录制任务',
     'feed.external.title': '外部采集',
     'feed.external.subtitle': '选择视频，通过外部源提交解码后的视频帧和 PCM 音频。',
     'feed.external.error': '读取视频失败，请重试',
@@ -201,6 +216,22 @@ final class XLabLocalization extends ChangeNotifier {
   };
 
   static const _english = <String, String>{
+    'record.title': 'Record',
+    'record.stop': 'Stop',
+    'record.saving': 'Saving',
+    'record.saved': 'Recording saved to the gallery',
+    'record.generation.required': 'Start generation before recording',
+    'record.failed': 'Recording failed. Please try again.',
+    'record.permission': 'Allow adding videos to your photo library',
+    'record.noFrames': 'No video frames were received',
+    'record.sizeChanged': 'Video dimensions changed. Start a new recording.',
+    'record.timelineChanged': 'Media timing changed. Start a new recording.',
+    'record.bufferFull': 'Recording stopped because encoding could not keep up',
+    'record.encoderFailed': 'Could not encode the recording',
+    'record.requiresAndroid10':
+        'Gallery recording requires Android 10 or later',
+    'record.alreadyRecording': 'A recording is already active',
+    'record.notRecording': 'No recording is active',
     'feed.external.title': 'External Capture',
     'feed.external.subtitle':
         'Choose a video and supply decoded video and PCM audio through an external source.',
