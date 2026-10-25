@@ -23,6 +23,7 @@ import '../service/realtime/RealtimeNetworkQuality.dart';
 import '../service/realtime/RealtimePerformanceAlarm.dart';
 import '../service/realtime/RealtimePoint.dart';
 import '../service/realtime/RealtimeSessionConnection.dart';
+import '../service/realtime/RealtimeTiming.dart';
 import '../service/realtime/RealtimeVideoFormat.dart';
 import 'StreamControlling.dart';
 import 'encoding/EncodingController.dart';
@@ -72,6 +73,7 @@ final class StreamController implements StreamControlling {
   /// - [generationTimeout]: The timeout for generation signaling and result confirmation; defaults
   ///   to 15 seconds.
   /// - [monotonicTime]: The sample clock in seconds; defaults to the process monotonic clock.
+  /// - [timing]: The startup recorder shared with session creation and generation.
   StreamController({
     required RtcManaging rtcManager,
     RoomControlling? roomController,
@@ -84,9 +86,9 @@ final class StreamController implements StreamControlling {
     RemoteFrameRenderedListener? remoteFrameReadyListener,
     this.generationTimeout = const Duration(seconds: 15),
     double Function()? monotonicTime,
+    RealtimeTiming? timing,
   }) : _rtcManager = rtcManager,
-       _roomController =
-           roomController ?? RoomController(rtcManager: rtcManager),
+       _timing = timing ?? RealtimeTiming(),
        _encodingController =
            encodingController ?? EncodingController(rtcManager: rtcManager),
        _qualityController = qualityController ?? QualityController(
@@ -98,6 +100,11 @@ final class StreamController implements StreamControlling {
        _remoteStreamListener = remoteStreamListener,
        _remoteFrameReadyListener = remoteFrameReadyListener,
        _remoteFrameRenderedListener = remoteFrameRenderedListener {
+    _roomController = roomController ?? RoomController(
+      rtcManager: rtcManager,
+      timing: _timing,
+    );
+
     rtcManager.setQualityListener(_qualityController);
     rtcManager.setEventListener(
       RtcEventListener(
@@ -114,7 +121,10 @@ final class StreamController implements StreamControlling {
   final RtcManaging _rtcManager;
 
   /// The controller for room identity, heartbeats, and application signaling.
-  final RoomControlling _roomController;
+  late final RoomControlling _roomController;
+
+  /// The startup recorder for RTC room join and local publication.
+  final RealtimeTiming _timing;
 
   /// The RTC video encoding controller.
   final EncodingControlling _encodingController;
@@ -490,9 +500,11 @@ final class StreamController implements StreamControlling {
       );
 
       ensureActive();
+      _timing.beginLocalPublication();
       await _rtcManager.publishLocalVideo(publish: true);
       _localVideoPublished = true;
       _qualityController.setUplinkVideoStatisticsEnabled(_localVideoPublished);
+      _timing.finishLocalPublication();
     } catch (_) {
       _roomID = '';
       _botName = '';

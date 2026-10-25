@@ -140,7 +140,6 @@ final class XmaxRealtimeConnectionManager {
     var activated = false;
 
     try {
-      timing.beginConnection();
       // Create the cloud session before joining RTC with its credentials.
       timing.beginSessionCreation();
       session = await _sessionService.createSession(
@@ -159,12 +158,10 @@ final class XmaxRealtimeConnectionManager {
         );
       }
 
-      timing.beginRoomJoin();
       await _streamController.connect(
         connection: connection,
         ensureActive: () => _ensureCurrent(isCurrent),
       );
-      timing.finishRoomJoin();
       _ensureCurrent(isCurrent);
 
       // Start the session heartbeat only after RTC connects.
@@ -188,7 +185,6 @@ final class XmaxRealtimeConnectionManager {
       activated = true;
 
       _ensureCurrent(isCurrent);
-      timing.finishConnection();
 
       return createRealtimeMediaStream(
         id: 'stream-remote',

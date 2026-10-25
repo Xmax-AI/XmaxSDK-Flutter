@@ -39,12 +39,6 @@ final class RealtimeTiming {
   /// The generation startup time, in monotonic microseconds.
   late int _startedAt;
 
-  /// The connection start time, in monotonic microseconds.
-  int? _connectionStart;
-
-  /// The connection completion time, in monotonic microseconds.
-  int? _connectionEnd;
-
   /// The session creation start time, in monotonic microseconds.
   int? _sessionStart;
 
@@ -57,11 +51,17 @@ final class RealtimeTiming {
   /// The RTC join completion time, in monotonic microseconds.
   int? _roomEnd;
 
-  /// The signaling and result-confirmation start time, in monotonic microseconds.
+  /// The local stream publication start time, in monotonic microseconds.
+  int? _publicationStart;
+
+  /// The local stream publication completion time, in monotonic microseconds.
+  int? _publicationEnd;
+
+  /// The generation signaling start time, in monotonic microseconds.
   int? _signalStart;
 
-  /// The result stream confirmation time, in monotonic microseconds.
-  int? _streamConfirmed;
+  /// The first remote frame readiness time, in monotonic microseconds.
+  int? _firstFrameAt;
 
   /// Whether this startup attempt has already been finalized.
   bool _finished = false;
@@ -69,22 +69,16 @@ final class RealtimeTiming {
   /// Starts a new admitted startup attempt without retaining earlier phase timestamps.
   void reset() {
     _startedAt = _now();
-    _connectionStart = null;
-    _connectionEnd = null;
     _sessionStart = null;
     _sessionEnd = null;
     _roomStart = null;
     _roomEnd = null;
+    _publicationStart = null;
+    _publicationEnd = null;
     _signalStart = null;
-    _streamConfirmed = null;
+    _firstFrameAt = null;
     _finished = false;
   }
-
-  /// Records the connection start time.
-  void beginConnection() => _connectionStart = _now();
-
-  /// Records the connection completion time.
-  void finishConnection() => _connectionEnd = _now();
 
   /// Records the session creation start time.
   void beginSessionCreation() => _sessionStart = _now();
@@ -98,11 +92,17 @@ final class RealtimeTiming {
   /// Records the RTC join completion time.
   void finishRoomJoin() => _roomEnd = _now();
 
-  /// Records the start of signaling and result confirmation.
+  /// Records the start of local stream publication configuration.
+  void beginLocalPublication() => _publicationStart = _now();
+
+  /// Records when local stream publication configuration returns successfully.
+  void finishLocalPublication() => _publicationEnd = _now();
+
+  /// Records the start of generation signaling.
   void beginSignal() => _signalStart = _now();
 
-  /// Records the result stream confirmation time.
-  void confirmRemoteStream() => _streamConfirmed = _now();
+  /// Records when the first remote result frame becomes ready for display.
+  void finishFirstFrame() => _firstFrameAt = _now();
 
   /// Finalizes startup timing and logs phase durations.
   void finish() {
@@ -112,50 +112,17 @@ final class RealtimeTiming {
 
     _finished = true;
 
+    if (_firstFrameAt == null) {
+      _write(['实时生成启动耗时不可用 (Realtime Generation Startup Timing Unavailable)']);
+      return;
+    }
+
     final readyAt = _now();
     final lines = <String>[
       '实时生成启动耗时 (Realtime Generation Startup Timing)',
-      '├─ ${_label('总耗时：', 'Total Duration: ')}${_duration(_startedAt, readyAt)}',
+      '└─ ${_label('总耗时：', 'Total Duration: ')}${_duration(_startedAt, readyAt)}',
+      ..._stageDetails(),
     ];
-
-    if (_connectionStart != null && _connectionEnd != null) {
-      lines.add(
-        '├─ ${_label('实时连接：', 'Realtime Connection: ')}${_duration(_connectionStart, _connectionEnd)}',
-      );
-
-      final details = <String>[];
-
-      _detail(
-        details,
-        _label(
-          '服务端会话创建：',
-          'Server Session Creation: ',
-        ),
-        _sessionStart,
-        _sessionEnd,
-      );
-      _detail(
-        details,
-        _label(
-          'RTC 房间连接：',
-          'RTC Room Connection: ',
-        ),
-        _roomStart,
-        _roomEnd,
-      );
-      for (var index = 0; index < details.length; index++) {
-        lines.add(
-          '│  ${index == details.length - 1 ? '└─' : '├─'} ${details[index]}',
-        );
-      }
-    }
-
-    lines.add(
-      '├─ ${_label('等待生成结果流确认：', 'Waiting for Remote Stream: ')}${_duration(_signalStart, _streamConfirmed)}',
-    );
-    lines.add(
-      '└─ ${_label('结果流确认到首帧就绪：', 'First Frame Ready: ')}${_duration(_streamConfirmed, readyAt)}',
-    );
     _write(lines);
   }
 
@@ -183,89 +150,108 @@ final class RealtimeTiming {
     final lines = <String>[
       '实时生成启动未完成耗时 (Incomplete Realtime Generation Startup Timing)',
       '├─ ${_label('已耗时：', 'Elapsed Time: ')}${_duration(_startedAt, failedAt)}',
+      ..._stageDetails(failureAt: failedAt),
       '├─ ${_label('停留阶段：', 'Current Stage: ')}$_pendingStage',
+      '└─ ${_label('失败原因：', 'Failure Reason: ')}${failure.message}',
     ];
-    final details = <String>[];
-
-    _detail(
-      details,
-      _label(
-        '服务端会话创建：',
-        'Server Session Creation: ',
-      ),
-      _sessionStart,
-      _sessionEnd ?? failedAt,
-    );
-    _detail(
-      details,
-      _label(
-        'RTC 房间连接：',
-        'RTC Room Connection: ',
-      ),
-      _roomStart,
-      _roomEnd ?? failedAt,
-    );
-    _detail(
-      details,
-      _label(
-        '实时连接：',
-        'Realtime Connection: ',
-      ),
-      _connectionStart,
-      _connectionEnd ?? failedAt,
-    );
-    _detail(
-      details,
-      _label(
-        '等待生成结果流确认：',
-        'Waiting for Result Stream Confirmation: ',
-      ),
-      _signalStart,
-      _streamConfirmed ?? failedAt,
-    );
-    _detail(
-      details,
-      _label(
-        '结果流确认后等待首帧：',
-        'Waiting for First Frame After Result Stream Confirmation: ',
-      ),
-      _streamConfirmed,
-      failedAt,
-    );
-    lines.addAll(details.map((
-      detail,
-    ) => '├─ $detail'));
-    lines.add('└─ ${_label('失败原因：', 'Failure Reason: ')}${failure.message}');
     _write(lines);
+  }
+
+  /// Formats the four startup phases, including unavailable and submillisecond durations.
+  ///
+  /// [failureAt] closes unfinished phases at the failure time when provided.
+  ///
+  /// Returns indented stage lines in the configured log language.
+  List<String> _stageDetails({
+    int? failureAt,
+  }) {
+    final stages = <(String, int?, int?)>[
+      (
+        _label(
+          '创建会话：',
+          'Session Creation: ',
+        ),
+        _sessionStart,
+        _sessionEnd,
+      ),
+      (
+        _label(
+          'RTC 进房：',
+          'RTC Room Join: ',
+        ),
+        _roomStart,
+        _roomEnd,
+      ),
+      (
+        _label(
+          '发布本地流：',
+          'Local Stream Publication: ',
+        ),
+        _publicationStart,
+        _publicationEnd,
+      ),
+      (
+        _label(
+          '首帧到达：',
+          'First Frame Arrival: ',
+        ),
+        _signalStart,
+        _firstFrameAt,
+      ),
+    ];
+    final indent = failureAt == null ? '   ' : '│  ';
+    final lines = <String>[];
+
+    for (var index = 0; index < stages.length; index++) {
+      final (label, start, end) = stages[index];
+      final branch = index == stages.length - 1 ? '└─' : '├─';
+      lines.add('$indent$branch $label${_duration(start, end ?? failureAt)}');
+    }
+
+    return lines;
   }
 
   /// The pending startup phase name.
   String get _pendingStage {
-    if (_streamConfirmed != null) {
+    if (_firstFrameAt != null) {
       return _label(
-        '结果流已确认，正在等待首帧',
-        'Result Stream Confirmed, Waiting for First Frame',
+        '首帧已就绪，正在完成启动',
+        'First Frame Ready, Completing Startup',
       );
     }
 
     if (_signalStart != null) {
       return _label(
-        '正在等待生成结果流确认',
-        'Waiting for Result Stream Confirmation',
+        '等待首帧到达',
+        'Waiting for First Frame',
       );
     }
 
-    if (_connectionEnd != null) {
+    if (_publicationEnd != null) {
       return _label(
-        '连接完成后准备生成',
-        'Preparing Generation After Connection',
+        '准备生成',
+        'Preparing Generation',
       );
     }
 
-    if (_roomStart != null && _roomEnd == null) {
+    if (_publicationStart != null) {
       return _label(
-        '正在连接 RTC 房间',
-        'Connecting to RTC Room',
+        '发布本地流',
+        'Publishing Local Stream',
+      );
+    }
+
+    if (_roomEnd != null) {
+      return _label(
+        '准备发布本地流',
+        'Preparing Local Stream Publication',
+      );
+    }
+
+    if (_roomStart != null) {
+      return _label(
+        'RTC 进房',
+        'Joining RTC Room',
       );
     }
 
@@ -278,8 +264,8 @@ final class RealtimeTiming {
 
     if (_sessionStart != null) {
       return _label(
-        '服务端会话创建',
-        'Server Session Creation',
+        '创建会话',
+        'Creating Session',
       );
     }
 
@@ -310,31 +296,13 @@ final class RealtimeTiming {
   /// - [start]: The interval start time, in microseconds.
   /// - [end]: The interval end time, in microseconds.
   ///
-  /// Returns milliseconds as text, or -- if either timestamp is missing.
+  /// Returns milliseconds as text, or an em dash for missing or reversed timestamps.
   static String _duration(
     int? start,
     int? end,
-  ) => start == null || end == null
-      ? '--'
-      : '${((end - start) / 1000).clamp(0, double.infinity).toStringAsFixed(1)} ms';
-
-  /// Appends valid duration metrics lasting at least one millisecond.
-  ///
-  /// Parameters:
-  /// - [lines]: The ordered log lines.
-  /// - [label]: The metric's display label.
-  /// - [start]: The monotonic start time in microseconds; null omits this metric.
-  /// - [end]: The monotonic end time in microseconds; null omits this metric.
-  static void _detail(
-    List<String> lines,
-    String label,
-    int? start,
-    int? end,
-  ) {
-    if (start != null && end != null && end - start >= 1000) {
-      lines.add('$label${_duration(start, end)}');
-    }
-  }
+  ) => start == null || end == null || end < start
+      ? '—'
+      : '${((end - start) / 1000).toStringAsFixed(1)} ms';
 
   /// Writes formatted logs using the current logging options.
   ///

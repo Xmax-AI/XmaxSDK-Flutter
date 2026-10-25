@@ -93,6 +93,7 @@ abstract final class XmaxRealtimeFactory {
     final timing = RealtimeTiming();
     final streamController = StreamController(
       rtcManager: rtcManager,
+      timing: timing,
       errorListener: errorManager.forward,
       localMediaErrorListener: (
         error,

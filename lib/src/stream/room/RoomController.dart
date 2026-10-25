@@ -19,6 +19,7 @@ import '../../foundation/runtime/RuntimeInfo.dart';
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimePoint.dart';
 import '../../service/realtime/RealtimeSessionConnection.dart';
+import '../../service/realtime/RealtimeTiming.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
 import 'RoomControlling.dart';
 import 'RoomEvent.dart';
@@ -32,14 +33,20 @@ final class RoomController implements RoomControlling {
   /// Parameters:
   /// - [rtcManager]: The RTC room signaling interface.
   /// - [heartbeat]: The heartbeat scheduler; defaults to one using the same RTC manager.
+  /// - [timing]: The startup recorder shared with session creation and local publication.
   RoomController({
     required RtcManaging rtcManager,
     RoomHeartbeat? heartbeat,
+    RealtimeTiming? timing,
   }) : _rtcManager = rtcManager,
+       _timing = timing ?? RealtimeTiming(),
        _heartbeat = heartbeat ?? RoomHeartbeat(rtcManager: rtcManager);
 
   /// The RTC capture, room, and transport interface.
   final RtcManaging _rtcManager;
+
+  /// The startup recorder measuring the native RTC join operation.
+  final RealtimeTiming _timing;
 
   /// The heartbeat scheduler for the current RTC room.
   final RoomHeartbeat _heartbeat;
@@ -76,6 +83,7 @@ final class RoomController implements RoomControlling {
       await RuntimeInfo.resolve();
       ensureActive();
 
+      _timing.beginRoomJoin();
       await _rtcManager.joinRoom(
         configuration: RoomJoinConfiguration(
           roomID: connection.roomID,
@@ -83,6 +91,7 @@ final class RoomController implements RoomControlling {
           token: connection.token,
         ),
       );
+      _timing.finishRoomJoin();
 
       ensureActive();
 

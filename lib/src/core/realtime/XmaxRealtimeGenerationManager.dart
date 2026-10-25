@@ -135,7 +135,6 @@ final class XmaxRealtimeGenerationManager {
       }
 
       await token.wait(confirmation.value);
-      timing.confirmRemoteStream();
       if (startVersion != _startVersion) {
         throw const XmaxError(
           code: XmaxErrorCode.cancelled,
@@ -153,6 +152,8 @@ final class XmaxRealtimeGenerationManager {
       token.ensureCurrent();
       await token.wait(_renderController.waitUntilRemoteFrameReady());
       token.ensureCurrent();
+      timing.finishFirstFrame();
+
       await _streamController.activateRemoteAudio();
       token.ensureCurrent();
       _currentContext = resolvedContext;
