@@ -11,15 +11,7 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/License-MIT-4C9A2A" alt="MIT License"></a>
 </p>
 
-A Flutter SDK, providing access to Xmax's real-time, interactive video generation
-models. The models are optimized for low latency and cost efficiency, enabling
-instantaneous video transformations across diverse characters, outfits, and
-aesthetic styles. Also, they can dynamically respond to user gestures, allowing
-interactive virtual subjects to blend into real-world footage for immersive
-experiences. XmaxSDK implements an end-to-end pipeline to leverage these novel
-capabilities through concise Dart APIs and Flutter widgets, making it easy for
-developers to build next-generation interactive video experiences across iOS and
-Android.
+We introduce XmaxSDK, a Flutter SDK designed for real-time interactive video generation via Xmax models. XmaxSDK implements an end-to-end pipeline covering media acquisition, video streaming, frame-by-frame generation, and on-device rendering, enabling developers to seamlessly integrate low-latency, high-fidelity video transformations into creative applications at a much lower cost than alternative solutions.
 
 <p align="center"><img src="./materials/images/xlab/generation-demo.gif" alt="X-Lab realtime generation demo" width="33%" /><img src="./materials/images/xlab/index-demo.gif" alt="X-Lab index demo" width="33%" /><img src="./materials/images/xlab/storage-demo.gif" alt="X-Lab storage demo" width="33%" /></p>
 

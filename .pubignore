@@ -2,6 +2,7 @@
 # Internal working documents are not part of the published package.
 /docs/
 .cicd/
+/CHANGELOG.md
 *.class
 *.log
 *.pyc
@@ -19,6 +20,7 @@
 *.ipr
 *.iws
 .idea/
+.vscode/
 
 # FVM
 .fvm/
