@@ -119,12 +119,14 @@ final class RealtimeFileVideoSource extends RealtimeExternalVideoSource {
       }
       final sourceTimeUs = (frame['timestampUs'] as num).toInt();
       if (sourceTimeUs < 0) continue;
-      final targetUs = loopStartUs + sourceTimeUs;
+      var targetUs = loopStartUs + sourceTimeUs;
       final audio = frame['audio'] == true;
       final lateness = clock.elapsedMicroseconds - targetUs;
-      if (lateness > (audio ? 100000 : 1000000 ~/ videoFormat.fps) ||
-          targetUs < 0) {
-        continue;
+      if (lateness > (audio ? 100000 : 1000000 ~/ videoFormat.fps)) {
+        // Native decoding is backpressured. Move the shared media clock forward
+        // after a stall instead of discarding every remaining frame in the file.
+        loopStartUs += lateness;
+        targetUs += lateness;
       }
       if (!audio && targetUs - lastVideoUs < 1000000 ~/ videoFormat.fps) {
         continue;

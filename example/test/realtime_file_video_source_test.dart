@@ -24,6 +24,104 @@ void main() {
     'durationUs': 50000,
   };
 
+  test('slow decoding keeps delivering video before the file loops', () async {
+    var index = 0;
+    messenger.setMockMethodCallHandler(RealtimeFileVideoSource.channel, (
+      call,
+    ) async {
+      calls.add(call.method);
+      switch (call.method) {
+        case 'probe':
+          return {
+            ...metadata,
+            'width': 8,
+            'height': 8,
+            'hasAudio': false,
+            'durationUs': 10000000,
+          };
+        case 'open':
+          return 1;
+        case 'read':
+          await Future<void>.delayed(const Duration(milliseconds: 80));
+          return {
+            'timestampUs': index++ * 33334,
+            'data': Uint8List(8 * 8 * 4),
+            'bgra': true,
+          };
+        default:
+          return null;
+      }
+    });
+    final source = await RealtimeFileVideoSource.make(
+      path: '/test/slow.mp4',
+      frameRate: 30,
+    );
+    final sink = _Sink();
+    await source.start(sink: sink);
+    try {
+      await sink.looped.future.timeout(const Duration(seconds: 2));
+      expect(sink.videos, hasLength(greaterThanOrEqualTo(3)));
+      expect(calls, isNot(contains('rewind')));
+      for (var i = 1; i < sink.videos.length; i++) {
+        expect(sink.videos[i], greaterThan(sink.videos[i - 1]));
+      }
+      expect(sink.error, isNull);
+    } finally {
+      await source.stop();
+    }
+  });
+
+  test(
+    'clock recovery preserves the shared video and audio timeline',
+    () async {
+      var index = 0;
+      messenger.setMockMethodCallHandler(RealtimeFileVideoSource.channel, (
+        call,
+      ) async {
+        switch (call.method) {
+          case 'probe':
+            return {
+              ...metadata,
+              'width': 8,
+              'height': 8,
+              'durationUs': 10000000,
+            };
+          case 'open':
+            return 1;
+          case 'read':
+            final audio = index.isOdd;
+            final time = (index++ ~/ 2) * 33334;
+            if (!audio) {
+              await Future<void>.delayed(const Duration(milliseconds: 80));
+            }
+            return {
+              'timestampUs': time,
+              'data': Uint8List(audio ? 960 : 8 * 8 * 4),
+              'bgra': true,
+              'audio': audio,
+              if (audio) 'sampleRate': 48000,
+              if (audio) 'channels': 1,
+            };
+          default:
+            return null;
+        }
+      });
+      final source = await RealtimeFileVideoSource.make(
+        path: '/test/slow-av.mp4',
+        frameRate: 30,
+      );
+      final sink = _Sink();
+      await source.start(sink: sink);
+      try {
+        await sink.looped.future.timeout(const Duration(seconds: 2));
+        expect(sink.audio.take(2), sink.videos.take(2));
+        expect(sink.error, isNull);
+      } finally {
+        await source.stop();
+      }
+    },
+  );
+
   test(
     'decoder output dimensions are resolved by the public SDK media service',
     () async {

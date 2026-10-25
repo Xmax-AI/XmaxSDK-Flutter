@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Fix XLab external-file preview starvation after slow decoding, retain a shared audio/video clock, and optimize Android NV12 conversion while preserving crop, rotation, and scaling.
 - Add optional built-in microphone capture with `createLocalCameraStream(useMicrophone: true)`, connection-scoped audio publication, permission checks, and automatic cleanup while preserving camera preview. Enable microphone input in XLab's camera example.
 - Rename the single-track view to `XmaxRealtimeVideoView` and the recommended local/remote overlay to `XmaxRealtimeDualVideoView`. Remove `XmaxVideoView` and migrate dual-track usages to the new name.
 - Add `remoteVideoFadeInDuration` in seconds, defaulting to 0.3; zero, negative, or nonfinite values disable fade-in, and changes apply to the next transition.

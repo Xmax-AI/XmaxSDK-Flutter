@@ -193,7 +193,7 @@ public final class RealtimeFileVideoDecoder implements MethodChannel.MethodCallH
     private static final class Track {
         final MediaExtractor extractor = new MediaExtractor();
         final boolean video;
-        final int width, height;
+        final Nv12FrameConverter frameConverter;
         MediaCodec codec;
         MediaFormat format;
         int rotation;
@@ -203,8 +203,7 @@ public final class RealtimeFileVideoDecoder implements MethodChannel.MethodCallH
 
         Track(String path, boolean video, int width, int height) throws Exception {
             this.video = video;
-            this.width = width;
-            this.height = height;
+            frameConverter = video ? new Nv12FrameConverter(width, height) : null;
             try {
                 extractor.setDataSource(path);
                 String prefix = video ? "video/" : "audio/";
@@ -240,7 +239,7 @@ public final class RealtimeFileVideoDecoder implements MethodChannel.MethodCallH
             MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
             while (System.nanoTime() < deadline) {
                 if (!inputEnded) {
-                    int input = codec.dequeueInputBuffer(10_000);
+                    int input = codec.dequeueInputBuffer(0);
                     if (input >= 0) {
                         ByteBuffer buffer = codec.getInputBuffer(input);
                         if (buffer == null) throw new IOException("Missing decoder input buffer");
@@ -267,7 +266,15 @@ public final class RealtimeFileVideoDecoder implements MethodChannel.MethodCallH
                                 try (Image image = codec.getOutputImage(output)) {
                                     if (image == null || image.getFormat() != ImageFormat.YUV_420_888)
                                         throw new IOException("The decoder cannot provide YUV video frames");
-                                    result.put("data", nv12(image, rotation, width, height));
+                                    Rect crop = image.getCropRect();
+                                    Image.Plane[] decoded = image.getPlanes();
+                                    Nv12FrameConverter.Plane[] planes = new Nv12FrameConverter.Plane[3];
+                                    for (int i = 0; i < planes.length; i++) {
+                                        planes[i] = new Nv12FrameConverter.Plane(decoded[i].getBuffer(),
+                                                decoded[i].getRowStride(), decoded[i].getPixelStride());
+                                    }
+                                    result.put("data", frameConverter.convert(planes, crop.left, crop.top,
+                                            crop.width(), crop.height(), rotation));
                                 }
                             } else {
                                 ByteBuffer buffer = codec.getOutputBuffer(output);
@@ -307,38 +314,4 @@ public final class RealtimeFileVideoDecoder implements MethodChannel.MethodCallH
         }
     }
 
-    /** Packs crop-aware planes and applies container rotation before SDK submission. */
-    private static byte[] nv12(Image image, int rotation, int outputWidth, int outputHeight) {
-        Rect crop = image.getCropRect();
-        int width = crop.width() / 2 * 2;
-        int height = crop.height() / 2 * 2;
-        byte[] result = new byte[outputWidth * outputHeight * 3 / 2];
-        Image.Plane[] planes = image.getPlanes();
-        for (int plane = 0; plane < 3; plane++) {
-            int divisor = plane == 0 ? 1 : 2;
-            int w = width / divisor;
-            int h = height / divisor;
-            int targetWidth = outputWidth / divisor;
-            int targetHeight = outputHeight / divisor;
-            int orientedWidth = rotation == 90 || rotation == 270 ? h : w;
-            int orientedHeight = rotation == 90 || rotation == 270 ? w : h;
-            ByteBuffer input = planes[plane].getBuffer();
-            int base = input.position() + (crop.top / divisor) * planes[plane].getRowStride()
-                + (crop.left / divisor) * planes[plane].getPixelStride();
-            for (int y = 0; y < targetHeight; y++) {
-                for (int x = 0; x < targetWidth; x++) {
-                    int ox = (int) ((long) x * orientedWidth / targetWidth);
-                    int oy = (int) ((long) y * orientedHeight / targetHeight);
-                    int sx = ox, sy = oy;
-                    if (rotation == 90) { sx = oy; sy = h - 1 - ox; }
-                    else if (rotation == 180) { sx = w - 1 - ox; sy = h - 1 - oy; }
-                    else if (rotation == 270) { sx = w - 1 - oy; sy = ox; }
-                    int index = y * targetWidth + x;
-                    int destination = plane == 0 ? index : outputWidth * outputHeight + index * 2 + plane - 1;
-                    result[destination] = input.get(base + sy * planes[plane].getRowStride() + sx * planes[plane].getPixelStride());
-                }
-            }
-        }
-        return result;
-    }
 }
