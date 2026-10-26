@@ -265,32 +265,149 @@ void main() {
   tearDown(XmaxLogger.reset);
 
   test(
-    'capture format update does not stop, enable, or remount the preview',
+    'every camera ratio configures preview cropping without restarting capture',
     () async {
       final platform = _Platform();
       final manager = _manager(platform);
       await manager.initialize();
       await manager.startVideoCapture(width: 1080, height: 1920, frameRate: 30);
-      platform.engine.calls.clear();
-      await manager.updateVideoCapture(
-        width: 1408,
-        height: 1408,
-        frameRate: 24,
-      );
-      expect(platform.engine.calls.map((call) => call.memberName), [
-        #setCameraCapturerConfiguration,
-      ]);
-      final config =
-          platform.engine.calls.single.positionalArguments.single
-              as CameraCapturerConfiguration;
-      expect(
-        (config.format!.width, config.format!.height, config.format!.fps),
-        (1408, 1408, 24),
-      );
-      expect(config.followEncodeDimensionRatio, isFalse);
+      for (final format in RealtimeModel.x2_1.supportedVideoFormats) {
+        platform.engine.calls.clear();
+        await manager.updateVideoCapture(
+          width: format.width,
+          height: format.height,
+          frameRate: format.fps,
+        );
+        expect(platform.engine.calls.map((call) => call.memberName), [
+          #setVideoEncoderConfiguration,
+          #setCameraCapturerConfiguration,
+        ]);
+        final encoder =
+            platform.engine.calls.first.positionalArguments.single
+                as VideoEncoderConfiguration;
+        _expectEncoderFormat(encoder, format.width, format.height, format.fps);
+        final capture =
+            platform.engine.calls.last.positionalArguments.single
+                as CameraCapturerConfiguration;
+        expect(
+          (capture.format!.width, capture.format!.height, capture.format!.fps),
+          (format.width, format.height, format.fps),
+        );
+        expect(capture.followEncodeDimensionRatio, isTrue);
+      }
+      expect(platform.engine.previewStarts, 1);
+      expect(platform.engine.previewStops, 0);
+      expect(platform.engine.localVideoChanges, [true]);
       await manager.destroy();
     },
   );
+
+  test('capture updates retain bitrate policy and camera mirroring', () async {
+    final platform = _Platform();
+    final manager = _manager(platform);
+    await manager.initialize();
+    await manager.configureVideoEncoding(
+      const VideoEncodingConfiguration(
+        width: 1080,
+        height: 1920,
+        frameRate: 30,
+        minimumBitrate: 100,
+        maximumBitrate: 3600,
+        encoderPreference: RealtimeVideoEncoderPreference.maintainQuality,
+      ),
+    );
+    await manager.startVideoCapture(width: 1080, height: 1920, frameRate: 30);
+    await manager.switchCamera(position: CameraPosition.back);
+    await manager.updateVideoCapture(width: 1920, height: 1080, frameRate: 24);
+    final encoder =
+        _encodingCalls(
+              platform.engine,
+              #setVideoEncoderConfiguration,
+            ).last.positionalArguments.single
+            as VideoEncoderConfiguration;
+    _expectEncoderFormat(encoder, 1920, 1080, 24);
+    expect(encoder.minBitrate, 100);
+    expect(encoder.bitrate, 3600);
+    expect(
+      encoder.degradationPreference,
+      DegradationPreference.maintainQuality,
+    );
+    expect(encoder.mirrorMode, VideoMirrorModeType.videoMirrorModeDisabled);
+    final capture =
+        platform.engine.calls.last.positionalArguments.single
+            as CameraCapturerConfiguration;
+    expect(capture.cameraDirection, CameraDirection.cameraRear);
+    await manager.destroy();
+  });
+
+  test('rejected camera format restores capture and encoder targets', () async {
+    final platform = _Platform();
+    final manager = _manager(platform);
+    await manager.initialize();
+    await manager.startVideoCapture(width: 1080, height: 1920, frameRate: 30);
+    platform.engine.calls.clear();
+    platform.engine.rejectCaptureCount = 1;
+    await expectLater(
+      manager.updateVideoCapture(width: 1408, height: 1408, frameRate: 24),
+      throwsA(isA<XmaxError>()),
+    );
+    expect(platform.engine.calls.map((call) => call.memberName), [
+      #setVideoEncoderConfiguration,
+      #setCameraCapturerConfiguration,
+      #setCameraCapturerConfiguration,
+      #setVideoEncoderConfiguration,
+    ]);
+    final restoredCapture =
+        platform.engine.calls[2].positionalArguments.single
+            as CameraCapturerConfiguration;
+    expect(
+      (
+        restoredCapture.format!.width,
+        restoredCapture.format!.height,
+        restoredCapture.format!.fps,
+      ),
+      (1080, 1920, 30),
+    );
+    expect(restoredCapture.followEncodeDimensionRatio, isTrue);
+    await platform.reapplyVideoConfiguration();
+    _expectEncoderFormat(
+      platform.engine.calls.last.positionalArguments.single
+          as VideoEncoderConfiguration,
+      1080,
+      1920,
+      30,
+    );
+    await manager.updateVideoCapture(width: 1920, height: 1080, frameRate: 30);
+    expect(platform.engine.previewStarts, 1);
+    expect(platform.engine.previewStops, 0);
+    await manager.destroy();
+  });
+
+  test('rejected preview encoding leaves accepted capture unchanged', () async {
+    final platform = _Platform();
+    final manager = _manager(platform);
+    await manager.initialize();
+    await manager.startVideoCapture(width: 1408, height: 1408, frameRate: 30);
+    platform.engine.calls.clear();
+    platform.engine.rejectEncoding = true;
+    await expectLater(
+      manager.updateVideoCapture(width: 1920, height: 1080, frameRate: 30),
+      throwsA(isA<XmaxError>()),
+    );
+    expect(platform.engine.calls.map((call) => call.memberName), [
+      #setVideoEncoderConfiguration,
+    ]);
+    platform.engine.rejectEncoding = false;
+    await platform.reapplyVideoConfiguration();
+    _expectEncoderFormat(
+      platform.engine.calls.last.positionalArguments.single
+          as VideoEncoderConfiguration,
+      1408,
+      1408,
+      30,
+    );
+    await manager.destroy();
+  });
 
   test('publication and adaptation configure the actual Ex encoder', () async {
     final platform = _Platform();
@@ -644,9 +761,7 @@ void _expectEncoder(
   final connection = call.namedArguments[#connection] as RtcConnection;
   expect(connection.channelId, 'room');
   expect(connection.localUid, localUid);
-  expect(config.dimensions?.width, target.width);
-  expect(config.dimensions?.height, target.height);
-  expect(config.frameRate, target.frameRate);
+  _expectEncoderFormat(config, target.width, target.height, target.frameRate);
   expect(config.minBitrate, target.minimumBitrate);
   expect(config.bitrate, target.maximumBitrate);
   expect(config.degradationPreference, switch (target.encoderPreference) {
@@ -656,6 +771,23 @@ void _expectEncoder(
       DegradationPreference.maintainQuality,
     _ => DegradationPreference.maintainAuto,
   });
+}
+
+void _expectEncoderFormat(
+  VideoEncoderConfiguration config,
+  int width,
+  int height,
+  int frameRate,
+) {
+  expect(config.dimensions?.width, width);
+  expect(config.dimensions?.height, height);
+  expect(config.frameRate, frameRate);
+  expect(
+    config.orientationMode,
+    width > height
+        ? OrientationMode.orientationModeFixedLandscape
+        : OrientationMode.orientationModeFixedPortrait,
+  );
 }
 
 RtcManager _manager(_Platform platform) => RtcManager(
@@ -698,6 +830,7 @@ class _Engine implements RtcEngineEx {
   bool autoCompleteLeave = false;
   bool rejectJoin = false;
   bool rejectEncoding = false;
+  int rejectCaptureCount = 0;
   int assignedLocalUid = 1;
 
   void completeLeave([String roomID = 'room', int? localUid]) {
@@ -750,6 +883,7 @@ class _Engine implements RtcEngineEx {
         }
       case #createDataStreamEx:
         return Future<int>.value(1);
+      case #setVideoEncoderConfiguration:
       case #setVideoEncoderConfigurationEx:
         if (rejectEncoding) {
           return Future<void>.error(
@@ -773,6 +907,12 @@ class _Engine implements RtcEngineEx {
         localVideoChanges.add(localVideoEnabled);
       case #setCameraCapturerConfiguration:
         captureConfigurations++;
+        if (rejectCaptureCount > 0) {
+          rejectCaptureCount--;
+          return Future<void>.error(
+            AgoraRtcException(code: -2, message: 'capture rejected'),
+          );
+        }
       case #updateChannelMediaOptionsEx:
         final options = call.namedArguments[#options] as ChannelMediaOptions;
         cameraPublished = options.publishCameraTrack ?? cameraPublished;

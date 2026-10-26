@@ -28,7 +28,13 @@ void main() {
       await tester.pumpWidget(const XLabApp());
       await tester.pumpAndSettle();
       expect(find.text('MODELS: 1'), findsOneWidget);
-      expect(find.text('X2.1'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('model-x2.1')),
+          matching: find.text('X2.1'),
+        ),
+        findsOneWidget,
+      );
       expect(find.textContaining('preview'), findsNothing);
 
       final modelRow = find.byKey(const ValueKey<String>('model-x2.1'));

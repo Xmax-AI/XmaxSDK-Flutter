@@ -174,6 +174,9 @@ class AgoraRtcPlatform implements RtcPlatform {
   /// The most recently applied encoding settings.
   VideoEncodingConfiguration? _encoding;
 
+  /// The most recently accepted camera capture dimensions and frame rate.
+  VideoFormat? _captureFormat;
+
   /// Whether local publication uses custom rather than camera video.
   bool get usesExternalVideo => _usesExternalVideo;
 
@@ -281,7 +284,9 @@ class AgoraRtcPlatform implements RtcPlatform {
       frameRate: configuration.frameRate,
       minBitrate: configuration.minimumBitrate,
       bitrate: configuration.maximumBitrate,
-      orientationMode: OrientationMode.orientationModeAdaptive,
+      orientationMode: configuration.width > configuration.height
+          ? OrientationMode.orientationModeFixedLandscape
+          : OrientationMode.orientationModeFixedPortrait,
       mirrorMode: !_usesExternalVideo && _position == CameraPosition.front
           ? VideoMirrorModeType.videoMirrorModeEnabled
           : VideoMirrorModeType.videoMirrorModeDisabled,
@@ -345,7 +350,8 @@ class AgoraRtcPlatform implements RtcPlatform {
     await check(() => engine.startPreview());
   }
 
-  /// Updates capture settings without changing the camera, capture lifecycle, or preview binding.
+  /// Updates capture and preview cropping without restarting the camera or replacing its binding.
+  /// Restores previously accepted settings if native capture configuration fails.
   ///
   /// See [RtcManaging.updateVideoCapture] for the usage contract.
   @override
@@ -354,18 +360,71 @@ class AgoraRtcPlatform implements RtcPlatform {
     required int height,
     required int frameRate,
   }) async {
+    final previousEncoding = _encoding;
+    final previousCapture = _captureFormat;
+    final format = VideoFormat(
+      width: width,
+      height: height,
+      fps: frameRate,
+    );
+
+    // Preview cropping follows the encoder's dimensions, not the sensor's nearest format.
+    await configureVideoEncoding(
+      VideoEncodingConfiguration(
+        width: width,
+        height: height,
+        frameRate: frameRate,
+        minimumBitrate: previousEncoding?.minimumBitrate ?? 0,
+        maximumBitrate: previousEncoding?.maximumBitrate ?? -1,
+        encoderPreference: previousEncoding?.encoderPreference ??
+            RealtimeVideoEncoderPreference.maintainFramerate,
+      ),
+    );
+
+    try {
+      await _configureCameraCapture(format);
+    } catch (_) {
+      for (final restore in <Future<void> Function()>[
+        if (previousCapture != null)
+          () => _configureCameraCapture(previousCapture),
+        if (previousEncoding != null)
+          () => configureVideoEncoding(previousEncoding),
+      ]) {
+        try {
+          await restore();
+        } catch (error) {
+          XmaxLogger.error(
+            category: XmaxLoggerCategory.rtc,
+            message:
+                '恢复相机配置失败 (Failed to Restore Camera Configuration)\n'
+                '└─ ${XmaxLogger.localized('原因：', 'Reason: ')}$error',
+          );
+        }
+      }
+      if (previousEncoding == null) {
+        _encoding = null;
+      }
+
+      rethrow;
+    }
+
+    _captureFormat = format;
+  }
+
+  /// Applies camera selection and capture format with encoder-matched preview cropping.
+  ///
+  /// [format] specifies the requested sensor dimensions and capture frame rate.
+  Future<void> _configureCameraCapture(
+    VideoFormat format,
+  ) async {
     await check(
       () => engine.setCameraCapturerConfiguration(
         CameraCapturerConfiguration(
           cameraDirection: _position == CameraPosition.front
               ? CameraDirection.cameraFront
               : CameraDirection.cameraRear,
-          followEncodeDimensionRatio: false,
-          format: VideoFormat(
-            width: width,
-            height: height,
-            fps: frameRate,
-          ),
+          followEncodeDimensionRatio: true,
+          format: format,
         ),
       ),
     );
@@ -631,6 +690,7 @@ class AgoraRtcPlatform implements RtcPlatform {
       } finally {
         _room = null;
         _encoding = null;
+        _captureFormat = null;
         _externalAudioTrackID = null;
         _isMicrophoneCapturing = false;
         isPublishingLocalMedia = false;

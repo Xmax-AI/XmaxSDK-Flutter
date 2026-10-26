@@ -261,8 +261,9 @@ class _HomePageState extends State<HomePage> {
                   const SizedBox(width: 8),
                   Expanded(
                     child: _Metric(
+                      key: const ValueKey('latest-model-metric'),
                       label: t('feed.latestModel'),
-                      value: 'X2.1.1',
+                      value: RealtimeModel.values.last.displayName,
                     ),
                   ),
                 ],
@@ -637,7 +638,7 @@ final class _ModelOptionRow extends StatelessWidget {
 }
 
 final class _Metric extends StatelessWidget {
-  const _Metric({required this.label, required this.value});
+  const _Metric({required this.label, required this.value, super.key});
   final String label;
   final String value;
 
