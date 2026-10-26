@@ -353,8 +353,7 @@ Complete the [host configuration](#host-configuration) before running these exam
 ### Create a client
 
 Create a client and a realtime manager for your screen. This example uses the China
-service; for the global service, use `XmaxEnvironment.global` and
-`RealtimeModel.x2_1_1_preview_us`.
+service; for the global service, use `XmaxEnvironment.global` with the same X2.1 model.
 
 ```dart
 import 'dart:async';
@@ -367,7 +366,7 @@ final client = XmaxClient(
 );
 late final realtime = client.createRealtimeManager(
   options: const RealtimeConfiguration(
-    model: RealtimeModel.x2_1_1_preview_cn,
+    model: RealtimeModel.x2_1,
   ),
 );
 ```

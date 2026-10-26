@@ -64,7 +64,7 @@ void main() {
               route.builder(tester.element(find.byType(HomePage)))
                   as RealtimePage;
           expect(page.apiKey, 'test-key');
-          expect(page.model, RealtimeModel.x2_1_1_preview_cn);
+          expect(page.model, RealtimeModel.x2_1);
           expect(page.environment, XmaxEnvironment.global);
           expect(page.localInput, isA<XLabRealtimeExternalVideoInput>());
           final input = page.localInput! as XLabRealtimeExternalVideoInput;

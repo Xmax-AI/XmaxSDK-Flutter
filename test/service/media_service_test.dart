@@ -16,7 +16,9 @@ void main() {
       }
       for (final size in const [
         Size(832, 1472),
-        Size(1080, 1920),
+        Size(1024, 1920),
+        Size(1920, 1024),
+        Size(1120, 1120),
         Size(1024, 1919.9),
         Size(double.nan, 1920),
       ]) {
@@ -32,20 +34,32 @@ void main() {
     test('${model.value} separates generation canvas from media size', () {
       expect(
         service.resolveGenerationSize(const Size(300, 500)),
-        const Size(1024, 1920),
+        const Size(1080, 1920),
       );
       expect(
         service.resolveGenerationSize(const Size(500, 300)),
-        const Size(1920, 1024),
+        const Size(1920, 1080),
       );
       expect(
         service.resolveGenerationSize(const Size(1200, 1600)),
-        const Size(1024, 1920),
+        const Size(1152, 1536),
       );
       expect(
         service.resolveGenerationSize(const Size(1280, 720)),
-        const Size(1920, 1024),
+        const Size(1920, 1080),
       );
+      expect(
+        service.resolveGenerationSize(const Size(800, 800)),
+        const Size(1408, 1408),
+      );
+      expect(
+        service.resolveGenerationSize(const Size(1600, 1200)),
+        const Size(1536, 1152),
+      );
+      for (final format in model.supportedVideoFormats) {
+        final size = Size(format.width.toDouble(), format.height.toDouble());
+        expect(service.resolveGenerationSize(size), size);
+      }
       expect(
         () => service.resolveGenerationSize(const Size(0, 300)),
         throwsA(isA<XmaxError>()),
@@ -65,7 +79,8 @@ void main() {
           source,
           maximumSize: Size(source.width / 4, source.height / 4),
         );
-        expect(target.width * target.height, 122880);
+        expect(target.width, lessThanOrEqualTo(source.width / 4));
+        expect(target.height, lessThanOrEqualTo(source.height / 4));
         expect(
           target.width * target.height,
           lessThan(service.model.minimumInputPixels),
@@ -73,6 +88,28 @@ void main() {
         expect(target.width % 4, 0);
         expect(target.height % 4, 0);
         expect(target.width * source.height, target.height * source.width);
+      }
+    },
+  );
+
+  test(
+    'X2.1 return sizes preserve each canvas aspect and four-pixel alignment',
+    () {
+      final service = MediaService();
+      for (final (source, expected) in const [
+        (Size(1920, 1080), Size(448, 252)),
+        (Size(1080, 1920), Size(252, 448)),
+        (Size(1408, 1408), Size(352, 352)),
+        (Size(1152, 1536), Size(288, 384)),
+        (Size(1536, 1152), Size(384, 288)),
+      ]) {
+        expect(
+          service.resolveTargetSize(
+            source,
+            maximumSize: Size(source.width / 4, source.height / 4),
+          ),
+          expected,
+        );
       }
     },
   );

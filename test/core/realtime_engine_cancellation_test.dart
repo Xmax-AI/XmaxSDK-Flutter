@@ -192,7 +192,7 @@ class _Fixture {
     final stream = transport.StreamController(rtcManager: rtc);
     manager = XmaxRealtimeManager.internal(
       options: const RealtimeConfiguration(
-        model: RealtimeModel.x2_1_1_preview_cn,
+        model: RealtimeModel.x2_1,
         isAdaptiveQualityEnabled: false,
       ),
       mediaController: media,

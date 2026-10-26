@@ -7,70 +7,31 @@ import 'package:xmax_sdk_example/app.dart';
 import 'package:xmax_sdk_example/features/realtime/realtime_page.dart';
 
 void main() {
-  testWidgets('XLab restores the saved model', (tester) async {
-    SharedPreferencesAsyncPlatform.instance =
-        InMemorySharedPreferencesAsync.withData(<String, Object>{
-          'xlab.language': 'en',
-          'xlab.realtime.model': 'x2.1.1-preview-us',
-        });
-    addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
-
-    await tester.pumpWidget(const XLabApp());
-    await tester.pumpAndSettle();
-    final modelRow = find.byKey(
-      const ValueKey<String>('model-x2.1.1-preview-us'),
-    );
-    expect(
-      tester
-          .widget<Semantics>(
-            find.ancestor(of: modelRow, matching: find.byType(Semantics)).first,
-          )
-          .properties
-          .selected,
-      isTrue,
-    );
-  });
-
-  testWidgets(
-    'retired model fallback retains the full catalog and camera uses the selected model',
-    (tester) async {
+  for (final savedModel in [
+    'x2.1',
+    'x2.1.1-preview-cn',
+    'x2.1.1-preview-us',
+    'x2.0',
+    'unknown-model',
+  ]) {
+    testWidgets('XLab selects X2.1 for cached model $savedModel', (
+      tester,
+    ) async {
       SharedPreferencesAsyncPlatform.instance =
           InMemorySharedPreferencesAsync.withData(<String, Object>{
             'xlab.language': 'en',
             'xlab.realtime.apiKey': 'test-key',
-            'xlab.realtime.model': 'x2.1',
+            'xlab.realtime.model': savedModel,
           });
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
       await tester.pumpWidget(const XLabApp());
       await tester.pumpAndSettle();
-      expect(find.text('MODELS: 2'), findsOneWidget);
-      expect(find.text('X2.0 PRO'), findsNothing);
-      expect(find.text('X2.1.1-preview-cn'), findsOneWidget);
-      expect(find.text('X2.1.1-preview-us'), findsOneWidget);
+      expect(find.text('MODELS: 1'), findsOneWidget);
+      expect(find.text('X2.1'), findsOneWidget);
+      expect(find.textContaining('preview'), findsNothing);
 
-      final defaultRow = find.byKey(
-        const ValueKey<String>('model-x2.1.1-preview-cn'),
-      );
-      expect(
-        tester
-            .widget<Semantics>(
-              find
-                  .ancestor(of: defaultRow, matching: find.byType(Semantics))
-                  .first,
-            )
-            .properties
-            .selected,
-        isTrue,
-      );
-
-      final modelRow = find.byKey(
-        const ValueKey<String>('model-x2.1.1-preview-us'),
-      );
-      await tester.ensureVisible(modelRow);
-      await tester.pumpAndSettle();
-      await tester.tap(modelRow);
-      await tester.pump();
+      final modelRow = find.byKey(const ValueKey<String>('model-x2.1'));
       expect(
         tester
             .widget<Semantics>(
@@ -93,8 +54,8 @@ void main() {
       await tester.pump(const Duration(milliseconds: 100));
       expect(
         tester.widget<RealtimePage>(find.byType(RealtimePage)).model,
-        RealtimeModel.x2_1_1_preview_us,
+        RealtimeModel.x2_1,
       );
-    },
-  );
+    });
+  }
 }

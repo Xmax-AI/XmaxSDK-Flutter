@@ -271,7 +271,7 @@ void main() {
   );
 
   for (final source in [
-    RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+    RealtimeModel.x2_1.defaultCameraVideoFormat,
     _Dependencies.format,
   ]) {
     test(
@@ -286,8 +286,8 @@ void main() {
           localStream: local,
           context: RealtimeContext(prompt: 'first'),
         );
-        final expected = source.resized(width: 1024, height: 1920);
-        final padded = source.width * 1920 != source.height * 1024;
+        final expected = source.resized(width: 1080, height: 1920);
+        final padded = source.width * 1920 != source.height * 1080;
         expect(deps.stream.generationFormats, [expected]);
         expect(deps.stream.generationPadding, [padded]);
         expect(deps.stream.generationTargets, [
@@ -353,18 +353,20 @@ void main() {
   }
 
   for (final preset in RealtimeCameraPreset.values) {
-    test('unavailable preset fails before capture (preset=$preset)', () async {
+    test('X2.1 camera creation accepts preset $preset', () async {
       final deps = _Dependencies();
       final XmaxRealtimeManaging manager = deps.manager;
       addTearDown(manager.close);
-      await expectLater(
-        manager.createLocalCameraStream(
-          preset: preset,
-          position: CameraPosition.back,
-        ),
-        throwsA(isA<XmaxError>()),
+      final local = await manager.createLocalCameraStream(
+        preset: preset,
+        position: CameraPosition.back,
       );
-      expect(deps.media.createCount, 0);
+      expect(local.videoTrack!.videoFormat!.width, preset.size.width.toInt());
+      expect(local.videoTrack!.videoFormat!.height, preset.size.height.toInt());
+      expect(local.videoTrack!.videoFormat!.fps, 30);
+      expect(local.videoTrack!.position, CameraPosition.back);
+      expect(await manager.currentCameraPreset, preset);
+      expect(deps.media.createCount, 1);
     });
   }
 
@@ -375,7 +377,7 @@ void main() {
       final XmaxRealtimeManaging manager = deps.manager;
       addTearDown(manager.close);
       const format = RealtimeVideoFormat(
-        width: 1024,
+        width: 1080,
         height: 1920,
         fps: 24,
         minimumBitrate: 900,
@@ -470,11 +472,14 @@ void main() {
       await deps.manager.updateCameraFormat(
         videoFormat: const RealtimeVideoFormat(
           width: 1920,
-          height: 1024,
+          height: 1080,
           fps: 24,
         ),
       );
-      expect(await deps.manager.currentCameraPreset, isNull);
+      expect(
+        await deps.manager.currentCameraPreset,
+        RealtimeCameraPreset.resolution1920x1080,
+      );
       expect(local.videoTrack, same(deps.media.track));
       expect(local.videoTrack!.videoFormat!.fps, _Dependencies.format.fps);
       expect(deps.media.stopCount, 0);
@@ -1201,9 +1206,7 @@ void main() {
           XmaxClient(
             configuration: XmaxConfiguration(apiKey: 'test-key'),
           ).createRealtimeManager(
-            options: const RealtimeConfiguration(
-              model: RealtimeModel.x2_1_1_preview_cn,
-            ),
+            options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
           );
 
       expect(await manager.localAudioVolume, 0.45);
@@ -1474,7 +1477,7 @@ final class _Dependencies {
     );
     manager = XmaxRealtimeManager.internal(
       options: RealtimeConfiguration(
-        model: RealtimeModel.x2_1_1_preview_cn,
+        model: RealtimeModel.x2_1,
         isAdaptiveQualityEnabled: isAdaptiveQualityEnabled,
       ),
       mediaController: media,
@@ -1881,7 +1884,9 @@ final class _FakeStream implements StreamControlling {
 
 final class _FakeRender implements RenderControlling {
   @override
-  Future<void> setRemoteMediaFrameListener(RealtimeMediaFrameListener? listener) async {}
+  Future<void> setRemoteMediaFrameListener(
+    RealtimeMediaFrameListener? listener,
+  ) async {}
   Completer<void>? removalGate;
   final removalStarted = Completer<void>();
   @override

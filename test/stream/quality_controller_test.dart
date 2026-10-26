@@ -20,7 +20,7 @@ void main() {
   test(
     'disabled adaptation ignores history and manual changes do not persist',
     () async {
-      const model = 'x2.1.1-preview-cn';
+      const model = 'x2.1';
       final history = QualityHistory(model);
       await history.write(RealtimeQualityLevel.l4, downlink: false);
       await history.write(RealtimeQualityLevel.l5, downlink: true);
@@ -98,7 +98,7 @@ void main() {
           );
           expect(l5.width, baseline.width ~/ 2);
           expect(l5.height, baseline.height ~/ 2);
-          expect(l5.width * l5.height, 491520);
+          expect(l5.width * l5.height, baseline.width * baseline.height ~/ 4);
           expect(l5.fps, 16);
           final down = QualityVideoFormat.resolve(
             baseline,
@@ -106,7 +106,10 @@ void main() {
             downlink: true,
             minimumInputPixels: model.minimumInputPixels,
           );
-          expect(down.width * down.height, 491520);
+          expect(
+            down.width * down.height,
+            baseline.width * baseline.height ~/ 4,
+          );
           expect(down.fps, 24);
         }
       },

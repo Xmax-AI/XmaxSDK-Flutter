@@ -34,7 +34,7 @@ class RealtimePage extends StatefulWidget {
   const RealtimePage({
     required this.apiKey,
     this.environment = XmaxEnvironment.china,
-    this.model = RealtimeModel.x2_1_1_preview_cn,
+    this.model = RealtimeModel.x2_1,
     this.customTrajectory = false,
     this.localInput,
     this.realtimeManager,

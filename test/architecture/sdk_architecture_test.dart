@@ -24,7 +24,11 @@ void main() {
       expect(source, isNot(contains('is RtcManager')), reason: path);
       expect(source, isNot(contains('as RtcManager')), reason: path);
       expect(source, contains('_rtcManager.localStream'), reason: path);
-      expect(source, contains('LocalVideoRenderBinding.fromStream'), reason: path);
+      expect(
+        source,
+        contains('LocalVideoRenderBinding.fromStream'),
+        reason: path,
+      );
     }
   });
 
@@ -37,10 +41,7 @@ void main() {
       expect(dual.localTrack, isNull);
       expect(dual.remoteTrack, isNull);
       expect(dual.remoteVideoFadeInDuration, 0.3);
-      expect(
-        const compatibility.XmaxRealtimeVideo(),
-        isA<XmaxRealtimeVideo>(),
-      );
+      expect(const compatibility.XmaxRealtimeVideo(), isA<XmaxRealtimeVideo>());
       expect(
         const compatibility.XmaxRealtimeDualVideo(),
         isA<XmaxRealtimeDualVideo>(),
@@ -51,23 +52,17 @@ void main() {
   test('video widget sources use the public component names', () {
     for (final name in ['XmaxRealtimeVideo', 'XmaxRealtimeDualVideo']) {
       expect(File('lib/src/render/video/$name.dart').existsSync(), isTrue);
-      expect(File('lib/src/render/video/${name}View.dart').existsSync(), isFalse);
+      expect(
+        File('lib/src/render/video/${name}View.dart').existsSync(),
+        isFalse,
+      );
     }
   });
 
   test('public entry points expose the same relocated domain types', () {
+    expect(identical(RealtimeModel.x2_1, model.RealtimeModel.x2_1), isTrue);
     expect(
-      identical(
-        RealtimeModel.x2_1_1_preview_cn,
-        model.RealtimeModel.x2_1_1_preview_cn,
-      ),
-      isTrue,
-    );
-    expect(
-      identical(
-        RealtimeModel.x2_1_1_preview_cn,
-        compatibility.RealtimeModel.x2_1_1_preview_cn,
-      ),
+      identical(RealtimeModel.x2_1, compatibility.RealtimeModel.x2_1),
       isTrue,
     );
     expect(
@@ -87,19 +82,16 @@ void main() {
     );
   });
 
-  test('public model capabilities expose the supported regional previews', () {
-    expect(RealtimeModel.values, [
-      RealtimeModel.x2_1_1_preview_cn,
-      RealtimeModel.x2_1_1_preview_us,
-    ]);
+  test('public model capabilities expose only X2.1', () {
+    expect(RealtimeModel.values, [RealtimeModel.x2_1]);
     expect(
-      RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
-      const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
+      RealtimeModel.x2_1.defaultCameraVideoFormat,
+      const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
     );
-    expect(RealtimeModel.x2_1_1_preview_cn.supportedVideoFormats.length, 2);
-    expect(RealtimeModel.x2_1_1_preview_cn.minimumInputPixels, 200000);
-    expect(RealtimeModel.x2_1_1_preview_cn.maximumInputPixels, 2100000);
-    expect(RealtimeModel.x2_1_1_preview_cn.inputSizeAlignment, 32);
+    expect(RealtimeModel.x2_1.supportedVideoFormats.length, 5);
+    expect(RealtimeModel.x2_1.minimumInputPixels, 200000);
+    expect(RealtimeModel.x2_1.maximumInputPixels, 2100000);
+    expect(RealtimeModel.x2_1.inputSizeAlignment, 32);
   });
 
   test('lower layers do not import realtime domain types from Core', () {
@@ -163,9 +155,7 @@ void main() {
     () async {
       final api = _RecordingApi();
       final components = XmaxRealtimeFactory.make(
-        options: const RealtimeConfiguration(
-          model: RealtimeModel.x2_1_1_preview_cn,
-        ),
+        options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
         apiService: api,
       );
       expect(

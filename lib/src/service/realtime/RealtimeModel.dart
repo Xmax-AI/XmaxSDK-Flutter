@@ -13,13 +13,9 @@ import 'RealtimeVideoFormat.dart';
 /// A realtime generation model supported by XmaxSDK.
 enum RealtimeModel {
 
-  /// The China preview of the X2.1.1 realtime generation model.
+  /// The X2.1 realtime generation model.
   // ignore: constant_identifier_names
-  x2_1_1_preview_cn('x2.1.1-preview-cn'),
-
-  /// The global preview of the X2.1.1 realtime generation model.
-  // ignore: constant_identifier_names
-  x2_1_1_preview_us('x2.1.1-preview-us');
+  x2_1('x2.1');
 
   /// Defines a model's serialized identifier.
   const RealtimeModel(
@@ -30,24 +26,37 @@ enum RealtimeModel {
   final String value;
 
   /// The model's display name.
-  String get displayName => switch (this) {
-    RealtimeModel.x2_1_1_preview_cn => 'X2.1.1-preview-cn',
-    RealtimeModel.x2_1_1_preview_us => 'X2.1.1-preview-us',
-  };
+  String get displayName => 'X2.1';
 
-  /// The supported camera and generation canvas dimensions, with recommended frame rates.
+  /// The supported frame dimensions and recommended frame rates.
   ///
-  /// Camera dimensions must match an entry exactly. An empty list allows variable
-  /// canvas dimensions, resolved using pixel limits and alignment.
+  /// Camera dimensions must match an entry exactly. External video retains its media aspect
+  /// ratio and uses the closest generation canvas. An empty list allows variable canvas
+  /// dimensions, resolved using pixel limits and alignment.
   List<RealtimeVideoFormat> get supportedVideoFormats => const [
     RealtimeVideoFormat(
-      width: 1024,
+      width: 1920,
+      height: 1080,
+      fps: 30,
+    ),
+    RealtimeVideoFormat(
+      width: 1080,
       height: 1920,
       fps: 30,
     ),
     RealtimeVideoFormat(
-      width: 1920,
-      height: 1024,
+      width: 1408,
+      height: 1408,
+      fps: 30,
+    ),
+    RealtimeVideoFormat(
+      width: 1152,
+      height: 1536,
+      fps: 30,
+    ),
+    RealtimeVideoFormat(
+      width: 1536,
+      height: 1152,
       fps: 30,
     ),
   ];
@@ -67,7 +76,7 @@ enum RealtimeModel {
   /// The default camera capture format.
   RealtimeVideoFormat get defaultCameraVideoFormat =>
       const RealtimeVideoFormat(
-        width: 1024,
+        width: 1080,
         height: 1920,
         fps: 30,
       );

@@ -54,7 +54,7 @@ void main() {
         await expectLater(
           RealtimeSessionService(
             apiService: api,
-          ).createSession(model: RealtimeModel.x2_1_1_preview_cn),
+          ).createSession(model: RealtimeModel.x2_1),
           throwsA(
             isA<XmaxError>().having(
               (error) => error.code,
@@ -69,13 +69,13 @@ void main() {
       await expectLater(
         RealtimeSessionService(
           apiService: invalid,
-        ).createSession(model: RealtimeModel.x2_1_1_preview_cn),
+        ).createSession(model: RealtimeModel.x2_1),
         throwsA(isA<XmaxError>()),
       );
       final valid = _RecordingApiService()..modelExtra = jsonEncode(extra);
       final session = await RealtimeSessionService(
         apiService: valid,
-      ).createSession(model: RealtimeModel.x2_1_1_preview_cn);
+      ).createSession(model: RealtimeModel.x2_1);
       expect(session.connection!.userID, 'rtc-user');
       expect(session.connection!.botName, 'bot');
     },

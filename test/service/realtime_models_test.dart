@@ -27,9 +27,8 @@ void main() {
       5,
     ]);
   });
-  test('public enum values match iOS raw values', () {
-    expect(RealtimeModel.x2_1_1_preview_cn.value, 'x2.1.1-preview-cn');
-    expect(RealtimeModel.x2_1_1_preview_us.value, 'x2.1.1-preview-us');
+  test('public enum values use the serialized API contract', () {
+    expect(RealtimeModel.x2_1.value, 'x2.1');
     expect(CameraPosition.front.value, 'front');
     expect(VideoContentMode.fill.value, 'fill');
     expect(RealtimeConnectionState.generating.value, 'Generating');
@@ -69,21 +68,32 @@ void main() {
     );
   });
 
-  test('RealtimeModel exposes supported camera formats and defaults', () {
-    expect(RealtimeModel.values.map((model) => model.value), [
-      'x2.1.1-preview-cn',
-      'x2.1.1-preview-us',
-    ]);
-    expect(RealtimeModel.values.map((model) => model.displayName), [
-      'X2.1.1-preview-cn',
-      'X2.1.1-preview-us',
-    ]);
+  test('RealtimeModel exposes only X2.1 and its supported capture formats', () {
+    expect(RealtimeModel.values, [RealtimeModel.x2_1]);
+    expect(RealtimeModel.values.map((model) => model.value), ['x2.1']);
+    expect(RealtimeModel.values.map((model) => model.displayName), ['X2.1']);
     for (final model in RealtimeModel.values) {
       expect(
         model.supportedVideoFormats.map(
           (format) => Size(format.width.toDouble(), format.height.toDouble()),
         ),
-        const [Size(1024, 1920), Size(1920, 1024)],
+        const [
+          Size(1920, 1080),
+          Size(1080, 1920),
+          Size(1408, 1408),
+          Size(1152, 1536),
+          Size(1536, 1152),
+        ],
+      );
+      expect(
+        model.supportedVideoFormats.map((format) => format.fps),
+        everyElement(30),
+      );
+      expect(
+        model.supportedVideoFormats.map(
+          (format) => Size(format.width.toDouble(), format.height.toDouble()),
+        ),
+        RealtimeCameraPreset.values.map((preset) => preset.size),
       );
       expect(model.minimumInputPixels, 200000);
       expect(model.maximumInputPixels, 2100000);
@@ -91,7 +101,7 @@ void main() {
       expect(model.defaultFrameRate, 30);
       expect(
         model.defaultCameraVideoFormat,
-        const RealtimeVideoFormat(width: 1024, height: 1920, fps: 30),
+        const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
       );
     }
   });

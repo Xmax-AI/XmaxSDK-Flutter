@@ -59,7 +59,7 @@ void main() {
       await d.poorSamples();
       expect(await d.manager.uplinkQualityLevel, RealtimeQualityLevel.l3);
       expect(await d.manager.downlinkQualityLevel, RealtimeQualityLevel.l3);
-      expect(d.rtc.formats.last.width, 768);
+      expect(d.rtc.formats.last.width, 792);
       expect(
         (await d.manager.currentState).connectionState,
         RealtimeConnectionState.generating,
@@ -84,9 +84,9 @@ void main() {
 
       await d.manager.setUplinkQualityLevel(RealtimeQualityLevel.l5);
       final format = d.rtc.formats.last;
-      expect((format.width, format.height, format.frameRate), (512, 960, 16));
+      expect((format.width, format.height, format.frameRate), (540, 960, 16));
       await d.manager.setDownlinkQualityLevel(RealtimeQualityLevel.l5);
-      expect(d.connection.currentTargetSize, const Size(512, 960));
+      expect(d.connection.currentTargetSize, const Size(540, 960));
       expect(
         d.stream.qualityConfiguration!.baseline,
         d.media.currentVideoFormat,
@@ -106,24 +106,24 @@ void main() {
       final d = _Fixture();
       addTearDown(d.manager.close);
       await d.start();
-      expect(d.connection.currentTargetSize, const Size(896, 1680));
+      expect(d.connection.currentTargetSize, const Size(972, 1728));
       final track = d.connection.currentRemoteStream!.videoTrack!;
       expect(
         (track.videoFormat!.width, track.videoFormat!.height),
-        (896, 1680),
+        (972, 1728),
       );
       final baseline = d.media.currentVideoFormat;
       await d.poorSamples();
       expect(await d.manager.uplinkQualityLevel, RealtimeQualityLevel.l3);
       expect(await d.manager.downlinkQualityLevel, RealtimeQualityLevel.l3);
-      expect(d.connection.currentTargetSize, const Size(768, 1440));
+      expect(d.connection.currentTargetSize, const Size(792, 1408));
       expect(d.connection.currentRemoteStream!.videoTrack, same(track));
       expect(
         (track.videoFormat!.width, track.videoFormat!.height),
-        (768, 1440),
+        (792, 1408),
       );
       expect(d.media.currentVideoFormat, baseline);
-      expect(d.rtc.formats.last.width, 768);
+      expect(d.rtc.formats.last.width, 792);
       expect(d.room.starts, 1);
     },
   );
@@ -207,7 +207,7 @@ void main() {
       await update;
       expect(d.room.conditions, 1);
       expect(d.room.conditionTarget, isNull);
-      expect(d.connection.currentTargetSize, const Size(768, 1440));
+      expect(d.connection.currentTargetSize, const Size(792, 1408));
       expect(d.room.starts, 1);
     },
   );
@@ -305,7 +305,7 @@ class _Fixture {
     );
     manager = XmaxRealtimeManager.internal(
       options: RealtimeConfiguration(
-        model: RealtimeModel.x2_1_1_preview_cn,
+        model: RealtimeModel.x2_1,
         isAdaptiveQualityEnabled: adaptive,
       ),
       mediaController: media,

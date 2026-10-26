@@ -22,7 +22,7 @@ final class MediaService implements MediaServicing {
 
   /// Creates a model-aware media dimension resolver.
   MediaService({
-    this.model = RealtimeModel.x2_1_1_preview_cn,
+    this.model = RealtimeModel.x2_1,
   });
 
   /// The model defining dimension constraints.

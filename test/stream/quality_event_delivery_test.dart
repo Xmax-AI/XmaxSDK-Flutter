@@ -129,7 +129,7 @@ void main() {
     () async {
       final quality = QualityController();
       await quality.prepareQuality(
-        baseline: RealtimeModel.x2_1_1_preview_cn.defaultCameraVideoFormat,
+        baseline: RealtimeModel.x2_1.defaultCameraVideoFormat,
         model: 'test',
         isAdaptiveQualityEnabled: false,
       );
