@@ -87,13 +87,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(manager.useMicrophone, isTrue);
       expect(
-        tester.widget<XmaxRealtimeDualVideo>(
-          find.byType(XmaxRealtimeDualVideo),
-        ).videoContentMode,
+        tester
+            .widget<XmaxRealtimeDualVideo>(find.byType(XmaxRealtimeDualVideo))
+            .videoContentMode,
         VideoContentMode.fill,
       );
       expect(find.text('音量'), findsOneWidget);
-      expect(find.byIcon(Icons.aspect_ratio_rounded), findsNothing);
+      expect(find.byIcon(Icons.aspect_ratio_rounded), findsOneWidget);
       expect(find.byIcon(Icons.bolt), findsNothing);
       final anchor = tester.getRect(find.byIcon(Icons.tune_rounded));
       await tester.tap(find.text('音量'));
@@ -166,12 +166,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(manager.volume, 1);
       expect(
-        tester.widget<XmaxRealtimeDualVideo>(
-          find.byType(XmaxRealtimeDualVideo),
-        ).videoContentMode,
+        tester
+            .widget<XmaxRealtimeDualVideo>(find.byType(XmaxRealtimeDualVideo))
+            .videoContentMode,
         VideoContentMode.fit,
       );
       expect(find.text('声音'), findsOneWidget);
+      expect(find.byIcon(Icons.aspect_ratio_rounded), findsNothing);
       final anchor = tester.getRect(find.byIcon(Icons.tune_rounded));
       await tester.tap(find.text('音量'));
       await tester.pumpAndSettle();

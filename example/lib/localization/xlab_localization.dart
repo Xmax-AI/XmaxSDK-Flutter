@@ -84,6 +84,8 @@ final class XLabLocalization extends ChangeNotifier {
       text(key).replaceFirst('%d', count.toString()).replaceAll('%%', '%');
 
   static const _chinese = <String, String>{
+    'common.cancel': '取消',
+    'realtime.camera.format': '比例',
     'record.title': '录制',
     'record.stop': '停止',
     'record.saving': '保存中',
@@ -216,6 +218,8 @@ final class XLabLocalization extends ChangeNotifier {
   };
 
   static const _english = <String, String>{
+    'common.cancel': 'Cancel',
+    'realtime.camera.format': 'Ratio',
     'record.title': 'Record',
     'record.stop': 'Stop',
     'record.saving': 'Saving',

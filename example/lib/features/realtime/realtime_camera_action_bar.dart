@@ -5,16 +5,20 @@ import '../../localization/xlab_localization.dart';
 class RealtimeCameraActionBar extends StatelessWidget {
   const RealtimeCameraActionBar({
     required this.cameraEnabled,
+    required this.formatEnabled,
     required this.statisticsVisible,
     required this.onSwitchCamera,
+    required this.onOpenCameraFormat,
     required this.onToggleStatistics,
     required this.onOpenAudioVolume,
     super.key,
   });
 
   final bool cameraEnabled;
+  final bool formatEnabled;
   final bool statisticsVisible;
   final VoidCallback onSwitchCamera;
+  final VoidCallback onOpenCameraFormat;
   final VoidCallback onToggleStatistics;
   final ValueChanged<BuildContext> onOpenAudioVolume;
 
@@ -27,6 +31,12 @@ class RealtimeCameraActionBar extends StatelessWidget {
         label: XLabLocalization.shared.text('realtime.flip'),
         tooltip: XLabLocalization.shared.text('realtime.flipCamera'),
         onPressed: cameraEnabled ? onSwitchCamera : null,
+      ),
+      _CameraActionButton(
+        icon: Icons.aspect_ratio_rounded,
+        label: XLabLocalization.shared.text('realtime.camera.format'),
+        tooltip: XLabLocalization.shared.text('realtime.camera.format'),
+        onPressed: formatEnabled ? onOpenCameraFormat : null,
       ),
       _CameraActionButton(
         icon: Icons.tune_rounded,

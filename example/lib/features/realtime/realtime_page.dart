@@ -9,6 +9,7 @@ import 'package:xmax_sdk/xmax_sdk.dart';
 import '../../localization/xlab_localization.dart';
 import 'realtime_control_panel.dart';
 import 'realtime_camera_action_bar.dart';
+import 'realtime_camera_format_menu.dart';
 import 'realtime_camera_switch_transition.dart';
 import 'realtime_loading_overlay.dart';
 import 'realtime_statistics_panel.dart';
@@ -66,6 +67,9 @@ class _RealtimePageState extends State<RealtimePage>
   };
   RealtimeMediaStream? _localStream;
   RealtimeMediaStream? _remoteStream;
+  RealtimeVideoFormat? _preferredCameraFormat;
+  Future<void>? _cameraFormatOperation;
+  Route<RealtimeVideoFormat>? _cameraFormatRoute;
   RealtimeState _state = const RealtimeState(
     connectionState: RealtimeConnectionState.idle,
   );
@@ -102,6 +106,19 @@ class _RealtimePageState extends State<RealtimePage>
   late final XLabTrajectoryRenderer? _customRenderer = widget.customTrajectory
       ? XLabTrajectoryRenderer()
       : null;
+
+  RealtimeVideoFormat get _currentCameraFormat =>
+      _localStream?.videoTrack?.videoFormat ??
+      _preferredCameraFormat ??
+      widget.model.defaultCameraVideoFormat;
+
+  bool get _canChangeCameraFormat =>
+      widget.localInput == null &&
+      _localStream != null &&
+      _cameraReady &&
+      !_busy &&
+      !_isSuspendedForBackground &&
+      _state.connectionState == RealtimeConnectionState.ready;
 
   @override
   void initState() {
@@ -225,6 +242,9 @@ class _RealtimePageState extends State<RealtimePage>
     });
     _manager.setStateListener((state) {
       if (!mounted || _isSuspendedForBackground) return;
+      if (state.connectionState != RealtimeConnectionState.ready) {
+        _dismissCameraFormatMenu();
+      }
       if (state.connectionState != RealtimeConnectionState.generating &&
           (_videoRecorder.state == RealtimeRecordingState.recording ||
               _videoRecorder.state == RealtimeRecordingState.preparing)) {
@@ -309,7 +329,10 @@ class _RealtimePageState extends State<RealtimePage>
           }
         }
       } else {
-        stream = await _manager.createLocalCameraStream(useMicrophone: true);
+        stream = await _manager.createLocalCameraStream(
+          videoFormat: _preferredCameraFormat,
+          useMicrophone: true,
+        );
         if (_isCurrentRealtimeOperation(operation)) _audioControls.reset(0);
       }
       if (_isCurrentRealtimeOperation(operation)) {
@@ -375,6 +398,20 @@ class _RealtimePageState extends State<RealtimePage>
     RealtimeContext context, {
     bool faceRestoration = false,
   }) async {
+    final formatOperation = _cameraFormatOperation;
+    if (formatOperation != null) {
+      final operation = _realtimeOperationVersion;
+      try {
+        await formatOperation;
+      } catch (_) {
+        return;
+      }
+      if (!_isCurrentRealtimeOperation(operation) ||
+          _isSuspendedForBackground) {
+        return;
+      }
+    }
+
     final localStream = _localStream;
     if (localStream == null) return;
 
@@ -645,6 +682,68 @@ class _RealtimePageState extends State<RealtimePage>
     }
   }
 
+  Future<void> _showCameraFormatMenu() async {
+    if (!_canChangeCameraFormat || _cameraFormatRoute != null) return;
+
+    final operation = _realtimeOperationVersion;
+    final RealtimeVideoFormat? selected;
+    try {
+      selected = await showRealtimeCameraFormatMenu(
+        context: context,
+        formats: widget.model.supportedVideoFormats,
+        currentFormat: _currentCameraFormat,
+        onPresented: (route) => _cameraFormatRoute = route,
+      );
+    } finally {
+      _cameraFormatRoute = null;
+    }
+
+    if (selected == null ||
+        !_isCurrentRealtimeOperation(operation) ||
+        !_canChangeCameraFormat) {
+      return;
+    }
+    await _updateCameraFormat(selected);
+  }
+
+  Future<void> _updateCameraFormat(RealtimeVideoFormat format) async {
+    if (!_canChangeCameraFormat) return;
+    final current = _currentCameraFormat;
+    if (current.width == format.width && current.height == format.height) {
+      return;
+    }
+
+    final operation = ++_realtimeOperationVersion;
+    setState(() {
+      _busy = true;
+      _lastError = null;
+    });
+    Future<void>? update;
+    try {
+      update = _manager.updateCameraFormat(videoFormat: format);
+      _cameraFormatOperation = update;
+      await update;
+      if (_isCurrentRealtimeOperation(operation)) {
+        setState(() => _preferredCameraFormat = format);
+      }
+    } catch (error) {
+      if (_isCurrentRealtimeOperation(operation)) _showError(error);
+    } finally {
+      if (identical(_cameraFormatOperation, update)) {
+        _cameraFormatOperation = null;
+      }
+      if (_isCurrentRealtimeOperation(operation)) {
+        setState(() => _busy = false);
+      }
+    }
+  }
+
+  void _dismissCameraFormatMenu() {
+    final route = _cameraFormatRoute;
+    _cameraFormatRoute = null;
+    if (route != null && route.isActive) route.navigator?.removeRoute(route);
+  }
+
   Future<void> _switchCamera() async {
     if (_busy || _localStream == null) return;
 
@@ -809,6 +908,7 @@ class _RealtimePageState extends State<RealtimePage>
     _realtimeOperationVersion += 1;
     _audioControls.reset(0);
     _dismissAudioVolume();
+    _dismissCameraFormatMenu();
     FocusManager.instance.primaryFocus?.unfocus();
 
     // Clear the active realtime session immediately while
@@ -879,6 +979,7 @@ class _RealtimePageState extends State<RealtimePage>
   @override
   void dispose() {
     _realtimeOperationVersion += 1;
+    _dismissCameraFormatMenu();
     _videoRecorder.removeListener(_recordingDidChange);
     unawaited(_videoRecorder.stop().whenComplete(_videoRecorder.dispose));
     _audioControls.removeListener(_audioControlsDidChange);
@@ -954,7 +1055,7 @@ class _RealtimePageState extends State<RealtimePage>
                         onRemoteVideoReady: _remoteVideoDidBecomeReady,
                         videoContentMode: _externalVideoPath != null
                             ? VideoContentMode.fit
-                            : VideoContentMode.fill,
+                            : realtimeCameraContentMode(_currentCameraFormat),
                         trajectoryRenderer: _customRenderer,
                       ),
                     ),
@@ -1000,7 +1101,7 @@ class _RealtimePageState extends State<RealtimePage>
                 mode: _panelMode,
                 generating: generating,
                 busy: _busy,
-                enabled: _cameraReady,
+                enabled: _cameraReady && _cameraFormatOperation == null,
                 promptController: _promptController,
                 referencesByCategory: _referencesByCategory,
                 selectedReference: _selectedReference,
@@ -1053,8 +1154,11 @@ class _RealtimePageState extends State<RealtimePage>
                     top: 6,
                     child: RealtimeCameraActionBar(
                       cameraEnabled: !_busy && _localStream != null,
+                      formatEnabled: _canChangeCameraFormat,
                       statisticsVisible: _isStatisticsVisible,
                       onSwitchCamera: _switchCamera,
+                      onOpenCameraFormat: () =>
+                          unawaited(_showCameraFormatMenu()),
                       onOpenAudioVolume: (context) => unawaited(
                         _showAudioVolume(context, preferLeft: true),
                       ),

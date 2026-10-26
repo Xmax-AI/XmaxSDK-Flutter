@@ -22,8 +22,11 @@ void main() {
             alignment: Alignment.topRight,
             child: RealtimeCameraActionBar(
               cameraEnabled: false,
+              formatEnabled: false,
               statisticsVisible: true,
               onSwitchCamera: () => cameraTaps++,
+              onOpenCameraFormat: () =>
+                  fail('Disabled format button was invoked'),
               onToggleStatistics: () => statisticsTaps++,
               onOpenAudioVolume: (_) => volumeTaps++,
             ),
@@ -36,23 +39,26 @@ void main() {
     final format = find.byIcon(Icons.aspect_ratio_rounded);
     final statistics = find.byIcon(Icons.bar_chart_rounded);
     expect(tester.getCenter(statistics).dx, tester.getCenter(camera).dx);
-    expect(format, findsNothing);
-    expect(tester.getCenter(statistics).dy - tester.getCenter(camera).dy, 124);
+    expect(format, findsOneWidget);
+    expect(tester.getCenter(format).dy - tester.getCenter(camera).dy, 62);
+    expect(tester.getCenter(statistics).dy - tester.getCenter(camera).dy, 186);
     expect(
       tester.getSize(find.byType(RealtimeCameraActionBar)),
-      const Size(58, 186),
+      const Size(58, 248),
     );
     expect(find.text('翻转'), findsOneWidget);
     expect(find.text('统计'), findsOneWidget);
     expect(find.text('音量'), findsOneWidget);
+    expect(find.text('比例'), findsOneWidget);
     expect(
       tester.getCenter(find.byIcon(Icons.tune_rounded)).dy -
           tester.getCenter(camera).dy,
-      62,
+      124,
     );
     expect(tester.widget<Icon>(statistics).color, const Color(0xFF007AFF));
     expect(tester.widget<Text>(find.text('统计')).style?.fontSize, 11);
     await tester.tap(camera);
+    await tester.tap(format);
     await tester.tap(statistics);
     await tester.tap(find.text('音量'));
     expect(cameraTaps, 0);
