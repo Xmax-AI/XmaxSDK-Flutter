@@ -163,44 +163,8 @@ We introduce XmaxSDK, a Flutter SDK designed for real-time interactive video gen
 
 ## Installation
 
-XmaxSDK is published on [pub.dev](https://pub.dev/packages/xmax_sdk) and can also
-be integrated from a Git revision or a local source checkout.
-
-### pub.dev
-
-Add XmaxSDK to your application's `pubspec.yaml`:
-
-```yaml
-dependencies:
-  xmax_sdk: ^1.0.5
-```
-
-### Git
-
-To use a release tag or commit directly from GitHub:
-
-```yaml
-dependencies:
-  xmax_sdk:
-    git:
-      url: https://github.com/Xmax-AI/XmaxSDK-Flutter.git
-      ref: 1.0.5
-```
-
-### Local path
-
-To use a local source checkout during development:
-
-```yaml
-dependencies:
-  xmax_sdk:
-    path: ../XmaxSDK
-```
-
-Install the dependencies:
-
 ```bash
-flutter pub get
+flutter pub add xmax_sdk:1.1.0
 ```
 
 <br>
