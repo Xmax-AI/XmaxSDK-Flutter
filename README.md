@@ -348,135 +348,50 @@ The same configuration is available in the example's
 
 ## Quick Start
 
-Complete the [host configuration](#host-configuration) before running these examples.
-
-### Create a client
-
-Create a client and a realtime manager for your screen. This example uses the China
-service; for the global service, use `XmaxEnvironment.global` with the same X2.1 model.
+Use your front camera to turn yourself into a character from a reference image in real time.
 
 ```dart
-import 'dart:async';
-
-import 'package:flutter/material.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
-final client = XmaxClient(
-  configuration: XmaxConfiguration(apiKey: 'YOUR_XMAX_API_KEY'),
+// Initialize the client
+final client = XmaxClient(configuration: XmaxConfiguration(
+  apiKey: '<YOUR_XMAX_API_KEY>',
+  environment: XmaxEnvironment.global,
+));
+
+// Initialize the realtime manager
+final realtime = client.createRealtimeManager(
+  options: const RealtimeConfiguration(model: RealtimeModel.x2_1),
 );
-late final realtime = client.createRealtimeManager(
-  options: const RealtimeConfiguration(
-    model: RealtimeModel.x2_1,
+
+// Create the video view
+// Declare tracks in the page State and use buildVideoView() in build()
+RealtimeVideoTrack? localTrack;
+RealtimeVideoTrack? remoteTrack;
+XmaxRealtimeDualVideo buildVideoView() => XmaxRealtimeDualVideo(
+  localTrack: localTrack,
+  remoteTrack: remoteTrack,
+);
+
+// Create a camera stream and bind the preview
+final localStream = await realtime.createLocalCameraStream(
+  position: CameraPosition.front,
+);
+setState(() => localTrack = localStream.videoTrack);
+
+// Once the preview is ready, start generation and display the result
+final remoteStream = await realtime.startGeneration(
+  localStream: localStream,
+  context: RealtimeContext(
+    prompt: "视频中角色替换成参考图中角色",
+    referencePath: "https://cdn.xmax.ai/images/playground/charx/charx_image1.png?v=26&presetVersion=20261022",
   ),
 );
+setState(() => remoteTrack = remoteStream?.videoTrack);
+
+// Run the following when generation is no longer needed
+await realtime.close();
 ```
-
-<br>
-
-### Generate and display video
-
-Keep the manager and streams in your widget's state, and display the local track
-before starting generation. `XmaxRealtimeDualVideo` switches from preview to the
-generated video when its first frame is ready.
-
-```dart
-RealtimeMediaStream? localStream;
-RealtimeMediaStream? remoteStream;
-
-Future<void> startGeneration() async {
-  final local = await realtime.createLocalCameraStream();
-  if (!mounted) return;
-  setState(() => localStream = local);
-
-  final remote = await realtime.startGeneration(
-    localStream: local,
-    context: RealtimeContext(
-      prompt: '视频中角色替换成参考图中角色',
-      referencePath:
-          'https://platform.xmaxai.com/images/source/charx/chatx_image1.jpg',
-    ),
-  );
-  if (!mounted) return;
-  setState(() => remoteStream = remote);
-}
-```
-
-```dart
-@override
-Widget build(BuildContext context) {
-  final local = localStream;
-  if (local == null) {
-    return const Center(child: CircularProgressIndicator());
-  }
-
-  return XmaxRealtimeDualVideo(
-    localTrack: local.videoTrack,
-    remoteTrack: remoteStream?.videoTrack,
-  );
-}
-```
-
-<br>
-
-### Listen for events
-
-Register listeners before creating the input stream. Observe state changes and
-runtime failures through `setStateListener`, and handle errors from awaited calls
-with `try` / `catch`.
-
-```dart
-await realtime.setStateListener((state) {
-  debugPrint('State: ${state.connectionState.value}');
-  final error = state.reason?.error;
-  if (error != null) {
-    debugPrint('Error: ${error.code.value} ${error.message}');
-  }
-});
-```
-
-<br>
-
-### Resource cleanup
-
-Use `disconnect()` to stop generation while keeping the local preview active:
-
-```dart
-await realtime.disconnect();
-```
-
-Call `close()` when leaving the screen to release all SDK resources; there is no
-need to disconnect first.
-
-```dart
-@override
-void dispose() {
-  unawaited(realtime.close());
-  super.dispose();
-}
-```
-
-<br>
-
-### Upload a reference image
-
-`RealtimeContext.referencePath` accepts a remote image URL. Upload a local image
-through the storage manager and pass the returned URL as the reference.
-
-```dart
-final storage = client.createStorageManager();
-final uploaded = await storage.uploadImage(
-  at: Uri.file('/path/to/reference.jpg'),
-);
-final referenceImageURL = uploaded.url.toString();
-```
-
-<br>
-
-See the [XLab realtime example](example/lib/features/realtime/realtime_page.dart)
-for external capture, recording, touch interaction, and quality controls. Detailed
-contracts are documented in the
-[realtime API](lib/src/core/realtime/XmaxRealtimeManaging.dart) and
-[storage API](lib/src/core/storage/XmaxStorageManaging.dart).
 
 <br>
 
