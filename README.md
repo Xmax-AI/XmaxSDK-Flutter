@@ -399,8 +399,7 @@ await realtime.close();
 
 A complete example application for both iOS and Android is available in
 [`example`](https://github.com/Xmax-AI/XmaxSDK-Flutter/tree/main/example). It
-demonstrates real-time generation using live camera feeds and app-owned external
-video sources, including decoded video and optional PCM audio.
+demonstrates real-time generation using live camera feeds and video files.
 
 <p align="center"><img src="./materials/images/xlab/home.jpg" alt="X-Lab home" width="20%" /><img src="./materials/images/xlab/features.jpg" alt="X-Lab SDK features" width="20%" /><img src="./materials/images/xlab/storage.jpg" alt="X-Lab storage service" width="20%" /><img src="./materials/images/xlab/realtime-generation.jpg" alt="X-Lab realtime generation" width="20%" /><img src="./materials/images/xlab/trajectory-generation.jpg" alt="X-Lab trajectory generation" width="20%" /></p>
 
