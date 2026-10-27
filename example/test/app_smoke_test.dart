@@ -18,7 +18,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('XLAB'), findsOneWidget);
-    expect(find.text('v1.0.5'), findsOneWidget);
+    expect(find.text('v1.1.0'), findsOneWidget);
     expect(find.text('Android 8.0+'), findsOneWidget);
     expect(
       find.descendant(

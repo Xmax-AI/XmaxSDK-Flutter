@@ -228,6 +228,6 @@ void main() {
       'sdk_version',
       'device_model',
     });
-    expect(RuntimeInfo.current.toJson()['sdk_version'], '1.0.5');
+    expect(RuntimeInfo.current.toJson()['sdk_version'], '1.1.0');
   });
 }
