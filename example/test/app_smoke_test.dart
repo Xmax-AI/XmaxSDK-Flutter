@@ -6,6 +6,8 @@ import 'package:shared_preferences_platform_interface/shared_preferences_async_p
 import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk_example/app.dart';
 
+import 'support/credit_balance_stub.dart';
+
 void main() {
   testWidgets('shows the supported capability entry points', (tester) async {
     SharedPreferencesAsyncPlatform.instance =
@@ -14,7 +16,9 @@ void main() {
           'xlab.language': 'zh-Hans',
         });
     addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
-    await tester.pumpWidget(const XLabApp());
+    await tester.pumpWidget(
+      const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
+    );
     await tester.pumpAndSettle();
 
     expect(find.text('XLAB'), findsOneWidget);

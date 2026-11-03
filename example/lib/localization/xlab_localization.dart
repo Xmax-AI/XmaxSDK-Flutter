@@ -84,6 +84,10 @@ final class XLabLocalization extends ChangeNotifier {
       text(key).replaceFirst('%d', count.toString()).replaceAll('%%', '%');
 
   static const _chinese = <String, String>{
+    'feed.credits': '积分',
+    'feed.credits.loading': '加载中',
+    'feed.credits.unavailable': '不可用',
+    'feed.credits.refreshFailed': '积分刷新失败。',
     'common.cancel': '取消',
     'realtime.camera.format': '比例',
     'record.title': '录制',
@@ -218,6 +222,10 @@ final class XLabLocalization extends ChangeNotifier {
   };
 
   static const _english = <String, String>{
+    'feed.credits': 'Credits',
+    'feed.credits.loading': 'Loading',
+    'feed.credits.unavailable': 'Unavailable',
+    'feed.credits.refreshFailed': 'Unable to refresh credits.',
     'common.cancel': 'Cancel',
     'realtime.camera.format': 'Ratio',
     'record.title': 'Record',

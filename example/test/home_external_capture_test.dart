@@ -9,6 +9,8 @@ import 'package:xmax_sdk_example/features/realtime/realtime_local_input.dart';
 import 'package:xmax_sdk_example/features/realtime/realtime_page.dart';
 import 'package:xmax_sdk_example/localization/xlab_localization.dart';
 
+import 'support/credit_balance_stub.dart';
+
 void main() {
   setUp(() async {
     SharedPreferencesAsyncPlatform.instance =
@@ -32,6 +34,7 @@ void main() {
           MaterialApp(
             navigatorObservers: [observer],
             home: HomePage(
+              creditBalanceQueryFactory: stubCreditBalanceQuery,
               pickVideo: () async {
                 selections++;
                 return cancelled ? null : XFile('/tmp/external.mp4');

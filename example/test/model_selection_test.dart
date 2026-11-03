@@ -6,6 +6,8 @@ import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk_example/app.dart';
 import 'package:xmax_sdk_example/features/realtime/realtime_page.dart';
 
+import 'support/credit_balance_stub.dart';
+
 void main() {
   for (final savedModel in [
     'x2.1',
@@ -25,7 +27,9 @@ void main() {
           });
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
-      await tester.pumpWidget(const XLabApp());
+      await tester.pumpWidget(
+        const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
+      );
       await tester.pumpAndSettle();
       expect(find.text('MODELS: 1'), findsOneWidget);
       expect(

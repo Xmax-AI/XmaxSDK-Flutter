@@ -8,6 +8,8 @@ import 'package:xmax_sdk_example/app.dart';
 import 'package:xmax_sdk_example/features/storage/storage_page.dart';
 import 'package:xmax_sdk_example/localization/xlab_localization.dart';
 
+import 'support/credit_balance_stub.dart';
+
 void main() {
   testWidgets('follow system updates language and service environment', (
     tester,
@@ -21,7 +23,9 @@ void main() {
     addTearDown(tester.binding.platformDispatcher.clearLocaleTestValue);
     await XLabLocalization.shared.setLanguage(XLabLanguage.system);
 
-    await tester.pumpWidget(const XLabApp());
+    await tester.pumpWidget(
+      const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
+    );
     await tester.pumpAndSettle();
     expect(find.text('实时交互视频模型'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.china);
@@ -49,7 +53,9 @@ void main() {
       });
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
       await XLabLocalization.shared.setLanguage(language);
-      await tester.pumpWidget(const XLabApp());
+      await tester.pumpWidget(
+        const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
+      );
       await tester.pumpAndSettle();
 
       void expectSelected(RealtimeModel model) {
@@ -103,7 +109,9 @@ void main() {
       expectSelected(savedModel);
 
       await tester.pumpWidget(const SizedBox());
-      await tester.pumpWidget(const XLabApp());
+      await tester.pumpWidget(
+        const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
+      );
       await tester.pumpAndSettle();
       expectSelected(savedModel);
     });
@@ -119,7 +127,9 @@ void main() {
           });
       addTearDown(() => SharedPreferencesAsyncPlatform.instance = null);
 
-      await tester.pumpWidget(const XLabApp());
+      await tester.pumpWidget(
+        const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
+      );
       await tester.pumpAndSettle();
 
       expect(find.text('Realtime Interactive Video'), findsOneWidget);

@@ -12,23 +12,35 @@ import '../../ui/xlab_theme.dart';
 import '../realtime/realtime_local_input.dart';
 import '../realtime/realtime_page.dart';
 import '../storage/storage_page.dart';
+import 'feed_credit_balance.dart';
+import 'feed_credit_balance_pill.dart';
 
 class HomePage extends StatefulWidget {
-  const HomePage({this.pickImage, this.pickVideo, super.key});
+  const HomePage({
+    this.pickImage,
+    this.pickVideo,
+    this.creditBalanceQueryFactory,
+    super.key,
+  });
 
   final Future<XFile?> Function()? pickImage;
   final Future<XFile?> Function()? pickVideo;
+  final FeedCreditBalanceQueryFactory? creditBalanceQueryFactory;
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   static const _apiKeyStorageKey = 'xlab.realtime.apiKey';
   static const _modelStorageKey = 'xlab.realtime.model';
   static const _isImagePipelineEnabled = false;
   final _apiKeyController = TextEditingController();
   final _preferences = SharedPreferencesAsync();
+  late final FeedCreditBalancePoller _creditBalance;
+  bool _isFeedVisible = true;
+  bool _isApplicationActive = true;
+  int _apiKeyEditVersion = 0;
   bool _obscureApiKey = true;
   bool _isPickingImage = false;
   RealtimeModel _selectedModel = RealtimeModel.x2_1;
@@ -43,8 +55,48 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    final lifecycleState = WidgetsBinding.instance.lifecycleState;
+    _isApplicationActive =
+        lifecycleState == null || lifecycleState == AppLifecycleState.resumed;
+    _creditBalance = FeedCreditBalancePoller(
+      makeQuery: widget.creditBalanceQueryFactory,
+    );
+    _apiKeyController.addListener(_refreshCreditBalance);
+    XLabLocalization.shared.addListener(_refreshCreditBalance);
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_loadAPIKey());
     unawaited(_loadSelectedModel());
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _isApplicationActive = state == AppLifecycleState.resumed;
+    _refreshCreditBalance();
+  }
+
+  void _refreshCreditBalance() {
+    if (!mounted) return;
+    _creditBalance.update(
+      apiKey: _apiKeyController.text,
+      environment: XLabLocalization.shared.environment,
+      isActive: _isFeedVisible && _isApplicationActive && !_isPickingImage,
+    );
+  }
+
+  Future<void> _pushPage(WidgetBuilder builder) async {
+    if (!_isFeedVisible) return;
+    _isFeedVisible = false;
+    _refreshCreditBalance();
+    try {
+      await Navigator.of(
+        context,
+      ).push(MaterialPageRoute<void>(builder: builder));
+    } finally {
+      if (mounted) {
+        _isFeedVisible = true;
+        _refreshCreditBalance();
+      }
+    }
   }
 
   Future<void> _loadSelectedModel() async {
@@ -67,8 +119,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _loadAPIKey() async {
+    final version = _apiKeyEditVersion;
     final apiKey = await _preferences.getString(_apiKeyStorageKey) ?? '';
-    if (!mounted) {
+    if (!mounted || version != _apiKeyEditVersion) {
       return;
     }
     _apiKeyController.text = apiKey;
@@ -97,6 +150,10 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    XLabLocalization.shared.removeListener(_refreshCreditBalance);
+    _apiKeyController.removeListener(_refreshCreditBalance);
+    _creditBalance.dispose();
     _apiKeyController.dispose();
     super.dispose();
   }
@@ -127,11 +184,7 @@ class _HomePageState extends State<HomePage> {
     if (apiKey == null) return;
     final environment = XLabLocalization.shared.environment;
     final model = _selectedModel;
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => builder(apiKey, environment, model),
-      ),
-    );
+    unawaited(_pushPage((_) => builder(apiKey, environment, model)));
   }
 
   Future<void> _openImagePipeline() async {
@@ -141,6 +194,7 @@ class _HomePageState extends State<HomePage> {
     if (apiKey == null) return;
 
     _isPickingImage = true;
+    _refreshCreditBalance();
     try {
       final image =
           await (widget.pickImage?.call() ??
@@ -150,16 +204,14 @@ class _HomePageState extends State<HomePage> {
               ));
       if (image == null || !mounted) return;
 
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => RealtimePage(
-            apiKey: apiKey,
-            environment: XLabLocalization.shared.environment,
-            model: _selectedModel,
-            localInput: XLabRealtimeImageInput(
-              path: image.path,
-              name: image.name,
-            ),
+      await _pushPage(
+        (_) => RealtimePage(
+          apiKey: apiKey,
+          environment: XLabLocalization.shared.environment,
+          model: _selectedModel,
+          localInput: XLabRealtimeImageInput(
+            path: image.path,
+            name: image.name,
           ),
         ),
       );
@@ -172,6 +224,7 @@ class _HomePageState extends State<HomePage> {
       );
     } finally {
       _isPickingImage = false;
+      _refreshCreditBalance();
     }
   }
 
@@ -180,21 +233,20 @@ class _HomePageState extends State<HomePage> {
     final apiKey = _apiKeyForNavigation();
     if (apiKey == null) return;
     _isPickingImage = true;
+    _refreshCreditBalance();
     try {
       final video =
           await (widget.pickVideo?.call() ??
               ImagePicker().pickVideo(source: ImageSource.gallery));
       if (video == null || !mounted) return;
-      Navigator.of(context).push(
-        MaterialPageRoute<void>(
-          builder: (_) => RealtimePage(
-            apiKey: apiKey,
-            environment: XLabLocalization.shared.environment,
-            model: _selectedModel,
-            localInput: XLabRealtimeExternalVideoInput(
-              path: video.path,
-              name: video.name,
-            ),
+      await _pushPage(
+        (_) => RealtimePage(
+          apiKey: apiKey,
+          environment: XLabLocalization.shared.environment,
+          model: _selectedModel,
+          localInput: XLabRealtimeExternalVideoInput(
+            path: video.path,
+            name: video.name,
           ),
         ),
       );
@@ -208,6 +260,7 @@ class _HomePageState extends State<HomePage> {
       }
     } finally {
       _isPickingImage = false;
+      _refreshCreditBalance();
     }
   }
 
@@ -444,14 +497,29 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              const Text(
-                'API KEY',
-                style: TextStyle(
-                  color: Color(0xFF7E8A9A),
-                  fontSize: 8,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.9,
-                ),
+              Row(
+                children: [
+                  const Text(
+                    'API KEY',
+                    style: TextStyle(
+                      color: Color(0xFF7E8A9A),
+                      fontSize: 8,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0.9,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: ListenableBuilder(
+                        listenable: _creditBalance,
+                        builder: (_, _) =>
+                            FeedCreditBalancePill(state: _creditBalance.state),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 8),
               SizedBox(
@@ -462,9 +530,10 @@ class _HomePageState extends State<HomePage> {
                   obscureText: _obscureApiKey,
                   autocorrect: false,
                   enableSuggestions: false,
-                  onChanged: (value) => unawaited(
-                    _preferences.setString(_apiKeyStorageKey, value),
-                  ),
+                  onChanged: (value) {
+                    _apiKeyEditVersion++;
+                    unawaited(_preferences.setString(_apiKeyStorageKey, value));
+                  },
                   cursorColor: XLabPalette.mint,
                   style: const TextStyle(
                     color: Color(0xFFD6DEE9),
