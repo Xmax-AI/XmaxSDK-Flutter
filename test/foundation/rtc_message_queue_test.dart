@@ -5,6 +5,126 @@ import 'package:xmax_sdk/src/foundation/rtc/RtcMessageQueue.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  test('cancelling queued control removes only that attempt', () async {
+    final gate = Completer<void>(), started = Completer<void>();
+    final cancellation = Completer<void>();
+    final sent = <String>[];
+    final failures = <Object>[];
+    final queue = RtcMessageQueue(
+      onFailure: failures.add,
+      send: (packet) async {
+        final value = utf8.decode(packet);
+        sent.add(value);
+        if (value == 'first') {
+          started.complete();
+          await gate.future;
+        }
+      },
+    );
+    final first = queue.enqueue('first');
+    await started.future;
+    final obsolete = queue.enqueue(
+      'obsolete',
+      cancellation: cancellation.future,
+    );
+    final rejected = expectLater(
+      obsolete,
+      throwsA(
+        isA<XmaxError>().having((e) => e.code, 'code', XmaxErrorCode.cancelled),
+      ),
+    );
+    final next = queue.enqueue('next');
+    cancellation.complete();
+    await rejected;
+    gate.complete();
+    await Future.wait([first, next]);
+    expect(sent, ['first', 'next']);
+    expect(failures, isEmpty);
+    queue.close();
+  });
+
+  test(
+    'cancelled fragmented send settles its current packet before the next control',
+    () async {
+      final gate = Completer<void>(), started = Completer<void>();
+      final cancellation = Completer<void>();
+      final sent = <String>[];
+      final failures = <Object>[];
+      final queue = RtcMessageQueue(
+        onFailure: failures.add,
+        send: (packet) async {
+          sent.add(utf8.decode(packet));
+          if (sent.length == 1) {
+            started.complete();
+            await gate.future;
+          }
+        },
+      );
+      final fragmented = queue.enqueue(
+        'x' * 2000,
+        cancellation: cancellation.future,
+      );
+      final rejected = expectLater(fragmented, throwsA(isA<XmaxError>()));
+      await started.future;
+      final next = queue.enqueue('next');
+      cancellation.complete();
+      await rejected;
+      await Future<void>.delayed(Duration.zero);
+      expect(sent, hasLength(1));
+      // A late native failure from an already-cancelled packet cannot fault the room.
+      gate.completeError(StateError('late native failure'));
+      await next;
+      expect(sent, hasLength(2));
+      expect(sent.last, 'next');
+      expect(failures, isEmpty);
+      queue.close();
+    },
+  );
+
+  test(
+    'cancellation interrupts quota waits without retaining obsolete fragments',
+    () async {
+      final cancellation = Completer<void>();
+      final waiting = Completer<void>();
+      var sends = 0;
+      final queue = RtcMessageQueue(
+        now: () => Duration.zero,
+        delay: (_) {
+          if (!waiting.isCompleted) waiting.complete();
+          return Completer<void>().future;
+        },
+        send: (_) async => sends++,
+      );
+      await Future.wait([for (var i = 0; i < 58; i++) queue.enqueue('$i')]);
+      final blocked = queue.enqueue(
+        'obsolete',
+        cancellation: cancellation.future,
+      );
+      final rejected = expectLater(blocked, throwsA(isA<XmaxError>()));
+      await waiting.future;
+      cancellation.complete();
+      await rejected;
+      expect(sends, 58);
+      queue.close();
+    },
+  );
+
+  test(
+    'an already completed cancellation prevents native submission',
+    () async {
+      var sends = 0;
+      final queue = RtcMessageQueue(send: (_) async => sends++);
+      await expectLater(
+        queue.enqueue('cancelled', cancellation: Future.value()),
+        throwsA(isA<XmaxError>()),
+      );
+      expect(sends, 0);
+      await queue.enqueue('next');
+      expect(sends, 1);
+      queue.close();
+    },
+  );
+
   test('large unicode signals reassemble without splitting scalars', () {
     final message = jsonEncode({
       'event': 'start',

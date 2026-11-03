@@ -711,7 +711,11 @@ final class _FakeRtc implements RtcManaging {
   Future<void> publishLocalVideo({required bool publish}) async {}
 
   @override
-  Future<void> sendRoomMessage(String message) async {}
+  Future<void> sendRoomMessage(
+    String message, {
+    bool reportFailure = true,
+    Future<void>? cancellation,
+  }) async {}
 
   @override
   void setEventListener(RtcEventListener? listener) {}

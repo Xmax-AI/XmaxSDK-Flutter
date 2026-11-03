@@ -11,6 +11,7 @@
 import 'dart:typed_data';
 import '../../service/realtime/RealtimeMediaFrame.dart';
 import 'RemoteStream.dart';
+import 'RtcRoomEvent.dart';
 
 import '../media/camera/CameraPosition.dart';
 import '../media/video/RealtimeExternalVideoFrame.dart';
@@ -187,8 +188,21 @@ abstract interface class RtcManaging {
   ///
   /// Parameters:
   /// - [message]: The complete message text.
+  /// - [reportFailure]: Whether transport failures also report a room failure.
+  /// - [cancellation]: Cancels queued packets and remaining fragments for this attempt.
   Future<void> sendRoomMessage(
-    String message,
+    String message, {
+    bool reportFailure = true,
+    Future<void>? cancellation,
+  });
+
+  /// Replaces the signaling receiver independently of media and quality listeners.
+  ///
+  /// [listener] receives messages from the current room, or null stops delivery.
+  void setRoomMessageListener(
+    void Function(
+      RtcRoomMessage message,
+    )? listener,
   );
 
   /// Replaces the internal RTC event listener.

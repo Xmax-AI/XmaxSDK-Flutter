@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/AgoraRtcRoom.dart';
@@ -13,6 +14,98 @@ import 'package:xmax_sdk/xmax_sdk.dart';
 import 'package:xmax_sdk/src/stream/quality/QualityController.dart';
 
 void main() {
+  test(
+    'native signaling copies valid packets and ignores stale connections and invalid lengths',
+    () async {
+      final engine = _Engine();
+      final room = _room(engine: engine, roomID: 'room', listener: () => null);
+      final messages = <RtcRoomMessage>[];
+      room.setEventListener((event) {
+        if (event is RtcRoomMessage) messages.add(event);
+      });
+      await room.join(
+        const RoomJoinConfiguration(
+          roomID: 'room',
+          userID: 'user',
+          token: 'token',
+        ),
+      );
+      final handler = engine.handler!;
+      handler.onUserJoined!(room.connection, 7, 0);
+      await Future<void>.delayed(Duration.zero);
+      final data = Uint8List.fromList(utf8.encode('{"event":"xid_ack"}'));
+      handler.onStreamMessage!(
+        const RtcConnection(channelId: 'room', localUid: 999),
+        7,
+        1,
+        data,
+        data.length,
+        0,
+      );
+      for (final length in [-1, 0, data.length + 1]) {
+        handler.onStreamMessage!(room.connection, 7, 1, data, length, 0);
+      }
+      handler.onStreamMessage!(
+        room.connection,
+        7,
+        1,
+        Uint8List(262145),
+        262145,
+        0,
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(messages, isEmpty);
+      handler.onStreamMessage!(room.connection, 7, 1, data, data.length, 0);
+      data.fillRange(0, data.length, 0);
+      await Future<void>.delayed(Duration.zero);
+      expect(messages, hasLength(1));
+      expect(utf8.decode(messages.single.data), '{"event":"xid_ack"}');
+      expect(messages.single.stream.userID, 'bot');
+      final connection = room.connection;
+      await room.destroy();
+      handler.onStreamMessage!(connection, 7, 1, data, data.length, 0);
+      await Future<void>.delayed(Duration.zero);
+      expect(messages, hasLength(1));
+    },
+  );
+
+  test('retryable command transport errors do not fail the room', () async {
+    final engine = _Engine()..failEvent = 'start';
+    final errors = <Object>[];
+    final room = _room(
+      engine: engine,
+      roomID: 'room',
+      listener: () => RtcEventListener(onError: errors.add),
+    );
+    await room.join(
+      const RoomJoinConfiguration(
+        roomID: 'room',
+        userID: 'user',
+        token: 'token',
+      ),
+    );
+    await expectLater(
+      room.sendMessage('{"event":"start"}', reportFailure: false),
+      throwsA(isA<XmaxError>()),
+    );
+    engine.handler!.onStreamMessageError!(
+      room.connection,
+      7,
+      1,
+      ErrorCodeType.errTimedout,
+      1,
+      0,
+    );
+    engine.failEvent = null;
+    await room.sendMessage(
+      '{"event":"change_condition"}',
+      reportFailure: false,
+    );
+    expect(errors, isEmpty);
+    expect(engine.sent, hasLength(1));
+    await room.destroy();
+  });
+
   test(
     'native quality and statistics use an independent receiver and stop after leave',
     () async {
@@ -357,6 +450,8 @@ AgoraRtcRoom _room({
           as AgoraRtcRoom;
   room.setEventListener((event) {
     switch (event) {
+      case RtcRoomMessage():
+        break;
       case RtcRoomVideoPublication(:final stream, :final published):
         listener()?.onRemoteVideoPublished?.call(stream, published);
       case RtcRoomAudioPublication(:final stream, :final published):

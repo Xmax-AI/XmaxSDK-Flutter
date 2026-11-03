@@ -75,9 +75,15 @@ abstract interface class RtcRoom {
 
   /// Enqueues ordered signaling, replacing pending trajectories when conditions change.
   ///
-  /// [message] is the complete JSON message. Adaptive configuration failures are returned
-  /// to the caller without failing the room connection.
+  /// Adaptive configuration failures are returned without failing the room connection.
+  ///
+  /// Parameters:
+  /// - [message]: The complete JSON message.
+  /// - [reportFailure]: Whether failures also fault the room; false isolates retryable attempts.
+  /// - [cancellation]: Stops queued packets and remaining fragments for this attempt.
   Future<void> sendMessage(
-    String message,
-  );
+    String message, {
+    bool reportFailure = true,
+    Future<void>? cancellation,
+  });
 }

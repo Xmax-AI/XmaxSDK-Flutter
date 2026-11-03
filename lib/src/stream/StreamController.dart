@@ -522,6 +522,7 @@ final class StreamController implements StreamControlling {
     _qualityController.resetQuality();
     _qualityController.setUplinkVideoStatisticsEnabled(false);
     _connectionRevision += 1;
+    _roomController.cancelGenerationCommands();
     // Cancel result-stream waits before changing RTC subscriptions.
     await _clearGeneration(notifyRemote: true);
 
@@ -1053,6 +1054,7 @@ final class StreamController implements StreamControlling {
     _generationCompleter = null;
 
     if (completer != null && !completer.isCompleted) {
+      _roomController.cancelGenerationCommands(taskID: _generationTaskID);
       completer.completeError(error);
 
       return true;
@@ -1069,6 +1071,7 @@ final class StreamController implements StreamControlling {
   Future<void> _clearGeneration({
     required bool notifyRemote,
   }) async {
+    _roomController.cancelGenerationCommands(taskID: _generationTaskID);
     _rejectGeneration(
       const XmaxError(
         code: XmaxErrorCode.cancelled,

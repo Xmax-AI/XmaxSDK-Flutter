@@ -92,6 +92,11 @@ final class RtcManager implements RtcManaging {
   /// The quality and statistics receiver retained across room joins.
   RtcQualityListener? _qualityListener;
 
+  /// The signaling receiver retained independently of media event subscriptions.
+  void Function(
+    RtcRoomMessage message,
+  )? _roomMessageListener;
+
   /// The current local video first-frame readiness callback.
   void Function()? _cameraPreviewReadyListener;
 
@@ -522,10 +527,30 @@ final class RtcManager implements RtcManaging {
   ///
   /// Parameters:
   /// - [message]: The complete message text.
+  /// - [reportFailure]: Whether failures also fault the room; false isolates retryable attempts.
+  /// - [cancellation]: Stops queued packets and remaining fragments for this attempt.
   @override
   Future<void> sendRoomMessage(
-    String message,
-  ) => _requiredRoom.sendMessage(message);
+    String message, {
+    bool reportFailure = true,
+    Future<void>? cancellation,
+  }) => _requiredRoom.sendMessage(
+    message,
+    reportFailure: reportFailure,
+    cancellation: cancellation,
+  );
+
+  /// Replaces the current room's independent signaling receiver.
+  ///
+  /// See [RtcManaging.setRoomMessageListener] for the delivery contract.
+  @override
+  void setRoomMessageListener(
+    void Function(
+      RtcRoomMessage message,
+    )? listener,
+  ) {
+    _roomMessageListener = listener;
+  }
 
   /// Replaces the internal RTC event listener.
   ///
@@ -569,6 +594,8 @@ final class RtcManager implements RtcManaging {
     RtcRoomEvent event,
   ) {
     switch (event) {
+      case RtcRoomMessage():
+        _roomMessageListener?.call(event);
       case RtcRoomVideoPublication(:final stream, :final published):
         _eventListener?.onRemoteVideoPublished?.call(
           stream,

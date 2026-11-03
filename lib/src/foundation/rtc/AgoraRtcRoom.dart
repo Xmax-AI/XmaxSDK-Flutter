@@ -222,6 +222,20 @@ final class AgoraRtcRoom implements RtcRoom {
           ),
         );
       },
+      onMessage: (
+        uid,
+        data,
+      ) {
+        unawaited(_withStream(
+          uid,
+          (
+            stream,
+          ) => _emit(RtcRoomMessage(
+            stream: stream,
+            data: data,
+          )),
+        ));
+      },
       onEvent: (
         event,
       ) {
@@ -727,10 +741,14 @@ final class AgoraRtcRoom implements RtcRoom {
   ///
   /// Parameters:
   /// - [message]: The room JSON message containing its event and payload.
+  /// - [reportFailure]: Whether failures also fault the room; false isolates retryable attempts.
+  /// - [cancellation]: Stops queued packets and remaining fragments for this attempt.
   @override
   Future<void> sendMessage(
-    String message,
-  ) {
+    String message, {
+    bool reportFailure = true,
+    Future<void>? cancellation,
+  }) {
     final sender = _sender;
 
     if (_isClosed || sender == null) {
@@ -743,7 +761,8 @@ final class AgoraRtcRoom implements RtcRoom {
     final event = jsonDecode(message) as Map<String, dynamic>;
     final type = event['event'];
 
-    if (type == 'stop' || type == 'start' || type == 'change_condition') {
+    if (type == 'stop' || type == 'start' || type == 'change_condition' ||
+        type == 'change_target_size') {
       sender.discardPendingMessages();
     }
 
@@ -752,7 +771,8 @@ final class AgoraRtcRoom implements RtcRoom {
       replacingPendingMessage: type == 'tracks'
           ? 'tracks:${event['uid']}'
           : null,
-      reportFailure: type != 'change_target_size',
+      reportFailure: reportFailure && type != 'change_target_size',
+      cancellation: cancellation,
     );
   }
 

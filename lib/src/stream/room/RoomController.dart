@@ -15,13 +15,17 @@ import '../../foundation/errors/XmaxError.dart';
 import '../../foundation/logging/XmaxLogger.dart';
 import '../../foundation/rtc/RoomJoinConfiguration.dart';
 import '../../foundation/rtc/RtcManaging.dart';
+import '../../foundation/rtc/RtcRoomEvent.dart';
+import '../../foundation/tasks/OperationCancellation.dart';
 import '../../foundation/runtime/RuntimeInfo.dart';
 import '../../service/realtime/RealtimeContext.dart';
 import '../../service/realtime/RealtimePoint.dart';
 import '../../service/realtime/RealtimeSessionConnection.dart';
 import '../../service/realtime/RealtimeTiming.dart';
 import '../../service/realtime/RealtimeVideoFormat.dart';
+import 'RoomCommandController.dart';
 import 'RoomControlling.dart';
+import 'RoomMessageDecoder.dart';
 import 'RoomEvent.dart';
 import 'RoomHeartbeat.dart';
 
@@ -54,6 +58,15 @@ final class RoomController implements RoomControlling {
   /// The RTC user account, not a numeric UID.
   String? _userID;
 
+  /// The identity of the current room join and its asynchronous callbacks.
+  Object? _roomOperation;
+
+  /// The command scheduler scoped to the current joined room.
+  RoomCommandController? _commands;
+
+  /// The bounded decoder for incoming service receipts.
+  final RoomMessageDecoder _decoder = RoomMessageDecoder();
+
   /// Whether an RTC room join operation is in progress.
   bool _joining = false;
 
@@ -74,6 +87,8 @@ final class RoomController implements RoomControlling {
       );
     }
 
+    final operation = Object();
+    _roomOperation = operation;
     _joining = true;
     _heartbeat.stop();
 
@@ -82,6 +97,7 @@ final class RoomController implements RoomControlling {
       // before sending generation messages or starting room heartbeats.
       await RuntimeInfo.resolve();
       ensureActive();
+      _ensureRoomOperation(operation);
 
       _timing.beginRoomJoin();
       await _rtcManager.joinRoom(
@@ -94,24 +110,47 @@ final class RoomController implements RoomControlling {
       _timing.finishRoomJoin();
 
       ensureActive();
+      _ensureRoomOperation(operation);
 
+      _commands = RoomCommandController(
+        sendMessage: (
+          message,
+          cancellation,
+        ) => _send(
+          message,
+          reportFailure: false,
+          cancellation: cancellation,
+        ),
+      );
+      _rtcManager.setRoomMessageListener((
+        message,
+      ) {
+        if (identical(_roomOperation, operation)) {
+          _receive(
+            message,
+            connection,
+          );
+        }
+      });
       _userID = connection.userID;
       _heartbeat.start(userID: connection.userID);
     } catch (error) {
-      await _rtcManager.leaveRoom();
+      if (identical(_roomOperation, operation)) {
+        _invalidate();
+        await _rtcManager.leaveRoom();
+      }
       throw XmaxError.from(error);
     } finally {
-      _joining = false;
+      if (identical(_roomOperation, operation)) {
+        _joining = false;
+      }
     }
   }
 
   /// Stops heartbeats, clears the local user identity, and leaves the RTC room.
   @override
   Future<void> leave() async {
-    // Clear the saved identity before awaiting native room exit.
-    _userID = null;
-    _joining = false;
-    _heartbeat.stop();
+    _invalidate();
 
     await _rtcManager.leaveRoom();
   }
@@ -128,8 +167,13 @@ final class RoomController implements RoomControlling {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
-  }) => _send(
-    RoomEvent.start(
+  }) => _requireCommands().send(
+    kind: RoomCommandKind.start,
+    taskID: taskID,
+    createMessage: (
+      xid,
+    ) => RoomEvent.start(
+      xid: xid,
       userID: _requireUserID(),
       taskID: taskID,
       videoFormat: videoFormat,
@@ -151,8 +195,13 @@ final class RoomController implements RoomControlling {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
-  }) => _send(
-    RoomEvent.changeCondition(
+  }) => _requireCommands().send(
+    kind: RoomCommandKind.changeCondition,
+    taskID: taskID,
+    createMessage: (
+      xid,
+    ) => RoomEvent.changeCondition(
+      xid: xid,
       userID: _requireUserID(),
       taskID: taskID,
       videoFormat: videoFormat,
@@ -174,8 +223,14 @@ final class RoomController implements RoomControlling {
   }) {
     ensureActive();
 
-    return _send(
-      RoomEvent.changeTargetSize(
+    return _requireCommands().send(
+      kind: RoomCommandKind.changeTargetSize,
+      taskID: taskID,
+      ensureCurrent: ensureActive,
+      createMessage: (
+        xid,
+      ) => RoomEvent.changeTargetSize(
+        xid: xid,
         userID: _requireUserID(),
         taskID: taskID,
         targetSize: targetSize,
@@ -191,6 +246,7 @@ final class RoomController implements RoomControlling {
   Future<void> stopGeneration({
     required String taskID,
   }) async {
+    cancelGenerationCommands(taskID: taskID);
     final userID = _userID;
 
     if (userID == null || taskID.isEmpty) {
@@ -225,6 +281,78 @@ final class RoomController implements RoomControlling {
     );
   }
 
+  /// Cancels pending command attempts before asynchronous task or room cleanup.
+  ///
+  /// See [RoomControlling.cancelGenerationCommands] for the cancellation scope.
+  @override
+  void cancelGenerationCommands({
+    String? taskID,
+  }) {
+    _commands?.cancel(taskID: taskID);
+  }
+
+  /// Invalidates message routing and every retry before leaving the native room.
+  void _invalidate() {
+    _roomOperation = null;
+    _userID = null;
+    _joining = false;
+    _heartbeat.stop();
+    _rtcManager.setRoomMessageListener(null);
+    _decoder.reset();
+    _commands?.close();
+    _commands = null;
+  }
+
+  /// Rejects a join result whose [operation] no longer owns the room.
+  void _ensureRoomOperation(
+    Object operation,
+  ) {
+    if (!identical(_roomOperation, operation)) {
+      throw OperationCancellation.error;
+    }
+  }
+
+  /// Returns the current room's command scheduler, rejecting sends while disconnected.
+  RoomCommandController _requireCommands() {
+    _requireUserID();
+    return _commands!;
+  }
+
+  /// Accepts receipts only from the current room's expected remote account.
+  ///
+  /// Parameters:
+  /// - [message]: The copied signaling packet and resolved sender.
+  /// - [connection]: The credentials owning this listener's room lifetime.
+  void _receive(
+    RtcRoomMessage message,
+    RealtimeSessionConnection connection,
+  ) {
+    final stream = message.stream;
+    final bot = connection.botName ?? '';
+    if (stream.roomID != connection.roomID || stream.userID.isEmpty ||
+        stream.userID == connection.userID ||
+        (bot.isNotEmpty && stream.userID != bot)) {
+      return;
+    }
+
+    final decoded = _decoder.decode(
+      sender: stream.userID,
+      data: message.data,
+    );
+    if (decoded == null || decoded['event'] != 'xid_ack' ||
+        (decoded['user_id'] != null && decoded['user_id'] != connection.userID)) {
+      return;
+    }
+    final xid = decoded['xid'];
+    final count = decoded['count'];
+    if (xid is String && count is int) {
+      _commands?.acknowledge(
+        xid: xid,
+        count: count,
+      );
+    }
+  }
+
   /// Reads the joined room's user account; throws an RTC error if no room is joined.
   ///
   /// Returns the current room's user account; throws an RTC error if no room is joined.
@@ -245,11 +373,19 @@ final class RoomController implements RoomControlling {
   ///
   /// Parameters:
   /// - [message]: The complete room JSON message to send or format.
+  /// - [reportFailure]: Whether a transport failure also faults the room.
+  /// - [cancellation]: Cancels remaining fragments of this transport attempt.
   Future<void> _send(
-    String message,
-  ) async {
+    String message, {
+    bool reportFailure = true,
+    Future<void>? cancellation,
+  }) async {
     try {
-      await _rtcManager.sendRoomMessage(message);
+      await _rtcManager.sendRoomMessage(
+        message,
+        reportFailure: reportFailure,
+        cancellation: cancellation,
+      );
     } catch (error) {
       throw XmaxError.from(error);
     }

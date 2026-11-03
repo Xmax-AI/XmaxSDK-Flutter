@@ -174,10 +174,13 @@ final class RtcMessageQueue {
   /// - [replacingPendingMessage]: The coalescing key; null queues independently, otherwise only the
   ///   latest pending content is retained.
   /// - [reportFailure]: Whether failures fault the queue; false rejects only this operation.
+  /// - [cancellation]: Stops queued work and remaining fragments; an in-flight native packet
+  ///   settles before the next message begins.
   Future<void> enqueue(
     String message, {
     String? replacingPendingMessage,
     bool reportFailure = true,
+    Future<void>? cancellation,
   }) {
     if (_closed) {
       return Future.error(_cancelled);
@@ -211,6 +214,15 @@ final class RtcMessageQueue {
     );
 
     _pending.add(pending);
+    cancellation?.then<void>(
+      (
+        _,
+      ) => _cancel(pending),
+      onError: (
+        Object _,
+        StackTrace _,
+      ) => _cancel(pending),
+    );
     if (!_draining) {
       unawaited(_drain());
     }
@@ -242,6 +254,25 @@ final class RtcMessageQueue {
     }
   }
 
+  /// Cancels one unfinished message without faulting the room or interrupting another send.
+  ///
+  /// [entry] owns the queued or partially submitted fragment set.
+  void _cancel(
+    _Message entry,
+  ) {
+    if (entry.done.isCompleted) {
+      return;
+    }
+
+    entry.cancelled = true;
+    _pending.remove(entry);
+    entry.done.completeError(_cancelled);
+
+    if (_wake case final wake? when !wake.isCompleted) {
+      wake.complete();
+    }
+  }
+
   /// Closes the queue and rejects unfinished sends with a cancellation error.
   void close() {
     _closed = true;
@@ -268,11 +299,13 @@ final class RtcMessageQueue {
   ///
   /// Parameters:
   /// - [length]: The next packet's byte count.
+  /// - [entry]: The message whose cancellation interrupts this quota wait.
   Future<void> _waitForBudget(
     int length,
+    _Message entry,
   ) async {
     while (true) {
-      if (_closed) {
+      if (_closed || entry.cancelled) {
         throw _cancelled;
       }
 
@@ -326,7 +359,10 @@ final class RtcMessageQueue {
             throw _fatalError!;
           }
 
-          await _waitForBudget(entry.packets.first.length);
+          await _waitForBudget(
+            entry.packets.first.length,
+            entry,
+          );
           if (!_pending.contains(entry)) {
             continue;
           }
@@ -336,13 +372,19 @@ final class RtcMessageQueue {
           _pending.remove(entry);
           _active = entry;
           for (final packet in packets) {
-            await _waitForBudget(packet.length);
-            await send(packet);
-            if (_closed) {
+            await _waitForBudget(
+              packet.length,
+              entry,
+            );
+            if (_closed || entry.cancelled) {
               throw _cancelled;
             }
-
+            await send(packet);
+            // Submitted packets consume quota even if cancellation arrived during native delivery.
             _window.add((_time, packet.length));
+            if (_closed || entry.cancelled) {
+              throw _cancelled;
+            }
           }
 
           if (!entry.done.isCompleted) {
@@ -357,7 +399,7 @@ final class RtcMessageQueue {
             );
           }
 
-          if (!_closed && entry.reportFailure) {
+          if (!_closed && !entry.cancelled && entry.reportFailure) {
             _fatalError = error;
             onFailure?.call(error);
           }
@@ -407,6 +449,9 @@ final class _Message {
 
   /// Whether send failure reports a connection fault; false rejects only this call.
   final bool reportFailure;
+
+  /// Whether this message was cancelled independently of the room.
+  bool cancelled = false;
 
   /// The completer for the message send result.
   final done = Completer<void>();

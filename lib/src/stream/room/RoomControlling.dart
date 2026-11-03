@@ -95,6 +95,13 @@ abstract interface class RoomControlling {
     required String taskID,
   });
 
+  /// Cancels pending command attempts before asynchronous task or room cleanup.
+  ///
+  /// [taskID] limits cancellation to one generation task; omit to cancel every room command.
+  void cancelGenerationCommands({
+    String? taskID,
+  });
+
   /// Submits normalized interaction points; sends nothing if the task identifier or point list is
   /// empty.
   ///

@@ -44,6 +44,39 @@ Future<StreamController> _controller(
 }
 
 void main() {
+  for (final disconnect in [false, true]) {
+    test(
+      'commands cancel before asynchronous audio cleanup (disconnect=$disconnect)',
+      () async {
+        final rtc = _Rtc();
+        final room = _Room();
+        final stream = await _controller(rtc, room: room);
+        addTearDown(stream.disconnect);
+        rtc.listener!.onRemoteAudioPublished!(_remote, true);
+        final generation = await stream.beginGeneration(
+          taskID: 'task',
+          videoFormat: _format,
+          context: RealtimeContext(prompt: 'a'),
+        );
+        rtc.listener!.onRemoteVideoPublished!(_remote, true);
+        await generation.value;
+        await stream.activateRemoteAudio();
+        final gate = Completer<void>();
+        rtc.audioStopGate = gate;
+        var finished = false;
+        final stopping =
+            (disconnect
+                    ? stream.disconnect()
+                    : stream.stopGeneration(taskID: 'task'))
+                .then((_) => finished = true);
+        await _settle();
+        expect(finished, isFalse);
+        expect(room.cancelledTasks, contains(disconnect ? null : 'task'));
+        gate.complete();
+        await stopping;
+      },
+    );
+  }
   test(
     'quality preparation leaves encoder and returned dimensions to Core',
     () async {
@@ -113,6 +146,7 @@ void main() {
       await _settle();
       cancelled.complete();
       await rejected;
+      expect(room.cancelledTasks, contains('task'));
       room.startGate!.complete();
       rtc.listener!.onRemoteVideoPublished!(_remote, true);
       await _settle();
@@ -390,7 +424,7 @@ class _Rtc implements RtcManaging {
   @override
   void setQualityListener(RtcQualityListener? value) => quality = value;
   Object? volumeError, videoError;
-  Completer<void>? audioGate;
+  Completer<void>? audioGate, audioStopGate;
   final audioSubscriptions = <bool>[], audioVolumes = <int>[];
   @override
   void setEventListener(RtcEventListener? listener) => this.listener = listener;
@@ -409,6 +443,7 @@ class _Rtc implements RtcManaging {
   }) async {
     audioSubscriptions.add(subscribe);
     if (subscribe) await audioGate?.future;
+    if (!subscribe) await audioStopGate?.future;
   }
 
   @override
@@ -425,6 +460,10 @@ class _Rtc implements RtcManaging {
 }
 
 class _Room implements RoomControlling {
+  final cancelledTasks = <String?>[];
+  @override
+  void cancelGenerationCommands({String? taskID}) => cancelledTasks.add(taskID);
+
   bool? startPadding, conditionPadding;
   Object? targetError;
   Completer<void>? targetGate;

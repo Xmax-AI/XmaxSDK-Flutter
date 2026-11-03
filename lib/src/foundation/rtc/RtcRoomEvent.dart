@@ -8,17 +8,35 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import 'dart:typed_data';
+
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../../service/realtime/RealtimePerformanceAlarm.dart';
 import '../errors/XmaxError.dart';
 import 'RemoteStream.dart';
 import 'VideoStatistics.dart';
 
-/// A vendor-independent RTC publication, first-frame, failure, or quality event.
+/// A vendor-independent RTC signaling, publication, first-frame, failure, or quality event.
 sealed class RtcRoomEvent {
 
   /// Creates a room event.
   const RtcRoomEvent();
+}
+
+/// An owned signaling packet and its resolved sender identity.
+final class RtcRoomMessage extends RtcRoomEvent {
+
+  /// Creates an inbound room message.
+  const RtcRoomMessage({
+    required this.stream,
+    required this.data,
+  });
+
+  /// The room and account that submitted the packet.
+  final RemoteStream stream;
+
+  /// The copied UTF-8 signaling bytes, independent of native callback buffers.
+  final Uint8List data;
 }
 
 /// A remote user's video publication change.

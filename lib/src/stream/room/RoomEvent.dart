@@ -33,6 +33,7 @@ abstract final class RoomEvent {
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
   /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
+  /// - [xid]: The logical command identifier retained across transport retries.
   ///
   /// Returns JSON containing start parameters, task correlation fields, and runtime information.
   static String start({
@@ -43,6 +44,7 @@ abstract final class RoomEvent {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
+    String? xid,
   }) => _generation(
     event: 'start',
     userID: userID,
@@ -52,6 +54,7 @@ abstract final class RoomEvent {
     targetSize: targetSize,
     faceRestoration: faceRestoration,
     paddingContain: paddingContain,
+    xid: xid,
     includeBitrates: true,
   );
 
@@ -67,6 +70,7 @@ abstract final class RoomEvent {
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
   /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
+  /// - [xid]: The logical command identifier retained across transport retries.
   ///
   /// Returns JSON containing the prompt, optional reference image, and face restoration setting.
   static String changeCondition({
@@ -77,6 +81,7 @@ abstract final class RoomEvent {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
+    String? xid,
   }) => _generation(
     event: 'change_condition',
     userID: userID,
@@ -86,6 +91,7 @@ abstract final class RoomEvent {
     targetSize: targetSize,
     faceRestoration: faceRestoration,
     paddingContain: paddingContain,
+    xid: xid,
   );
 
   /// Encodes an update to result dimensions and the corresponding downlink bitrate budget.
@@ -94,14 +100,17 @@ abstract final class RoomEvent {
   /// - [userID]: The RTC user account, not a numeric UID.
   /// - [taskID]: The current generation task identifier.
   /// - [targetSize]: The result-stream width and height, in pixels.
+  /// - [xid]: The logical command identifier retained across transport retries.
   ///
   /// Returns JSON containing result dimensions and the downlink bitrate budget.
   static String changeTargetSize({
     required String userID,
     required String taskID,
     required Size targetSize,
+    String? xid,
   }) => _encode(<String, Object?>{
     'event': 'change_target_size',
+    'xid': ?xid,
     'params': <String, Object?>{
       'target_size': _size(targetSize),
       ..._downlinkBitrates(targetSize),
@@ -170,6 +179,7 @@ abstract final class RoomEvent {
   /// - [faceRestoration]: Whether to restore the original face; defaults to false and is submitted
   ///   on every call.
   /// - [paddingContain]: Whether to preserve the entire input within the generation canvas.
+  /// - [xid]: The logical command identifier retained across transport retries.
   /// - [includeBitrates]: Whether to include downlink bitrate bounds in generation messages;
   ///   omitted by default.
   ///
@@ -183,6 +193,7 @@ abstract final class RoomEvent {
     Size? targetSize,
     bool faceRestoration = false,
     bool paddingContain = false,
+    String? xid,
     bool includeBitrates = false,
   }) {
     final params = <String, Object?>{
@@ -214,6 +225,7 @@ abstract final class RoomEvent {
     // Omitting the reference image field clears the server's previous reference condition.
     return _encode(<String, Object?>{
       'event': event,
+      'xid': ?xid,
       'params': params,
       'user_id': userID,
       'uid': taskID,

@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:xmax_sdk/src/foundation/rtc/RemoteStream.dart';
@@ -72,7 +74,12 @@ void main() {
       await manager.subscribeRemoteVideo(streamID: 'bot', subscribe: true);
       await manager.subscribeRemoteAudio(streamID: 'bot', subscribe: false);
       await manager.setRemoteAudioVolume(volume: 45, streamID: 'bot');
-      await manager.sendRoomMessage('{"event":"start"}');
+      final cancellation = Completer<void>();
+      await manager.sendRoomMessage(
+        '{"event":"start"}',
+        reportFailure: false,
+        cancellation: cancellation.future,
+      );
       expect(room.calls.map((call) => call.memberName), [
         #publishLocalVideo,
         #subscribeRemoteVideo,
@@ -82,6 +89,10 @@ void main() {
       ]);
       expect(room.calls[1].namedArguments, {#userID: 'bot', #subscribe: true});
       expect(room.calls[3].namedArguments, {#volume: 45, #userID: 'bot'});
+      expect(room.calls.last.namedArguments, {
+        #reportFailure: false,
+        #cancellation: cancellation.future,
+      });
       await manager.leaveRoom();
       expect(room.closed, isTrue);
       expect(input.localStream, same(platform.localStream));
@@ -103,6 +114,8 @@ void main() {
       final quality = _Quality();
       final publications = <RemoteStream>[];
       final decoded = <RemoteStream>[];
+      final messages = <RtcRoomMessage>[];
+      manager.setRoomMessageListener(messages.add);
       final errors = <Object>[];
       final stream = RemoteStream(
         roomID: 'room',
@@ -125,6 +138,12 @@ void main() {
       final oldListener = old.listener!;
       oldListener(RtcRoomVideoPublication(stream: stream, published: true));
       oldListener(RtcRoomFirstVideoDecoded(stream: stream));
+      final receipt = RtcRoomMessage(
+        stream: stream,
+        data: Uint8List.fromList([123, 125]),
+      );
+      oldListener(receipt);
+      expect(messages, [receipt]);
       oldListener(
         const RtcRoomUplinkVideoStatistics(
           statistics: UplinkVideoStatistics(sendFrameRate: 30),
@@ -153,6 +172,11 @@ void main() {
           error: XmaxError(code: XmaxErrorCode.rtcError, message: 'stale'),
         ),
       );
+      oldListener(receipt);
+      expect(messages, hasLength(1));
+      manager.setRoomMessageListener(null);
+      platform.rooms.last.listener!(receipt);
+      expect(messages, hasLength(1));
       expect(publications, hasLength(1));
       expect(quality.events, hasLength(1));
       expect(errors, hasLength(1));

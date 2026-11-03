@@ -8,10 +8,13 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import 'dart:typed_data';
+
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 
 import '../../service/realtime/RealtimeNetworkQuality.dart';
 import '../errors/XmaxError.dart';
+import '../logging/XmaxLogger.dart';
 import 'RtcQualityConverter.dart';
 import 'RtcRoomEvent.dart';
 
@@ -31,6 +34,7 @@ final class RtcRoomEventBridge {
     required this.onDecoded,
     required this.onRendered,
     required this.onRemoteStatistics,
+    required this.onMessage,
     required this.onEvent,
   });
 
@@ -89,6 +93,12 @@ final class RtcRoomEventBridge {
     int uid,
     RemoteVideoStats statistics,
   ) onRemoteStatistics;
+
+  /// Receives copied signaling bytes after native connection and length validation.
+  final void Function(
+    int uid,
+    Uint8List data,
+  ) onMessage;
 
   /// Receives normalized quality, performance, and failure events.
   final void Function(
@@ -246,6 +256,22 @@ final class RtcRoomEventBridge {
         _failure('RTC connection failed: ${reason.name}');
       }
     },
+    onStreamMessage: (
+      connection,
+      uid,
+      _,
+      data,
+      length,
+      _,
+    ) {
+      if (isCurrent(connection) && length > 0 &&
+          length <= data.length && length <= 262144) {
+        onMessage(
+          uid,
+          Uint8List.fromList(data.sublist(0, length)),
+        );
+      }
+    },
     onStreamMessageError: (
       connection,
       _,
@@ -255,7 +281,11 @@ final class RtcRoomEventBridge {
       _,
     ) {
       if (isCurrent(connection)) {
-        _failure('RTC DataStream failed: ${code.name}');
+        // A missing inbound packet is recoverable through logical command retries.
+        XmaxLogger.warn(
+          category: XmaxLoggerCategory.rtc,
+          message: 'RTC DataStream 接收失败 (RTC DataStream Receive Failed): ${code.name}',
+        );
       }
     },
   );
