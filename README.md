@@ -164,7 +164,7 @@ We introduce XmaxSDK, a Flutter SDK designed for real-time interactive video gen
 ## Installation
 
 ```bash
-flutter pub add xmax_sdk:1.1.0
+flutter pub add xmax_sdk:1.1.1
 ```
 
 <br>
