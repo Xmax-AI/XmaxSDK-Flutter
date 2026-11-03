@@ -27,13 +27,16 @@ abstract interface class RealtimeSessionServicing {
     Future<void>? cancellation,
   });
 
-  /// Starts heartbeats for a session, replacing the previous heartbeat cycle.
+  /// Sends an immediate session heartbeat, then repeats periodically, replacing the previous cycle.
   ///
   /// Parameters:
   /// - [sessionID]: The server session identifier.
+  /// - [firstHeartbeatGraceSeconds]: The nonnegative startup allowance sent only in the first
+  ///   request; null omits the request body.
   /// - [onFailure]: The operation failure handler.
   void startHeartbeat({
     required String sessionID,
+    int? firstHeartbeatGraceSeconds,
     required RealtimeSessionHeartbeatFailureHandler onFailure,
   });
 

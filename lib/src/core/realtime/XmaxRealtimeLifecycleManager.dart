@@ -156,18 +156,28 @@ final class XmaxRealtimeLifecycleManager {
   ///
   /// Parameters:
   /// - [errorManager]: The shared runtime failure manager.
+  /// - [onStateChanged]: Runs after committing state and before notifying your app.
   /// - [cleanup]: Releases scoped resources after affected workers settle.
   XmaxRealtimeLifecycleManager({
     required XmaxRealtimeErrorManager errorManager,
+    void Function(
+      RealtimeState state,
+    )? onStateChanged,
     required Future<RealtimeCleanupResult> Function(
       RealtimeTerminationScope scope,
       String taskID,
     ) cleanup,
   }) : _errorManager = errorManager,
+       _onStateChanged = onStateChanged,
        _cleanup = cleanup;
 
   /// The shared failure reporter.
   final XmaxRealtimeErrorManager _errorManager;
+
+  /// The internal hook invoked after committing state and before notifying your app.
+  final void Function(
+    RealtimeState state,
+  )? _onStateChanged;
 
   /// The resource owners' scoped cleanup handler.
   final Future<RealtimeCleanupResult> Function(
@@ -685,7 +695,10 @@ final class XmaxRealtimeLifecycleManager {
         message: '实时状态 (Realtime State)\n└─ ${previous.connectionState.name} → ${state.connectionState.name}',
       );
     }
-    _stateListener?.call(state);
+    _onStateChanged?.call(state);
+    if (_state == state) {
+      _stateListener?.call(state);
+    }
   }
 
   /// Creates and reports an operation-admission error.

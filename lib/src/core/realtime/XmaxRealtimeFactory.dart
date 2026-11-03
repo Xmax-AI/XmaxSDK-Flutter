@@ -20,6 +20,7 @@ import '../../service/media/MediaService.dart';
 import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
 import '../../service/realtime/RealtimeSessionService.dart';
+import '../../service/realtime/RealtimeState.dart';
 import '../../service/realtime/RealtimeTiming.dart';
 import '../../stream/StreamController.dart';
 import '../../stream/StreamControlling.dart';
@@ -181,6 +182,14 @@ abstract final class XmaxRealtimeFactory {
   }) {
     final lifecycleManager = XmaxRealtimeLifecycleManager(
       errorManager: errorManager,
+      onStateChanged: (
+        state,
+      ) {
+        final sessionID = state.sessionID;
+        if (state.connectionState == RealtimeConnectionState.generating && sessionID != null) {
+          connectionManager.startHeartbeat(sessionID: sessionID);
+        }
+      },
       cleanup: (
         scope,
         taskID,

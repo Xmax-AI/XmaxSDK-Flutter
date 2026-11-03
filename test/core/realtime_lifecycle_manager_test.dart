@@ -19,6 +19,58 @@ Future<void> _settle() => Future<void>.delayed(Duration.zero);
 
 void main() {
   test(
+    'state hooks see committed state before app notification without replaying registration',
+    () async {
+      final events = <String>[];
+      late final _Dependencies d;
+      d = _Dependencies(
+        onStateChanged: (state) {
+          expect(d.manager.currentState, state);
+          events.add('hook:${state.connectionState.name}');
+        },
+      );
+      d.manager.setStateListener(
+        (state) => events.add('app:${state.connectionState.name}'),
+      );
+      await d.connect();
+      await d.generating();
+      await d.generating();
+      expect(events, [
+        'app:idle',
+        'hook:connected',
+        'app:connected',
+        'hook:generating',
+        'app:generating',
+      ]);
+      await d.manager.disconnect();
+    },
+  );
+
+  test(
+    'reentrant state hooks suppress an app notification for obsolete state',
+    () async {
+      late final _Dependencies d;
+      Future<void>? disconnecting;
+      d = _Dependencies(
+        onStateChanged: (state) {
+          if (state.connectionState == RealtimeConnectionState.connected) {
+            disconnecting = d.manager.disconnect();
+          }
+        },
+      );
+      final states = <RealtimeConnectionState>[];
+      d.manager.setStateListener((state) => states.add(state.connectionState));
+      await d.connect();
+      await disconnecting;
+      expect(states, [
+        RealtimeConnectionState.idle,
+        RealtimeConnectionState.disconnecting,
+        RealtimeConnectionState.ready,
+      ]);
+    },
+  );
+
+  test(
     'state delivery is immediate on registration and otherwise deduplicated',
     () async {
       final d = _Dependencies(), states = <RealtimeState>[];
@@ -321,9 +373,10 @@ void main() {
 }
 
 class _Dependencies {
-  _Dependencies() {
+  _Dependencies({void Function(RealtimeState)? onStateChanged}) {
     manager = XmaxRealtimeLifecycleManager(
       errorManager: XmaxRealtimeErrorManager(),
+      onStateChanged: onStateChanged,
       cleanup: (scope, taskID) async {
         scopes.add(scope);
         await gate?.future;

@@ -69,12 +69,13 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     );
   }
 
-  /// Starts heartbeats for a session, replacing the previous heartbeat cycle.
+  /// Sends an immediate session heartbeat, then repeats periodically, replacing the previous cycle.
   ///
   /// See [RealtimeSessionServicing.startHeartbeat] for the usage contract.
   @override
   void startHeartbeat({
     required String sessionID,
+    int? firstHeartbeatGraceSeconds,
     required RealtimeSessionHeartbeatFailureHandler onFailure,
   }) {
     stopHeartbeat();
@@ -83,16 +84,16 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
     final version = ++_heartbeatVersion;
 
     _heartbeatCancellation = Completer<void>();
-    _heartbeatTimer = Timer(
-      _heartbeatInterval,
+    unawaited(Future<void>.microtask(
       () {
-      unawaited(_heartbeat(
-        sessionID,
-        version,
-        onFailure,
-      ));
-    },
-    );
+        return _heartbeat(
+          sessionID,
+          version,
+          onFailure,
+          firstHeartbeatGraceSeconds: firstHeartbeatGraceSeconds,
+        );
+      },
+    ));
   }
 
   /// Stops heartbeats and invalidates responses from earlier requests.
@@ -129,19 +130,31 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
   /// - [sessionID]: The server session identifier.
   /// - [version]: The asynchronous operation revision.
   /// - [onFailure]: The operation failure handler.
+  /// - [firstHeartbeatGraceSeconds]: The startup allowance included only in the initial request.
   Future<void> _heartbeat(
     String sessionID,
     int version,
-    RealtimeSessionHeartbeatFailureHandler onFailure,
-  ) async {
+    RealtimeSessionHeartbeatFailureHandler onFailure, {
+    int? firstHeartbeatGraceSeconds,
+  }) async {
     if (version != _heartbeatVersion) {
       return;
     }
 
     try {
+      if (firstHeartbeatGraceSeconds != null && firstHeartbeatGraceSeconds < 0) {
+        throw const XmaxError(
+          code: XmaxErrorCode.invalidConfiguration,
+          message: 'firstHeartbeatGraceSeconds must be non-negative',
+        );
+      }
+
       final payload = await _apiService.put<Map<String, dynamic>>(
         '/session/$sessionID/heartbeat',
         _map,
+        body: firstHeartbeatGraceSeconds == null ? null : <String, Object?>{
+          'firstHeartbeatGraceSeconds': firstHeartbeatGraceSeconds,
+        },
         cancellation: _heartbeatCancellation?.future,
       );
 
@@ -166,12 +179,12 @@ final class RealtimeSessionService implements RealtimeSessionServicing {
       _heartbeatTimer = Timer(
         _heartbeatInterval,
         () {
-        unawaited(_heartbeat(
-          sessionID,
-          version,
-          onFailure,
-        ));
-      },
+          unawaited(_heartbeat(
+            sessionID,
+            version,
+            onFailure,
+          ));
+        },
       );
     } catch (error) {
       if (version != _heartbeatVersion) {

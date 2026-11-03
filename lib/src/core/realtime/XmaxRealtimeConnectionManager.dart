@@ -43,6 +43,9 @@ typedef RealtimeConnectionHeartbeatFailureHandler =
 final class XmaxRealtimeConnectionManager {
 
   /// Creates a realtime connection manager.
+  ///
+  /// [now] supplies a monotonic microsecond clock for the startup allowance, defaulting to the
+  /// process monotonic clock.
   XmaxRealtimeConnectionManager({
     required RealtimeSessionServicing sessionService,
     required InteractionControlling interactionController,
@@ -50,12 +53,23 @@ final class XmaxRealtimeConnectionManager {
     required StreamControlling streamController,
     MediaServicing? mediaService,
     RealtimeTiming? timing,
+    int Function()? now,
   }) : _sessionService = sessionService,
        _interactionController = interactionController,
        _renderController = renderController,
        _streamController = streamController,
        _mediaService = mediaService ?? MediaService(),
-       timing = timing ?? RealtimeTiming();
+       timing = timing ?? RealtimeTiming(),
+       _now = now ?? _readClock;
+
+  /// The process monotonic clock used to measure session startup.
+  static final _clock = Stopwatch()..start();
+
+  /// Reads elapsed process time in microseconds.
+  static int _readClock() => _clock.elapsedMicroseconds;
+
+  /// The monotonic microsecond clock for this connection manager.
+  final int Function() _now;
 
   /// The service that creates, maintains, and closes server sessions.
   final RealtimeSessionServicing _sessionService;
@@ -89,6 +103,15 @@ final class XmaxRealtimeConnectionManager {
 
   /// The active server session, or null when disconnected.
   RealtimeSession? _activeSession;
+
+  /// The monotonic time when session creation began, in microseconds.
+  int? _connectionStartedAt;
+
+  /// Whether the current session has entered generating and started HTTP heartbeats.
+  bool _heartbeatStarted = false;
+
+  /// The failure handler retained until generation starts session heartbeats.
+  RealtimeConnectionHeartbeatFailureHandler? _heartbeatFailureHandler;
 
   /// The active session identifier, or an empty string when disconnected.
   String get currentSessionID => _activeSession?.id ?? '';
@@ -141,6 +164,9 @@ final class XmaxRealtimeConnectionManager {
 
     try {
       // Create the cloud session before joining RTC with its credentials.
+      _connectionStartedAt = _now();
+      _heartbeatStarted = false;
+      _heartbeatFailureHandler = onHeartbeatFailure;
       timing.beginSessionCreation();
       session = await _sessionService.createSession(
         model: model,
@@ -163,12 +189,6 @@ final class XmaxRealtimeConnectionManager {
         ensureActive: () => _ensureCurrent(isCurrent),
       );
       _ensureCurrent(isCurrent);
-
-      // Start the session heartbeat only after RTC connects.
-      _sessionService.startHeartbeat(
-        sessionID: session.id,
-        onFailure: onHeartbeatFailure,
-      );
 
       final track = createRealtimeVideoTrack(
         id: connection.botName ?? 'video-remote',
@@ -212,6 +232,40 @@ final class XmaxRealtimeConnectionManager {
 
       throw XmaxError.from(error);
     }
+  }
+
+  /// Starts HTTP heartbeats once after generating is committed for the current session.
+  ///
+  /// [sessionID] must identify the active session; stale or repeated requests are ignored.
+  void startHeartbeat({
+    required String sessionID,
+  }) {
+    final startedAt = _connectionStartedAt;
+    final onFailure = _heartbeatFailureHandler;
+    if (_activeSession?.id != sessionID || _heartbeatStarted ||
+        startedAt == null || onFailure == null) {
+      return;
+    }
+
+    _heartbeatStarted = true;
+    final elapsed = _now() - startedAt;
+    final seconds = elapsed <= 0 ? 0 :
+        (elapsed + Duration.microsecondsPerSecond - 1) ~/ Duration.microsecondsPerSecond;
+    _sessionService.startHeartbeat(
+      sessionID: sessionID,
+      firstHeartbeatGraceSeconds: seconds,
+      onFailure: (
+        id,
+        error,
+      ) async {
+        if (_heartbeatStarted && _activeSession?.id == id) {
+          await onFailure(
+            id,
+            error,
+          );
+        }
+      },
+    );
   }
 
   /// Prepares the initial encoder and returned dimensions without changing capture.
@@ -387,6 +441,9 @@ final class XmaxRealtimeConnectionManager {
     // Clear resource ownership before cleanup to prevent reentrant use of expired state.
     _activeSession = null;
     _activeRemoteTrack = null;
+    _connectionStartedAt = null;
+    _heartbeatStarted = false;
+    _heartbeatFailureHandler = null;
 
     _currentTargetSize = null;
     _streamController.setAdaptiveQualityListener(null);
@@ -408,6 +465,9 @@ final class XmaxRealtimeConnectionManager {
 
     _activeSession = null;
     _activeRemoteTrack = null;
+    _connectionStartedAt = null;
+    _heartbeatStarted = false;
+    _heartbeatFailureHandler = null;
 
     _sessionService.stopHeartbeat();
     await prepareForRemoteRemoval();

@@ -38,6 +38,140 @@ import 'package:xmax_sdk/src/stream/StreamControlling.dart';
 
 void main() {
   test(
+    'HTTP heartbeats start after generating commits and measure startup only once per session',
+    () async {
+      var now = 1000000;
+      final deps = _Dependencies(now: () => now);
+      final manager = deps.manager;
+      deps.sessions.onCreateSession = () => now = 2200000;
+      final local = await manager.createLocalCameraStream();
+      await manager.connect(localStream: local);
+      deps.connection.startHeartbeat(sessionID: 'obsolete-session');
+      expect(deps.sessions.heartbeatStarts, isEmpty);
+
+      deps.render.readyGate = Completer<void>();
+      final starting = manager.startGeneration(
+        context: RealtimeContext(prompt: 'first'),
+      );
+      await deps.render.waiting.future;
+      expect(deps.sessions.heartbeatStarts, isEmpty);
+      now = 4000001;
+      var generatingNotifications = 0;
+      await manager.setStateListener((state) {
+        if (state.connectionState == RealtimeConnectionState.generating) {
+          generatingNotifications++;
+          expect(deps.sessions.heartbeatStarts, hasLength(1));
+          expect(deps.sessions.heartbeatStarts.single, (
+            sessionID: 'session-1',
+            graceSeconds: 4,
+          ));
+        }
+      });
+      deps.render.readyGate!.complete();
+      await starting;
+      expect(generatingNotifications, 1);
+
+      await manager.setStateListener(null);
+      deps.connection.startHeartbeat(sessionID: 'session-1');
+      await manager.startGeneration(
+        context: RealtimeContext(prompt: 'updated'),
+      );
+      await manager.stopGeneration();
+      expect(
+        (await manager.currentState).connectionState,
+        RealtimeConnectionState.connected,
+      );
+      await manager.startGeneration();
+      expect(deps.sessions.heartbeatStarts, hasLength(1));
+
+      await manager.disconnect();
+      deps.connection.startHeartbeat(sessionID: 'session-1');
+      expect(deps.sessions.heartbeatStarts, hasLength(1));
+      deps.sessions.onCreateSession = null;
+      now = 10000000;
+      await manager.connect(localStream: local);
+      expect(deps.sessions.heartbeatStarts, hasLength(1));
+      now = 11000000;
+      await manager.startGeneration(
+        context: RealtimeContext(prompt: 'new session'),
+      );
+      expect(deps.sessions.heartbeatStarts, [
+        (sessionID: 'session-1', graceSeconds: 4),
+        (sessionID: 'session-1', graceSeconds: 1),
+      ]);
+      await manager.close();
+    },
+  );
+
+  for (final (elapsed, seconds) in [
+    (-1, 0),
+    (0, 0),
+    (1, 1),
+    (999999, 1),
+    (1000000, 1),
+    (1000001, 2),
+  ]) {
+    test(
+      'first heartbeat rounds $elapsed microseconds up to $seconds nonnegative seconds',
+      () async {
+        var now = 10000000;
+        final deps = _Dependencies(now: () => now);
+        final local = await deps.manager.createLocalCameraStream();
+        await deps.manager.connect(localStream: local);
+        now += elapsed;
+        await deps.manager.startGeneration(
+          context: RealtimeContext(prompt: 'test'),
+        );
+        expect(deps.sessions.heartbeatStarts.single.graceSeconds, seconds);
+        await deps.manager.close();
+      },
+    );
+  }
+
+  test('failed generation never starts a session heartbeat', () async {
+    final deps = _Dependencies();
+    final local = await deps.manager.createLocalCameraStream();
+    await deps.manager.connect(localStream: local);
+    deps.render.readyError = StateError('first frame failed');
+    await expectLater(
+      deps.manager.startGeneration(context: RealtimeContext(prompt: 'test')),
+      throwsA(isA<XmaxError>()),
+    );
+    deps.connection.startHeartbeat(sessionID: 'session-1');
+    expect(deps.sessions.heartbeatStarts, isEmpty);
+    await deps.manager.close();
+  });
+
+  test(
+    'disconnect before the first result never starts a session heartbeat',
+    () async {
+      final deps = _Dependencies();
+      final local = await deps.manager.createLocalCameraStream();
+      await deps.manager.connect(localStream: local);
+      deps.render.readyGate = Completer<void>();
+      final starting = expectLater(
+        deps.manager.startGeneration(context: RealtimeContext(prompt: 'test')),
+        throwsA(
+          isA<XmaxError>().having(
+            (error) => error.code,
+            'code',
+            XmaxErrorCode.cancelled,
+          ),
+        ),
+      );
+      await deps.render.waiting.future;
+      await deps.manager.disconnect();
+      await starting;
+      expect(deps.sessions.heartbeatStarts, isEmpty);
+      expect(
+        (await deps.manager.currentState).connectionState,
+        RealtimeConnectionState.ready,
+      );
+      await deps.manager.close();
+    },
+  );
+
+  test(
     'condition update errors do not interrupt microphone capture on an active connection',
     () async {
       final deps = _Dependencies();
@@ -825,6 +959,9 @@ void main() {
         videoFormat: _Dependencies.format,
       );
       await manager.connect(localStream: local);
+      await manager.startGeneration(
+        context: RealtimeContext(prompt: 'initial'),
+      );
       final oldHeartbeat = dependencies.sessions._heartbeatFailureHandler!;
       const error = XmaxError(
         code: XmaxErrorCode.rtcError,
@@ -1126,6 +1263,7 @@ void main() {
     dependencies.media.notifyPreviewReady();
     await manager.connect(localStream: localStream);
 
+    await manager.startGeneration(context: RealtimeContext(prompt: 'test'));
     await dependencies.sessions.failHeartbeat(StateError('heartbeat stopped'));
 
     final state = await manager.currentState;
@@ -1462,12 +1600,13 @@ void main() {
 }
 
 final class _Dependencies {
-  _Dependencies({bool isAdaptiveQualityEnabled = true}) {
+  _Dependencies({bool isAdaptiveQualityEnabled = true, int Function()? now}) {
     connection = XmaxRealtimeConnectionManager(
       sessionService: sessions,
       interactionController: media,
       renderController: render,
       streamController: stream,
+      now: now,
     );
     generation = XmaxRealtimeGenerationManager(
       interactionController: media,
@@ -1920,6 +2059,8 @@ final class _FakeSessions implements RealtimeSessionServicing {
   Object? closeError;
   final closedSessions = <String>[];
   RealtimeSessionHeartbeatFailureHandler? _heartbeatFailureHandler;
+  final heartbeatStarts = <({String sessionID, int? graceSeconds})>[];
+  void Function()? onCreateSession;
 
   Future<void> failHeartbeat(Object error) async =>
       _heartbeatFailureHandler?.call('session-1', error);
@@ -1934,20 +2075,32 @@ final class _FakeSessions implements RealtimeSessionServicing {
   Future<RealtimeSession> createSession({
     required RealtimeModel model,
     Future<void>? cancellation,
-  }) async => const RealtimeSession(
-    id: 'session-1',
-    connection: RealtimeSessionConnection(
-      roomID: 'room-1',
-      userID: 'user-1',
-      token: 'token-1',
-      botName: 'bot-1',
-    ),
-  );
+  }) async {
+    onCreateSession?.call();
+    return const RealtimeSession(
+      id: 'session-1',
+      connection: RealtimeSessionConnection(
+        roomID: 'room-1',
+        userID: 'user-1',
+        token: 'token-1',
+        botName: 'bot-1',
+      ),
+    );
+  }
+
   @override
   void startHeartbeat({
     required String sessionID,
+    int? firstHeartbeatGraceSeconds,
     required RealtimeSessionHeartbeatFailureHandler onFailure,
-  }) => _heartbeatFailureHandler = onFailure;
+  }) {
+    heartbeatStarts.add((
+      sessionID: sessionID,
+      graceSeconds: firstHeartbeatGraceSeconds,
+    ));
+    _heartbeatFailureHandler = onFailure;
+  }
+
   @override
   void stopHeartbeat() => _heartbeatFailureHandler = null;
 }

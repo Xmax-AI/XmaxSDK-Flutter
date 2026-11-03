@@ -6,6 +6,230 @@ import 'package:xmax_sdk/src/service/realtime/RealtimeSessionService.dart';
 import 'package:xmax_sdk/xmax_sdk.dart';
 
 void main() {
+  testWidgets(
+    'first heartbeat is immediate and startup allowance appears only once',
+    (tester) async {
+      final api = _RecordingApiService();
+      final service = RealtimeSessionService(apiService: api);
+      addTearDown(service.stopHeartbeat);
+      service.startHeartbeat(
+        sessionID: 'session',
+        firstHeartbeatGraceSeconds: 4,
+        onFailure: (_, error) async =>
+            fail('Unexpected heartbeat error: $error'),
+      );
+      expect(api.requests, isEmpty);
+      await tester.pump();
+      expect(api.requests, hasLength(1));
+      expect(api.requests.single.method, ApiMethod.put);
+      expect(api.requests.single.path, '/session/session/heartbeat');
+      expect(api.requests.single.body, {'firstHeartbeatGraceSeconds': 4});
+      await tester.pump(const Duration(seconds: 9));
+      expect(api.requests, hasLength(1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(api.requests, hasLength(2));
+      expect(api.requests.last, (
+        method: ApiMethod.put,
+        path: '/session/session/heartbeat',
+        body: null,
+      ));
+      await tester.pump(const Duration(seconds: 10));
+      expect(api.requests, hasLength(3));
+      expect(api.requests.last.body, isNull);
+      service.stopHeartbeat();
+    },
+  );
+
+  for (final seconds in <int?>[0, null]) {
+    testWidgets('first heartbeat preserves a startup allowance of $seconds', (
+      tester,
+    ) async {
+      final api = _RecordingApiService();
+      final service = RealtimeSessionService(apiService: api);
+      addTearDown(service.stopHeartbeat);
+      service.startHeartbeat(
+        sessionID: 'session',
+        firstHeartbeatGraceSeconds: seconds,
+        onFailure: (_, error) async =>
+            fail('Unexpected heartbeat error: $error'),
+      );
+      await tester.pump();
+      expect(api.requests, hasLength(1));
+      expect(
+        api.requests.single.body,
+        seconds == null ? null : {'firstHeartbeatGraceSeconds': 0},
+      );
+      service.stopHeartbeat();
+    });
+  }
+
+  testWidgets('stopping before the first heartbeat prevents the request', (
+    tester,
+  ) async {
+    final api = _RecordingApiService();
+    final service = RealtimeSessionService(apiService: api);
+    service.startHeartbeat(
+      sessionID: 'session',
+      firstHeartbeatGraceSeconds: 2,
+      onFailure: (_, error) async => fail('Unexpected heartbeat error: $error'),
+    );
+    service.stopHeartbeat();
+    await tester.pump(const Duration(seconds: 30));
+    expect(api.requests, isEmpty);
+  });
+
+  testWidgets(
+    'replacement before the first heartbeat sends only the latest allowance',
+    (tester) async {
+      final api = _RecordingApiService();
+      final service = RealtimeSessionService(apiService: api);
+      addTearDown(service.stopHeartbeat);
+      for (final (id, seconds) in [('old', 3), ('new', 7)]) {
+        service.startHeartbeat(
+          sessionID: id,
+          firstHeartbeatGraceSeconds: seconds,
+          onFailure: (_, error) async =>
+              fail('Unexpected heartbeat error: $error'),
+        );
+      }
+      await tester.pump();
+      expect(api.requests, hasLength(1));
+      expect(api.requests.single.method, ApiMethod.put);
+      expect(api.requests.single.path, '/session/new/heartbeat');
+      expect(api.requests.single.body, {'firstHeartbeatGraceSeconds': 7});
+      await tester.pump(const Duration(seconds: 10));
+      expect(api.requests, hasLength(2));
+      expect(api.requests.last, (
+        method: ApiMethod.put,
+        path: '/session/new/heartbeat',
+        body: null,
+      ));
+      service.stopHeartbeat();
+    },
+  );
+
+  testWidgets(
+    'slow heartbeats never overlap and intervals begin after completion',
+    (tester) async {
+      final api = _RecordingApiService();
+      final response = Completer<void>();
+      api.onHeartbeat = (_) => response.future;
+      final service = RealtimeSessionService(apiService: api);
+      addTearDown(service.stopHeartbeat);
+      service.startHeartbeat(
+        sessionID: 'session',
+        firstHeartbeatGraceSeconds: 5,
+        onFailure: (_, error) async =>
+            fail('Unexpected heartbeat error: $error'),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+      expect(api.requests, hasLength(1));
+      response.complete();
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 9));
+      expect(api.requests, hasLength(1));
+      await tester.pump(const Duration(seconds: 1));
+      expect(api.requests, hasLength(2));
+      expect(api.requests.last.body, isNull);
+      service.stopHeartbeat();
+    },
+  );
+
+  for (final failing in [false, true]) {
+    testWidgets(
+      'stale ${failing ? 'failure' : 'success'} cannot restart or terminate a replacement cycle',
+      (tester) async {
+        final api = _RecordingApiService();
+        final response = Completer<void>();
+        api.onHeartbeat = (_) async {
+          await response.future;
+          if (failing) throw StateError('old heartbeat failed');
+        };
+        final service = RealtimeSessionService(apiService: api);
+        addTearDown(service.stopHeartbeat);
+        var failures = 0;
+        service.startHeartbeat(
+          sessionID: 'old',
+          firstHeartbeatGraceSeconds: 3,
+          onFailure: (_, _) async => failures++,
+        );
+        await tester.pump();
+        api.onHeartbeat = null;
+        service.startHeartbeat(
+          sessionID: 'new',
+          firstHeartbeatGraceSeconds: 7,
+          onFailure: (_, _) async => failures++,
+        );
+        await tester.pump();
+        response.complete();
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 10));
+        expect(api.requests.map((request) => request.path), [
+          '/session/old/heartbeat',
+          '/session/new/heartbeat',
+          '/session/new/heartbeat',
+        ]);
+        expect(api.requests.last.body, isNull);
+        expect(failures, 0);
+        service.stopHeartbeat();
+      },
+    );
+  }
+
+  testWidgets(
+    'negative startup allowance reports failure without sending HTTP',
+    (tester) async {
+      final api = _RecordingApiService();
+      final service = RealtimeSessionService(apiService: api);
+      Object? failure;
+      service.startHeartbeat(
+        sessionID: 'session',
+        firstHeartbeatGraceSeconds: -1,
+        onFailure: (_, error) async => failure = error,
+      );
+      await tester.pump();
+      expect(api.requests, isEmpty);
+      expect(
+        failure,
+        isA<XmaxError>().having(
+          (error) => error.code,
+          'code',
+          XmaxErrorCode.invalidConfiguration,
+        ),
+      );
+      await tester.pump(const Duration(seconds: 30));
+      expect(api.requests, isEmpty);
+      service.stopHeartbeat();
+    },
+  );
+
+  testWidgets(
+    'current heartbeat failure reports once and stops future requests',
+    (tester) async {
+      final api = _RecordingApiService();
+      final expected = StateError('heartbeat failed');
+      api.onHeartbeat = (_) async => throw expected;
+      final service = RealtimeSessionService(apiService: api);
+      final failures = <Object>[];
+      String? failedSessionID;
+      service.startHeartbeat(
+        sessionID: 'session',
+        firstHeartbeatGraceSeconds: 4,
+        onFailure: (id, error) async {
+          failedSessionID = id;
+          failures.add(error);
+        },
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 30));
+      expect(api.requests, hasLength(1));
+      expect(failedSessionID, 'session');
+      expect(failures, [same(expected)]);
+      service.stopHeartbeat();
+    },
+  );
+
   test(
     'stopping heartbeat aborts the in-flight request without reporting a stale failure',
     () async {
@@ -104,6 +328,7 @@ final class _RecordingApiService implements ApiServicing {
   ApiMethod? method;
   String? path;
   Object? body;
+  final requests = <({ApiMethod method, String path, Object? body})>[];
 
   @override
   Future<T> request<T>(
@@ -113,6 +338,7 @@ final class _RecordingApiService implements ApiServicing {
     required T Function(Object? json) decode,
     Future<void>? cancellation,
   }) async {
+    requests.add((method: method, path: path, body: body));
     if (path.endsWith('/heartbeat')) await onHeartbeat?.call(cancellation);
     this.method = method;
     this.path = path;

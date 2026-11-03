@@ -515,6 +515,7 @@ class _Sessions implements RealtimeSessionServicing {
   @override
   void startHeartbeat({
     required String sessionID,
+    int? firstHeartbeatGraceSeconds,
     required RealtimeSessionHeartbeatFailureHandler onFailure,
   }) {}
   @override
