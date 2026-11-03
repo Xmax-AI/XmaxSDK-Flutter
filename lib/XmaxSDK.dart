@@ -11,6 +11,7 @@
 /// The Flutter entry point for XmaxSDK.
 library;
 
+export 'src/core/account/XmaxCreditBalance.dart' show XmaxCreditBalance;
 export 'src/core/realtime/RealtimeConfiguration.dart';
 export 'src/core/realtime/XmaxRealtimeManaging.dart';
 export 'src/core/storage/XmaxDownloadedFile.dart' show XmaxDownloadedFile;

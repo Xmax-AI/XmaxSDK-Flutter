@@ -8,6 +8,7 @@
 //  Copyright (c) 2026 XMAX.AI PTE. LTD.
 //
 
+import '../foundation/errors/XmaxError.dart';
 import '../foundation/logging/XmaxLogger.dart';
 import '../foundation/storage/StorageManager.dart';
 import '../service/media/MediaService.dart';
@@ -17,13 +18,14 @@ import '../service/network/ApiServicing.dart';
 import '../service/realtime/RealtimeModel.dart';
 import '../service/storage/StorageService.dart';
 import 'XmaxConfiguration.dart';
+import 'account/XmaxCreditBalance.dart';
 import 'realtime/RealtimeConfiguration.dart';
 import 'realtime/XmaxRealtimeManager.dart';
 import 'realtime/XmaxRealtimeManaging.dart';
 import 'storage/XmaxStorageManager.dart';
 import 'storage/XmaxStorageManaging.dart';
 
-/// A client that provides access to Xmax realtime generation, storage, and media services.
+/// A client for account queries, realtime generation, storage, and media services.
 final class XmaxClient {
 
   /// Creates a client with the specified configuration.
@@ -48,7 +50,7 @@ final class XmaxClient {
   ///
   /// Parameters:
   /// - [configuration]: The API credentials, service environment, and logging options.
-  /// - [apiService]: The service used for realtime session and storage requests.
+  /// - [apiService]: The service used for account, realtime session, and storage requests.
   XmaxClient.internal({
     required this.configuration,
     required ApiServicing apiService,
@@ -63,11 +65,44 @@ final class XmaxClient {
   /// The configuration used by this client.
   final XmaxConfiguration configuration;
 
-  /// The service used for API requests.
+  /// The service for account queries, storage credentials, and media safety checks.
   final ApiServicing _apiService;
 
   /// The injected realtime service, or null to use the client's environment routing.
   ApiServicing? _realtimeApiOverride;
+
+  /// Fetches remaining credits for the account owning this client's API key.
+  ///
+  /// Each call reads the current server balance using the configured general API environment.
+  /// Fractional credits are preserved. This query does not create a realtime session.
+  ///
+  /// Returns the account's remaining credits.
+  ///
+  /// The returned future completes with an [XmaxError] if credentials, transport, or the response
+  /// are invalid.
+  Future<XmaxCreditBalance> getCreditBalance() async {
+    configuration.validate();
+
+    return _apiService.get(
+      '/balance',
+      (
+        json,
+      ) {
+        final value = json is Map<String, dynamic> ? json['currentBalance'] : null;
+        final currentBalance = value is num ? value.toDouble() : null;
+
+        if (currentBalance == null ||
+            !currentBalance.isFinite || currentBalance < 0) {
+          throw const XmaxError(
+            code: XmaxErrorCode.apiError,
+            message: 'Credit balance must be a finite, nonnegative number',
+          );
+        }
+
+        return createXmaxCreditBalance(currentBalance: currentBalance);
+      },
+    );
+  }
 
   /// Creates a manager for local media inputs and realtime generation.
   ///
