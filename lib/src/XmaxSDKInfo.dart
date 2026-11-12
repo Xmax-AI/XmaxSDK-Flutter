@@ -12,5 +12,5 @@
 abstract final class XmaxSDKInfo {
 
   /// The current XmaxSDK release version.
-  static const String version = '1.1.1';
+  static const String version = '1.1.2';
 }
