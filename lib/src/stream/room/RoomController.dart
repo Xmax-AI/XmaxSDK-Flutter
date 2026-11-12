@@ -38,12 +38,15 @@ final class RoomController implements RoomControlling {
   /// - [rtcManager]: The RTC room signaling interface.
   /// - [heartbeat]: The heartbeat scheduler; defaults to one using the same RTC manager.
   /// - [timing]: The startup recorder shared with session creation and local publication.
+  /// - [retryCommands]: Whether generation controls use background RTC retries.
   RoomController({
     required RtcManaging rtcManager,
     RoomHeartbeat? heartbeat,
     RealtimeTiming? timing,
+    bool retryCommands = true,
   }) : _rtcManager = rtcManager,
        _timing = timing ?? RealtimeTiming(),
+       _retryCommands = retryCommands,
        _heartbeat = heartbeat ?? RoomHeartbeat(rtcManager: rtcManager);
 
   /// The RTC capture, room, and transport interface.
@@ -54,6 +57,9 @@ final class RoomController implements RoomControlling {
 
   /// The heartbeat scheduler for the current RTC room.
   final RoomHeartbeat _heartbeat;
+
+  /// Whether generation controls use background RTC retries.
+  final bool _retryCommands;
 
   /// The RTC user account, not a numeric UID.
   String? _userID;
@@ -121,6 +127,7 @@ final class RoomController implements RoomControlling {
           reportFailure: false,
           cancellation: cancellation,
         ),
+        retryEnabled: _retryCommands,
       );
       _rtcManager.setRoomMessageListener((
         message,

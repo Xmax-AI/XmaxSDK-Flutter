@@ -486,22 +486,44 @@ void main() {
     );
   }
 
-  for (final preset in RealtimeCameraPreset.values) {
-    test('X2.1 camera creation accepts preset $preset', () async {
-      final deps = _Dependencies();
-      final XmaxRealtimeManaging manager = deps.manager;
-      addTearDown(manager.close);
-      final local = await manager.createLocalCameraStream(
-        preset: preset,
-        position: CameraPosition.back,
+  for (final model in RealtimeModel.values) {
+    for (final preset in RealtimeCameraPreset.values) {
+      final supported = model.supportedVideoFormats.any(
+        (format) =>
+            format.width == preset.size.width &&
+            format.height == preset.size.height,
       );
-      expect(local.videoTrack!.videoFormat!.width, preset.size.width.toInt());
-      expect(local.videoTrack!.videoFormat!.height, preset.size.height.toInt());
-      expect(local.videoTrack!.videoFormat!.fps, 30);
-      expect(local.videoTrack!.position, CameraPosition.back);
-      expect(await manager.currentCameraPreset, preset);
-      expect(deps.media.createCount, 1);
-    });
+      test(
+        '${model.value} camera preset $preset (supported=$supported)',
+        () async {
+          final deps = _Dependencies(model: model);
+          final XmaxRealtimeManaging manager = deps.manager;
+          addTearDown(manager.close);
+          final creation = manager.createLocalCameraStream(
+            preset: preset,
+            position: CameraPosition.back,
+          );
+          if (!supported) {
+            await expectLater(creation, throwsA(isA<XmaxError>()));
+            expect(deps.media.createCount, 0);
+            return;
+          }
+          final local = await creation;
+          expect(
+            local.videoTrack!.videoFormat!.width,
+            preset.size.width.toInt(),
+          );
+          expect(
+            local.videoTrack!.videoFormat!.height,
+            preset.size.height.toInt(),
+          );
+          expect(local.videoTrack!.videoFormat!.fps, 30);
+          expect(local.videoTrack!.position, CameraPosition.back);
+          expect(await manager.currentCameraPreset, preset);
+          expect(deps.media.createCount, 1);
+        },
+      );
+    }
   }
 
   test(
@@ -1600,7 +1622,11 @@ void main() {
 }
 
 final class _Dependencies {
-  _Dependencies({bool isAdaptiveQualityEnabled = true, int Function()? now}) {
+  _Dependencies({
+    RealtimeModel model = RealtimeModel.x2_1,
+    bool isAdaptiveQualityEnabled = true,
+    int Function()? now,
+  }) {
     connection = XmaxRealtimeConnectionManager(
       sessionService: sessions,
       interactionController: media,
@@ -1616,7 +1642,7 @@ final class _Dependencies {
     );
     manager = XmaxRealtimeManager.internal(
       options: RealtimeConfiguration(
-        model: RealtimeModel.x2_1,
+        model: model,
         isAdaptiveQualityEnabled: isAdaptiveQualityEnabled,
       ),
       mediaController: media,

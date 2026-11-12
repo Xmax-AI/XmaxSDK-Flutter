@@ -82,8 +82,11 @@ void main() {
     );
   });
 
-  test('public model capabilities expose only X2.1', () {
-    expect(RealtimeModel.values, [RealtimeModel.x2_1]);
+  test('public model capabilities expose X2.1 and X2.1 Flash', () {
+    expect(RealtimeModel.values, [
+      RealtimeModel.x2_1,
+      RealtimeModel.x2_1_flash,
+    ]);
     expect(
       RealtimeModel.x2_1.defaultCameraVideoFormat,
       const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),

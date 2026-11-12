@@ -43,6 +43,36 @@ enum RealtimeCameraPreset {
   resolution1536x1152(
     1536,
     1152,
+  ),
+
+  /// A portrait 11:20 frame for X2.1 Flash.
+  resolution704x1280(
+    704,
+    1280,
+  ),
+
+  /// The landscape 16:9 preset for X2.1 Flash.
+  resolution1280x704(
+    1280,
+    704,
+  ),
+
+  /// A square frame for X2.1 Flash.
+  resolution960x960(
+    960,
+    960,
+  ),
+
+  /// A landscape 4:3 frame for X2.1 Flash.
+  resolution1024x768(
+    1024,
+    768,
+  ),
+
+  /// A portrait 3:4 frame for X2.1 Flash.
+  resolution768x1024(
+    768,
+    1024,
   );
 
   /// Defines a capture resolution preset.

@@ -5,12 +5,19 @@ import 'package:xmax_sdk/xmax_sdk.dart';
 import '../../localization/xlab_localization.dart';
 
 String realtimeCameraAspectRatio(RealtimeVideoFormat format) {
+  // Use the same widescreen labels for the two nearby Flash capture ratios.
+  switch ((format.width, format.height)) {
+    case (704, 1280):
+      return '9:16';
+    case (1280, 704):
+      return '16:9';
+  }
   final divisor = format.width.gcd(format.height);
   return '${format.width ~/ divisor}:${format.height ~/ divisor}';
 }
 
 VideoContentMode realtimeCameraContentMode(RealtimeVideoFormat format) =>
-    format.width * 16 == format.height * 9
+    realtimeCameraAspectRatio(format) == '9:16'
     ? VideoContentMode.fill
     : VideoContentMode.fit;
 

@@ -32,30 +32,19 @@ void main() {
       }
     });
     test('${model.value} separates generation canvas from media size', () {
-      expect(
-        service.resolveGenerationSize(const Size(300, 500)),
-        const Size(1080, 1920),
-      );
-      expect(
-        service.resolveGenerationSize(const Size(500, 300)),
-        const Size(1920, 1080),
-      );
-      expect(
-        service.resolveGenerationSize(const Size(1200, 1600)),
-        const Size(1152, 1536),
-      );
-      expect(
-        service.resolveGenerationSize(const Size(1280, 720)),
-        const Size(1920, 1080),
-      );
-      expect(
-        service.resolveGenerationSize(const Size(800, 800)),
-        const Size(1408, 1408),
-      );
-      expect(
-        service.resolveGenerationSize(const Size(1600, 1200)),
-        const Size(1536, 1152),
-      );
+      for (final (source, x21, flash) in const [
+        (Size(300, 500), Size(1080, 1920), Size(704, 1280)),
+        (Size(500, 300), Size(1920, 1080), Size(1280, 704)),
+        (Size(1200, 1600), Size(1152, 1536), Size(768, 1024)),
+        (Size(1280, 720), Size(1920, 1080), Size(1280, 704)),
+        (Size(800, 800), Size(1408, 1408), Size(960, 960)),
+        (Size(1600, 1200), Size(1536, 1152), Size(1024, 768)),
+      ]) {
+        expect(
+          service.resolveGenerationSize(source),
+          model == RealtimeModel.x2_1 ? x21 : flash,
+        );
+      }
       for (final format in model.supportedVideoFormats) {
         final size = Size(format.width.toDouble(), format.height.toDouble());
         expect(service.resolveGenerationSize(size), size);
@@ -66,6 +55,16 @@ void main() {
       );
     });
   }
+  test('Flash scales external media within its own pixel budget', () {
+    final service = MediaService(model: RealtimeModel.x2_1_flash);
+    final media = service.resolveMediaSize(
+      const Size(1920, 1080),
+      source: RealtimeMediaSource.external,
+    );
+    expect(media, const Size(1280, 720));
+    expect(service.resolveGenerationSize(media), const Size(1280, 704));
+  });
+
   test(
     'returned sizes may fall below the input minimum at every quality tier',
     () {

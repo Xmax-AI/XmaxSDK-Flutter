@@ -18,6 +18,11 @@ void main() {
       const Size(1408, 1408),
       const Size(1152, 1536),
       const Size(1536, 1152),
+      const Size(704, 1280),
+      const Size(1280, 704),
+      const Size(960, 960),
+      const Size(1024, 768),
+      const Size(768, 1024),
     ]);
     expect(RealtimeQualityLevel.values.map((level) => level.value), [
       1,
@@ -68,43 +73,45 @@ void main() {
     );
   });
 
-  test('RealtimeModel exposes only X2.1 and its supported capture formats', () {
-    expect(RealtimeModel.values, [RealtimeModel.x2_1]);
-    expect(RealtimeModel.values.map((model) => model.value), ['x2.1']);
-    expect(RealtimeModel.values.map((model) => model.displayName), ['X2.1']);
-    for (final model in RealtimeModel.values) {
-      expect(
-        model.supportedVideoFormats.map(
-          (format) => Size(format.width.toDouble(), format.height.toDouble()),
-        ),
-        const [
-          Size(1920, 1080),
-          Size(1080, 1920),
-          Size(1408, 1408),
-          Size(1152, 1536),
-          Size(1536, 1152),
-        ],
-      );
-      expect(
-        model.supportedVideoFormats.map((format) => format.fps),
-        everyElement(30),
-      );
-      expect(
-        model.supportedVideoFormats.map(
-          (format) => Size(format.width.toDouble(), format.height.toDouble()),
-        ),
-        RealtimeCameraPreset.values.map((preset) => preset.size),
-      );
+  for (final (model, id, name, sizes, defaultSize, maximumPixels) in const [
+    (
+      RealtimeModel.x2_1,
+      'x2.1',
+      'X2.1',
+      [(1920, 1080), (1080, 1920), (1408, 1408), (1152, 1536), (1536, 1152)],
+      (1080, 1920),
+      2100000,
+    ),
+    (
+      RealtimeModel.x2_1_flash,
+      'x2.1-flash',
+      'X2.1 Flash',
+      [(704, 1280), (1280, 704), (960, 960), (1024, 768), (768, 1024)],
+      (704, 1280),
+      960 * 960,
+    ),
+  ]) {
+    test('$name exposes its capture and generation capabilities', () {
+      expect(model.value, id);
+      expect(model.displayName, name);
+      expect(model.supportedVideoFormats, [
+        for (final (width, height) in sizes)
+          RealtimeVideoFormat(width: width, height: height, fps: 30),
+      ]);
       expect(model.minimumInputPixels, 200000);
-      expect(model.maximumInputPixels, 2100000);
+      expect(model.maximumInputPixels, maximumPixels);
       expect(model.inputSizeAlignment, 32);
       expect(model.defaultFrameRate, 30);
       expect(
         model.defaultCameraVideoFormat,
-        const RealtimeVideoFormat(width: 1080, height: 1920, fps: 30),
+        RealtimeVideoFormat(
+          width: defaultSize.$1,
+          height: defaultSize.$2,
+          fps: 30,
+        ),
       );
-    }
-  });
+    });
+  }
 
   test('RealtimeContext normalizes prompt and reference path', () {
     expect(

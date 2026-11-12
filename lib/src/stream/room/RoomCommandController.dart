@@ -39,15 +39,23 @@ enum RoomCommandKind {
 final class RoomCommandController {
 
   /// Creates a scheduler for independently cancellable transport attempts.
+  ///
+  /// Parameters:
+  /// - [sendMessage]: The transport for an individual command attempt.
+  /// - [retryEnabled]: Whether to retry commands until acknowledged or the deadline expires.
   RoomCommandController({
     required this.sendMessage,
-  });
+    bool retryEnabled = true,
+  }) : _retryEnabled = retryEnabled;
 
   /// Submits frozen signaling with cancellation scoped to one transport attempt.
   final Future<void> Function(
     String message,
     Future<void> cancellation,
   ) sendMessage;
+
+  /// Whether commands use the background retry schedule.
+  final bool _retryEnabled;
 
   /// Commands retained until receipt, deadline, or explicit cancellation.
   final Map<String, _Command> _pending = {};
@@ -173,8 +181,22 @@ final class RoomCommandController {
     cancel();
   }
 
-  /// Starts two send rounds and the six-second receipt deadline for [command].
+  /// Starts [command] and schedules retries when enabled.
   void _begin(
+    _Command command,
+  ) {
+    if (_retryEnabled) {
+      _scheduleRetries(command);
+    }
+
+    _attempt(
+      command,
+      true,
+    );
+  }
+
+  /// Schedules two send rounds and the six-second receipt deadline for [command].
+  void _scheduleRetries(
     _Command command,
   ) {
     for (final offset in [300, 1000, 3000, 3300, 4000, 6000]) {
@@ -203,10 +225,6 @@ final class RoomCommandController {
         },
       ));
     }
-    _attempt(
-      command,
-      true,
-    );
   }
 
   /// Submits [command], retaining cancellation until the [initial] or redundant attempt settles.
@@ -243,7 +261,7 @@ final class RoomCommandController {
           if (!command.done.isCompleted) {
             command.done.complete();
           }
-          if (!command.retrying) {
+          if (!_retryEnabled || !command.retrying) {
             _pending.remove(command.xid);
           }
         }

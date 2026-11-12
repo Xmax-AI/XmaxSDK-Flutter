@@ -96,9 +96,16 @@ void main() {
             downlink: false,
             minimumInputPixels: model.minimumInputPixels,
           );
-          expect(l5.width, baseline.width ~/ 2);
-          expect(l5.height, baseline.height ~/ 2);
-          expect(l5.width * l5.height, baseline.width * baseline.height ~/ 4);
+          final halfArea = baseline.width * baseline.height ~/ 4;
+          if (halfArea >= model.minimumInputPixels) {
+            expect(l5.width, baseline.width ~/ 2);
+            expect(l5.height, baseline.height ~/ 2);
+          } else {
+            expect(
+              l5.width * l5.height,
+              greaterThanOrEqualTo(model.minimumInputPixels),
+            );
+          }
           expect(l5.fps, 16);
           final down = QualityVideoFormat.resolve(
             baseline,

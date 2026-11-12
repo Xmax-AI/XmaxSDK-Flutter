@@ -19,11 +19,13 @@ import '../../render/RenderControlling.dart';
 import '../../service/media/MediaService.dart';
 import '../../service/media/MediaServicing.dart';
 import '../../service/network/ApiServicing.dart';
+import '../../service/realtime/RealtimeModel.dart';
 import '../../service/realtime/RealtimeSessionService.dart';
 import '../../service/realtime/RealtimeState.dart';
 import '../../service/realtime/RealtimeTiming.dart';
 import '../../stream/StreamController.dart';
 import '../../stream/StreamControlling.dart';
+import '../../stream/room/RoomController.dart';
 import 'RealtimeConfiguration.dart';
 import 'XmaxRealtimeConnectionManager.dart';
 import 'XmaxRealtimeErrorManager.dart';
@@ -100,6 +102,11 @@ abstract final class XmaxRealtimeFactory {
     final timing = RealtimeTiming();
     final streamController = StreamController(
       rtcManager: rtcManager,
+      roomController: RoomController(
+        rtcManager: rtcManager,
+        timing: timing,
+        retryCommands: options.model == RealtimeModel.x2_1,
+      ),
       timing: timing,
       errorListener: errorManager.forward,
       localMediaErrorListener: (

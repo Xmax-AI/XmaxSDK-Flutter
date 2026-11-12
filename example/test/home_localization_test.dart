@@ -29,19 +29,21 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('实时交互视频模型'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.china);
-    expect(find.text('X2.1'), findsNWidgets(2));
+    expect(find.text('X2.1'), findsOneWidget);
+    expect(find.text('X2.1 Flash'), findsNWidgets(2));
 
     tester.binding.platformDispatcher.localeTestValue = const Locale('en');
     XLabLocalization.shared.systemLocaleDidChange();
     await tester.pumpAndSettle();
     expect(find.text('Realtime Interactive Video'), findsOneWidget);
     expect(XLabLocalization.shared.environment, XmaxEnvironment.global);
-    expect(find.text('X2.1'), findsNWidgets(2));
+    expect(find.text('X2.1'), findsOneWidget);
+    expect(find.text('X2.1 Flash'), findsNWidgets(2));
   });
 
   for (final (language, savedModel) in [
     (XLabLanguage.english, RealtimeModel.x2_1),
-    (XLabLanguage.simplifiedChinese, RealtimeModel.x2_1),
+    (XLabLanguage.simplifiedChinese, RealtimeModel.x2_1_flash),
   ]) {
     testWidgets('model selection persists independently of ${language.name}', (
       tester,
@@ -89,15 +91,18 @@ void main() {
       }
 
       expectSelected(savedModel);
-      final row = find.byKey(ValueKey<String>('model-${savedModel.value}'));
+      final nextModel = RealtimeModel.values.firstWhere(
+        (model) => model != savedModel,
+      );
+      final row = find.byKey(ValueKey<String>('model-${nextModel.value}'));
       await tester.ensureVisible(row);
       await tester.pumpAndSettle();
       await tester.tap(row);
       await tester.pumpAndSettle();
-      expectSelected(savedModel);
+      expectSelected(nextModel);
       expect(
         await SharedPreferencesAsync().getString('xlab.realtime.model'),
-        savedModel.value,
+        nextModel.value,
       );
 
       await XLabLocalization.shared.setLanguage(
@@ -106,14 +111,14 @@ void main() {
             : XLabLanguage.english,
       );
       await tester.pumpAndSettle();
-      expectSelected(savedModel);
+      expectSelected(nextModel);
 
       await tester.pumpWidget(const SizedBox());
       await tester.pumpWidget(
         const XLabApp(creditBalanceQueryFactory: stubCreditBalanceQuery),
       );
       await tester.pumpAndSettle();
-      expectSelected(savedModel);
+      expectSelected(nextModel);
     });
   }
 

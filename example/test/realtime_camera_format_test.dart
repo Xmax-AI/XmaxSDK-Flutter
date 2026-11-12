@@ -37,7 +37,11 @@ Future<void> _mount(WidgetTester tester, _Manager manager) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: ThemeData.dark(),
-      home: RealtimePage(apiKey: 'test-key', realtimeManager: manager),
+      home: RealtimePage(
+        apiKey: 'test-key',
+        model: manager.options.model,
+        realtimeManager: manager,
+      ),
     ),
   );
   await tester.pumpAndSettle();
@@ -74,6 +78,35 @@ void main() {
       ],
     );
   });
+
+  testWidgets(
+    'Flash camera menu offers Flash presets with the Web ratio labels',
+    (tester) async {
+      final manager = _Manager(model: RealtimeModel.x2_1_flash);
+      final formats = manager.options.model.supportedVideoFormats;
+      await _mount(tester, manager);
+
+      expect(_video(tester).localTrack!.videoFormat, formats.first);
+      expect(_video(tester).videoContentMode, VideoContentMode.fill);
+      await tester.tap(find.byIcon(Icons.aspect_ratio_rounded));
+      await tester.pumpAndSettle();
+      expect(_option(_portrait), findsNothing);
+      expect(formats.map(realtimeCameraAspectRatio), [
+        '9:16',
+        '16:9',
+        '1:1',
+        '4:3',
+        '3:4',
+      ]);
+      for (final format in formats) {
+        expect(_option(format), findsOneWidget);
+      }
+      await tester.tap(_option(formats[1]));
+      await tester.pumpAndSettle();
+      expect(manager.updates.single, formats[1]);
+      expect(_video(tester).videoContentMode, VideoContentMode.fit);
+    },
+  );
 
   testWidgets(
     'ratio switching updates SDK capture and preserves video identity',
@@ -319,8 +352,11 @@ void main() {
 }
 
 class _Manager implements XmaxRealtimeManaging {
+  _Manager({RealtimeModel model = RealtimeModel.x2_1})
+    : options = RealtimeConfiguration(model: model);
+
   @override
-  final options = const RealtimeConfiguration(model: RealtimeModel.x2_1);
+  final RealtimeConfiguration options;
 
   RealtimeStateListener? listener;
   late RealtimeMediaStream local;

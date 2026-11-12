@@ -60,6 +60,31 @@ void main() {
     );
   }
 
+  _test('single-send room keeps distinct xid values without waiting for ACK', (
+    tester,
+    rtc,
+    room,
+  ) async {
+    final kinds = ['start', 'change_condition', 'change_target_size'];
+    for (final kind in kinds) {
+      await _send(room, kind);
+    }
+    await tester.pump(const Duration(seconds: 7));
+
+    final events = rtc.signals
+        .map((message) => jsonDecode(message) as Map)
+        .toList();
+    expect(events.map((event) => event['event']), kinds);
+    final ids = events.map((event) => event['xid']).toSet();
+    expect(ids, hasLength(kinds.length));
+    expect(
+      ids,
+      everyElement(
+        isA<String>().having((id) => id.isNotEmpty, 'isNotEmpty', true),
+      ),
+    );
+  }, retryCommands: false);
+
   _test('wrong room, sender, target, event, and count cannot cancel retries', (
     tester,
     rtc,
@@ -209,11 +234,12 @@ Future<void> _send(RoomController room, String kind) => switch (kind) {
 
 void _test(
   String name,
-  Future<void> Function(WidgetTester, _Rtc, RoomController) body,
-) {
+  Future<void> Function(WidgetTester, _Rtc, RoomController) body, {
+  bool retryCommands = true,
+}) {
   testWidgets(name, (tester) async {
     final rtc = _Rtc();
-    final room = RoomController(rtcManager: rtc);
+    final room = RoomController(rtcManager: rtc, retryCommands: retryCommands);
     try {
       await tester.runAsync(
         () => room.join(connection: _connection, ensureActive: () {}),
